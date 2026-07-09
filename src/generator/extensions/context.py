@@ -9,6 +9,8 @@ template génère depuis un checkout git où `src/backend` n'est pas importable.
 synchro générateur↔runtime est garantie par un test (test_generator_tiers_match_backend).
 """
 
+import re
+
 import yaml
 
 from copier_template_extensions import ContextHook
@@ -80,6 +82,22 @@ def _pluralize(name: str) -> str:
     return lower + "s"
 
 
+def _resolve_domain_routes(domain_routes: list) -> list:
+    """Dérive un nom de routeur (identifiant Python) depuis le préfixe.
+
+    Ex. { prefix: /api/pains } -> name "pains" -> `pains_router`.
+    """
+    resolved = []
+    for route in domain_routes:
+        prefix = route.get("prefix", "/")
+        last = prefix.rstrip("/").split("/")[-1] or "root"
+        name = re.sub(r"\W", "_", last) or "root"
+        resolved.append(
+            {"prefix": prefix, "name": name, "handlers": route.get("handlers", "")}
+        )
+    return resolved
+
+
 def _resolve_domain_models(data_models: list) -> list:
     """Enrichit chaque modèle avec son nom de table et ses colonnes SQLAlchemy."""
     resolved = []
@@ -123,9 +141,12 @@ class TierResolver(ContextHook):
                 resolved[flag] = profile.get(flag, False)  # sinon profil de tier
         context["resolved_modules"] = resolved
 
-        # Scaffolding métier : app/domain/ depuis data_models.
+        # Scaffolding métier : app/domain/ depuis data_models et domain_routes.
         context["domain_models"] = _resolve_domain_models(
             _as_obj(context.get("data_models"), [])
+        )
+        context["domain_routers"] = _resolve_domain_routes(
+            _as_obj(context.get("domain_routes"), [])
         )
 
         # Branding : garantit les 3 clés même si le branding fourni est partiel.

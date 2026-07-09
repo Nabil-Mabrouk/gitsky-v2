@@ -127,6 +127,12 @@ def test_resolve_domain_models_maps_types():
     assert cols["weird"] == "String"  # type inconnu -> fallback String
 
 
+def test_resolve_domain_routes():
+    out = ctx._resolve_domain_routes([{"prefix": "/api/pains", "handlers": "pains.py"}])
+    assert out[0]["prefix"] == "/api/pains"
+    assert out[0]["name"] == "pains"  # dernier segment -> identifiant routeur
+
+
 # --- Scaffolding app/domain/ de bout en bout ------------------------------
 
 COMPANY = {
@@ -166,6 +172,38 @@ def test_domain_empty_is_valid_python():
         src = _generate_domain([], Path(tmp) / "proj")
         compile(src, "models.py", "exec")  # valide même sans modèle
         assert "class " not in src
+
+
+def _generate_routers(domain_routes: list, dst: Path) -> str:
+    run_copy(
+        str(GENERATOR),
+        str(dst),
+        data={
+            "project": {"name": "pain-scraper", "tier": "t1"},
+            "domain_routes": domain_routes,
+        },
+        defaults=True,
+        quiet=True,
+        unsafe=True,
+    )
+    return (dst / "app" / "domain" / "routers.py").read_text(encoding="utf-8")
+
+
+def test_domain_routers_scaffolded():
+    with tempfile.TemporaryDirectory() as tmp:
+        src = _generate_routers(
+            [{"prefix": "/api/pains", "handlers": "pains.py"}], Path(tmp) / "proj"
+        )
+        compile(src, "routers.py", "exec")  # doit être du Python valide
+        assert 'pains_router = APIRouter(prefix="/api/pains"' in src
+        assert "async def list_pains(" in src
+
+
+def test_domain_routers_empty_is_valid_python():
+    with tempfile.TemporaryDirectory() as tmp:
+        src = _generate_routers([], Path(tmp) / "proj")
+        compile(src, "routers.py", "exec")  # valide même sans route
+        assert "APIRouter(prefix=" not in src
 
 
 def _rmtree_robuste(path: Path) -> None:
@@ -296,5 +334,8 @@ def test_full_nested_book_config():
 
         models = (dst / "app" / "domain" / "models.py").read_text("utf-8")
         assert "class Company(Base):" in models
+
+        routers = (dst / "app" / "domain" / "routers.py").read_text("utf-8")
+        assert 'pains_router = APIRouter(prefix="/api/pains"' in routers
     finally:
         _rmtree_robuste(tmp)
