@@ -37,6 +37,11 @@ if settings.module_agentic:
 
     app.include_router(agentic_router, prefix="/api/agent-services")
 
+if settings.module_tutorials:
+    from app.modules.tutorials import router as tutorials_router
+
+    app.include_router(tutorials_router, prefix="/api/content", tags=["tutorials"])
+
 
 @app.get("/health")
 async def health() -> dict:
@@ -49,5 +54,6 @@ async def health() -> dict:
             "analytics": settings.module_analytics,
             "security_middleware": settings.module_security_middleware,
             "agentic": settings.module_agentic,
+            "tutorials": settings.module_tutorials,
         },
     }
