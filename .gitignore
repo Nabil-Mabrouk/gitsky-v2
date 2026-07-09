@@ -1,0 +1,15 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+
+# Env / secrets
+.env
+
+# SQLite (dev + artefacts de test)
+*.db
+
+# OS
+.DS_Store
+Thumbs.db
