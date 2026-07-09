@@ -32,3 +32,10 @@ modules:
   type: yaml
   help: "Overrides des flags module par tier (ex. {agentic: true})"
   default: {}
+
+# Modèles métier à scaffolder dans app/domain/ (cf. config.yaml du Chap 17).
+# Liste de { name, fields: { champ: type } }, type ∈ str|text|int|bool|float|datetime.
+data_models:
+  type: yaml
+  help: "Modèles métier (liste name + fields)"
+  default: []

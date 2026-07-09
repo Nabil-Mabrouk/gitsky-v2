@@ -19,6 +19,10 @@ sys.path.insert(0, str(BACKEND))
 
 from copier import run_copy  # noqa: E402
 
+# Le context hook est aussi testé unitairement (logique pure, sans Copier).
+sys.path.insert(0, str(GENERATOR / "extensions"))
+import context as ctx  # noqa: E402
+
 
 def _generate(
     tier: str, name: str, dst: Path, modules: dict | None = None
@@ -87,3 +91,88 @@ def test_override_disables_module_on_t2():
         # L'override peut aussi désactiver un module actif du profil.
         assert "MODULE_MONETIZATION_SUBSCRIPTION=false" in lines
         assert "MODULE_MONETIZATION_SHOP=true" in lines  # non touché
+
+
+# --- Logique du scaffolding métier (unitaire, sans Copier) ----------------
+
+def test_pluralize():
+    assert ctx._pluralize("Company") == "companies"  # y consonne -> ies
+    assert ctx._pluralize("Day") == "days"  # y voyelle -> +s
+    assert ctx._pluralize("Box") == "boxes"  # x -> es
+    assert ctx._pluralize("Lead") == "leads"
+
+
+def test_resolve_domain_models_maps_types():
+    out = ctx._resolve_domain_models(
+        [{"name": "Company", "fields": {"pain_signal": "text", "priority": "int", "weird": "??"}}]
+    )
+    assert out[0]["table"] == "companies"
+    cols = {f["name"]: f["column"] for f in out[0]["fields"]}
+    assert cols["pain_signal"] == "Text"
+    assert cols["priority"] == "Integer"
+    assert cols["weird"] == "String"  # type inconnu -> fallback String
+
+
+# --- Scaffolding app/domain/ de bout en bout ------------------------------
+
+COMPANY = {
+    "name": "Company",
+    "fields": {"name": "str", "url": "str", "pain_signal": "text", "priority": "int"},
+}
+
+
+def _generate_domain(data_models: list, dst: Path) -> str:
+    run_copy(
+        str(GENERATOR),
+        str(dst),
+        data={
+            "project_name": "pain-scraper",
+            "gitsky_tier": "t1",
+            "data_models": data_models,
+        },
+        defaults=True,
+        quiet=True,
+        unsafe=True,
+    )
+    return (dst / "app" / "domain" / "models.py").read_text(encoding="utf-8")
+
+
+def test_domain_models_scaffolded():
+    with tempfile.TemporaryDirectory() as tmp:
+        src = _generate_domain([COMPANY], Path(tmp) / "proj")
+        compile(src, "models.py", "exec")  # doit être du Python valide
+        assert "class Company(Base):" in src
+        assert '__tablename__ = "companies"' in src
+        assert "id = Column(Integer, primary_key=True, index=True)" in src
+        assert "pain_signal = Column(Text)" in src
+        assert "priority = Column(Integer)" in src
+
+
+def test_domain_empty_is_valid_python():
+    with tempfile.TemporaryDirectory() as tmp:
+        src = _generate_domain([], Path(tmp) / "proj")
+        compile(src, "models.py", "exec")  # valide même sans modèle
+        assert "class " not in src
+
+
+def test_domain_accepts_yaml_string_input():
+    # Régression : via `--data key=...`, Copier livre la valeur en CHAÎNE (pas
+    # en liste). Le hook doit la parser en YAML plutôt qu'itérer ses caractères.
+    with tempfile.TemporaryDirectory() as tmp:
+        dst = Path(tmp) / "proj"
+        run_copy(
+            str(GENERATOR),
+            str(dst),
+            data={
+                "project_name": "p",
+                "gitsky_tier": "t0",
+                "data_models": '[{"name": "Widget", "fields": {"label": "str"}}]',
+            },
+            defaults=True,
+            quiet=True,
+            unsafe=True,
+        )
+        src = (dst / "app" / "domain" / "models.py").read_text(encoding="utf-8")
+        compile(src, "models.py", "exec")
+        assert "class Widget(Base):" in src
+        assert '__tablename__ = "widgets"' in src
