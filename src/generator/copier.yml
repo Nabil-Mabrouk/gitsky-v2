@@ -1,0 +1,27 @@
+# Générateur create-gitsky-project (Chap 17) — spike Phase 2.
+# API Copier réelle : context hook (résolution du tier) + _tasks + _migrations.
+# Le livre décrit des hooks style Cookiecutter (_pre/_post_generation) ; ici on
+# utilise le vrai mécanisme Copier.
+
+_subdirectory: template
+_templates_suffix: .jinja
+
+# Le TemplateExtensionLoader permet de référencer une extension par chemin
+# relatif au template (extensions/context.py) plutôt qu'un module installé.
+_jinja_extensions:
+  - copier_template_extensions.TemplateExtensionLoader
+  - extensions/context.py:TierResolver
+
+project_name:
+  type: str
+  help: Nom du projet (préfixe de toutes les ressources Docker/DB)
+  default: mon-projet
+
+gitsky_tier:
+  type: str
+  help: Tier initial du projet (chaque projet naît en t0)
+  choices:
+    - t0
+    - t1
+    - t2
+  default: t0
