@@ -25,7 +25,7 @@ health = c.get("/health")
 print(json.dumps({
     "health": health.json(),
     "analytics_status": c.get("/api/admin/analytics/world").status_code,
-    "agentic_status": c.get("/api/agent-services/status").status_code,
+    "agentic_status": c.get("/api/agent-services/services").status_code,
     "analytics_imported": "app.modules.analytics" in sys.modules,
     "agentic_imported": "app.modules.agentic" in sys.modules,
     "security_imported": "app.modules.security" in sys.modules,
