@@ -174,3 +174,22 @@ def test_security_chain_applied_when_enabled():
             db_file.unlink()
         except OSError:
             pass
+
+
+def test_onboarding_chain_applied_when_enabled():
+    fd, path = tempfile.mkstemp(suffix=".db")
+    os.close(fd)
+    db_file = Path(path)
+    try:
+        settings = Settings(gitsky_tier="t0", module_onboarding=True)
+        applied = run_migrations(url=_async_url(db_file), settings=settings)
+
+        assert applied == ["core", "onboarding"]
+        tables = _table_names(db_file)
+        assert "user_profiles" in tables
+        assert "alembic_version_onboarding" in tables
+    finally:
+        try:
+            db_file.unlink()
+        except OSError:
+            pass
