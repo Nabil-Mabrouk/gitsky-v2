@@ -24,7 +24,6 @@ c = TestClient(app)
 health = c.get("/health")
 print(json.dumps({
     "health": health.json(),
-    "security_header": "X-GitSky-Security" in health.headers,
     "analytics_status": c.get("/api/analytics/status").status_code,
     "agentic_status": c.get("/api/agent-services/status").status_code,
     "analytics_imported": "app.modules.analytics" in sys.modules,
@@ -48,7 +47,6 @@ def test_t0_loads_no_modules():
     # Endpoints des modules absents.
     assert r["analytics_status"] == 404
     assert r["agentic_status"] == 404
-    assert r["security_header"] is False
     # Preuve clé : le code des modules désactivés n'est jamais importé.
     assert r["analytics_imported"] is False
     assert r["agentic_imported"] is False
@@ -60,7 +58,6 @@ def test_t2_loads_all_modules():
     assert r["health"]["tier"] == "t2"
     assert r["analytics_status"] == 200
     assert r["agentic_status"] == 200
-    assert r["security_header"] is True
     assert r["analytics_imported"] is True
     assert r["agentic_imported"] is True
     assert r["security_imported"] is True

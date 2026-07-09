@@ -19,8 +19,12 @@ app = FastAPI(title=f"GitSky — {settings.project_name}")
 
 if settings.module_security_middleware:
     from app.modules.security import SecurityMiddleware
+    from app.modules.security import router as security_router
 
     app.add_middleware(SecurityMiddleware)
+    app.include_router(
+        security_router, prefix="/api/admin/security", tags=["security"]
+    )
 
 if settings.module_auth:
     from app.core.auth import router as auth_router
