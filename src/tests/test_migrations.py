@@ -212,3 +212,39 @@ def test_agentic_chain_applied_when_enabled():
             db_file.unlink()
         except OSError:
             pass
+
+
+def test_monetization_chain_applied_when_shop_enabled():
+    fd, path = tempfile.mkstemp(suffix=".db")
+    os.close(fd)
+    db_file = Path(path)
+    try:
+        settings = Settings(gitsky_tier="t0", module_monetization_shop=True)
+        applied = run_migrations(url=_async_url(db_file), settings=settings)
+
+        assert applied == ["core", "monetization"]
+        tables = _table_names(db_file)
+        assert {"products", "purchases", "subscriptions"} <= tables
+        assert "alembic_version_monetization" in tables
+    finally:
+        try:
+            db_file.unlink()
+        except OSError:
+            pass
+
+
+def test_monetization_chain_applied_when_only_subscription():
+    fd, path = tempfile.mkstemp(suffix=".db")
+    os.close(fd)
+    db_file = Path(path)
+    try:
+        settings = Settings(gitsky_tier="t0", module_monetization_subscription=True)
+        applied = run_migrations(url=_async_url(db_file), settings=settings)
+
+        assert "monetization" in applied
+        assert "subscriptions" in _table_names(db_file)
+    finally:
+        try:
+            db_file.unlink()
+        except OSError:
+            pass

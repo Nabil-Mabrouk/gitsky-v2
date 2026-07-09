@@ -73,6 +73,20 @@ def run_migrations(url: str | None = None, settings: Settings | None = None) -> 
             command.upgrade(_config(section, location, version_table, url), "head")
             applied.append(section)
 
+    # Cas spécial : monetization a DEUX flags (shop / subscription) mais une
+    # seule chaîne (products/purchases/subscriptions). Appliquée si l'un des deux.
+    if settings.module_monetization_shop or settings.module_monetization_subscription:
+        command.upgrade(
+            _config(
+                "monetization",
+                "alembic/modules/monetization",
+                "alembic_version_monetization",
+                url,
+            ),
+            "head",
+        )
+        applied.append("monetization")
+
     return applied
 
 
