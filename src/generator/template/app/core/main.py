@@ -32,9 +32,13 @@ if settings.module_auth:
     app.include_router(auth_router, prefix="/api/auth", tags=["auth"])
 
 if settings.module_analytics:
+    from app.modules.analytics import TrackingMiddleware
     from app.modules.analytics import router as analytics_router
 
-    app.include_router(analytics_router, prefix="/api/analytics")
+    app.add_middleware(TrackingMiddleware)
+    app.include_router(
+        analytics_router, prefix="/api/admin/analytics", tags=["analytics"]
+    )
 
 if settings.module_agentic:
     from app.modules.agentic import router as agentic_router

@@ -24,7 +24,7 @@ c = TestClient(app)
 health = c.get("/health")
 print(json.dumps({
     "health": health.json(),
-    "analytics_status": c.get("/api/analytics/status").status_code,
+    "analytics_status": c.get("/api/admin/analytics/world").status_code,
     "agentic_status": c.get("/api/agent-services/status").status_code,
     "analytics_imported": "app.modules.analytics" in sys.modules,
     "agentic_imported": "app.modules.agentic" in sys.modules,
@@ -45,7 +45,7 @@ def test_t0_loads_no_modules():
     r = run("t0")
     assert r["health"]["tier"] == "t0"
     # Endpoints des modules absents.
-    assert r["analytics_status"] == 404
+    assert r["analytics_status"] == 404  # /api/admin/analytics non monté
     assert r["agentic_status"] == 404
     # Preuve clé : le code des modules désactivés n'est jamais importé.
     assert r["analytics_imported"] is False
@@ -56,7 +56,7 @@ def test_t0_loads_no_modules():
 def test_t2_loads_all_modules():
     r = run("t2")
     assert r["health"]["tier"] == "t2"
-    assert r["analytics_status"] == 200
+    assert r["analytics_status"] == 401  # monté mais protégé (require_admin)
     assert r["agentic_status"] == 200
     assert r["analytics_imported"] is True
     assert r["agentic_imported"] is True
@@ -68,7 +68,7 @@ def test_explicit_flag_overrides_tier_profile():
     r = run("t0", MODULE_ANALYTICS="true")
     assert r["health"]["tier"] == "t0"
     assert r["health"]["modules"]["analytics"] is True
-    assert r["analytics_status"] == 200
+    assert r["analytics_status"] == 401  # monté (override) mais protégé admin
     assert r["analytics_imported"] is True
     # Les autres modules restent au profil T0 (désactivés).
     assert r["agentic_imported"] is False
