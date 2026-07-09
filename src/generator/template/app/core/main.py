@@ -55,6 +55,27 @@ if settings.module_onboarding:
 
     app.include_router(onboarding_router, prefix="/api/onboarding", tags=["onboarding"])
 
+# Monetization : le webhook (dans shop_router) doit exister dès qu'un des deux
+# flags est actif ; admin réservé à la boutique, subscription à son flag.
+if settings.module_monetization_shop or settings.module_monetization_subscription:
+    from app.modules.monetization import shop_router
+
+    app.include_router(shop_router, prefix="/api/shop", tags=["monetization"])
+
+if settings.module_monetization_shop:
+    from app.modules.monetization import admin_router as shop_admin_router
+
+    app.include_router(
+        shop_admin_router, prefix="/api/admin/shop", tags=["monetization"]
+    )
+
+if settings.module_monetization_subscription:
+    from app.modules.monetization import subscription_router
+
+    app.include_router(
+        subscription_router, prefix="/api/subscription", tags=["monetization"]
+    )
+
 
 @app.get("/health")
 async def health() -> dict:
@@ -69,5 +90,7 @@ async def health() -> dict:
             "agentic": settings.module_agentic,
             "tutorials": settings.module_tutorials,
             "onboarding": settings.module_onboarding,
+            "monetization_shop": settings.module_monetization_shop,
+            "monetization_subscription": settings.module_monetization_subscription,
         },
     }
