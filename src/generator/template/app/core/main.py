@@ -46,6 +46,11 @@ if settings.module_tutorials:
 
     app.include_router(tutorials_router, prefix="/api/content", tags=["tutorials"])
 
+if settings.module_onboarding:
+    from app.modules.onboarding import router as onboarding_router
+
+    app.include_router(onboarding_router, prefix="/api/onboarding", tags=["onboarding"])
+
 
 @app.get("/health")
 async def health() -> dict:
@@ -59,5 +64,6 @@ async def health() -> dict:
             "security_middleware": settings.module_security_middleware,
             "agentic": settings.module_agentic,
             "tutorials": settings.module_tutorials,
+            "onboarding": settings.module_onboarding,
         },
     }
