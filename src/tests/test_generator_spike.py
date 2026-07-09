@@ -31,7 +31,7 @@ import context as ctx  # noqa: E402
 def _generate(
     tier: str, name: str, dst: Path, modules: dict | None = None
 ) -> set[str]:
-    data: dict = {"project_name": name, "gitsky_tier": tier}
+    data: dict = {"project": {"name": name, "tier": tier}}
     if modules is not None:
         data["modules"] = modules
     run_copy(
@@ -140,8 +140,7 @@ def _generate_domain(data_models: list, dst: Path) -> str:
         str(GENERATOR),
         str(dst),
         data={
-            "project_name": "pain-scraper",
-            "gitsky_tier": "t1",
+            "project": {"name": "pain-scraper", "tier": "t1"},
             "data_models": data_models,
         },
         defaults=True,
@@ -186,7 +185,7 @@ def test_tasks_provision_register_and_git_init():
         run_copy(
             str(GENERATOR),
             str(dst),
-            data={"project_name": "pain-scraper", "gitsky_tier": "t1"},
+            data={"project": {"name": "pain-scraper", "tier": "t1"}},
             defaults=True,
             quiet=True,
             unsafe=True,
@@ -214,8 +213,7 @@ def test_domain_accepts_yaml_string_input():
             str(GENERATOR),
             str(dst),
             data={
-                "project_name": "p",
-                "gitsky_tier": "t0",
+                "project": {"name": "p", "tier": "t0"},
                 "data_models": '[{"name": "Widget", "fields": {"label": "str"}}]',
             },
             defaults=True,
@@ -235,8 +233,7 @@ def test_branding_and_traefik_labels():
             str(GENERATOR),
             str(dst),
             data={
-                "project_name": "pain-scraper",
-                "gitsky_tier": "t1",
+                "project": {"name": "pain-scraper", "tier": "t1"},
                 # branding partiel : primary_foreground doit retomber sur le défaut.
                 "branding": {"primary_color": "#FF0000", "font_family": "Roboto"},
             },
@@ -255,3 +252,49 @@ def test_branding_and_traefik_labels():
         assert "traefik.http.routers.backend-pain-scraper.rule" in compose
         assert "Host(`api.pain-scraper.mystudio.com`)" in compose
         assert "Host(`pain-scraper.mystudio.com`)" in compose  # frontend
+
+
+def test_full_nested_book_config():
+    # Forme imbriquée exacte du config.yaml du livre (Chap 17, pain-scraper).
+    config = {
+        "project": {
+            "name": "pain-scraper",
+            "tier": "t1",
+            "domain": "pain-scraper.mystudio.com",
+        },
+        "modules": {"agentic": True},
+        "data_models": [
+            {"name": "Company", "fields": {"name": "str", "pain_signal": "text"}}
+        ],
+        "domain_routes": [{"prefix": "/api/pains", "handlers": "pains.py"}],
+        "branding": {"primary_color": "#4F46E5", "font_family": "Inter"},
+        "fleet": {"register": True, "stripe_account": "mystudio_main"},
+    }
+    tmp = Path(tempfile.mkdtemp())
+    try:
+        dst = tmp / "proj"
+        run_copy(
+            str(GENERATOR),
+            str(dst),
+            data=config,
+            defaults=True,
+            quiet=True,
+            unsafe=True,
+        )
+        env = set((dst / ".env").read_text("utf-8").splitlines())
+        assert "GITSKY_TIER=t1" in env
+        assert "PROJECT_NAME=pain-scraper" in env
+        assert "MODULE_AGENTIC=true" in env  # override par-dessus le profil t1
+        assert "MODULE_AUTH=true" in env  # profil t1
+
+        compose = (dst / "docker-compose.yml").read_text("utf-8")
+        assert "container_name: pain-scraper_backend" in compose
+        assert "Host(`api.pain-scraper.mystudio.com`)" in compose
+
+        css = (dst / "frontend" / "src" / "theme.css").read_text("utf-8")
+        assert "Inter" in css
+
+        models = (dst / "app" / "domain" / "models.py").read_text("utf-8")
+        assert "class Company(Base):" in models
+    finally:
+        _rmtree_robuste(tmp)

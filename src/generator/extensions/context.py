@@ -100,7 +100,16 @@ def _resolve_domain_models(data_models: list) -> list:
 
 class TierResolver(ContextHook):
     def hook(self, context: dict) -> None:
-        tier = context.get("gitsky_tier", "t0")
+        # Dérive les valeurs plates depuis le bloc imbriqué `project` du livre.
+        project = _as_obj(context.get("project"), {}) or {}
+        project_name = project.get("name", "mon-projet")
+        tier = project.get("tier", "t0")
+        context["project_name"] = project_name
+        context["gitsky_tier"] = tier
+        context["project_domain"] = (
+            project.get("domain") or f"{project_name}.mystudio.com"
+        )
+
         profile = TIER_PROFILES.get(tier, {})
         # Overrides depuis config.yaml, clés courtes (agentic) sans préfixe.
         overrides = _as_obj(context.get("modules"), {})

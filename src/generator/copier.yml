@@ -12,40 +12,38 @@ _jinja_extensions:
   - copier_template_extensions.TemplateExtensionLoader
   - extensions/context.py:TierResolver
 
-project_name:
-  type: str
-  help: Nom du projet (préfixe de toutes les ressources Docker/DB)
-  default: mon-projet
+# Contrat config.yaml du livre (Chap 17) : blocs top-level imbriqués. Le context
+# hook dérive project_name / gitsky_tier / project_domain depuis `project`.
 
-gitsky_tier:
-  type: str
-  help: Tier initial du projet (chaque projet naît en t0)
-  choices:
-    - t0
-    - t1
-    - t2
-  default: t0
+# project : identité + tier + domaine. domain optionnel -> défaut wildcard
+# {{ name }}.mystudio.com (T0/T1) ; un T2 promu reçoit un domaine premier dédié.
+project:
+  type: yaml
+  help: "Identité du projet : name, tier (t0|t1|t2), domain"
+  default:
+    name: mon-projet
+    tier: t0
 
 # Overrides des flags module par-dessus le profil de tier (clés courtes, sans
-# le préfixe module_). Ex. dans config.yaml : modules: { agentic: true }
+# le préfixe module_). Ex. : modules: { agentic: true }
 modules:
   type: yaml
   help: "Overrides des flags module par tier (ex. {agentic: true})"
   default: {}
 
-# Modèles métier à scaffolder dans app/domain/ (cf. config.yaml du Chap 17).
-# Liste de { name, fields: { champ: type } }, type ∈ str|text|int|bool|float|datetime.
+# Modèles métier à scaffolder dans app/domain/. Liste de { name, fields: { champ: type } },
+# type ∈ str|text|int|bool|float|datetime.
 data_models:
   type: yaml
   help: "Modèles métier (liste name + fields)"
   default: []
 
-# Domaine du projet. Défaut = sous-domaine wildcard *.mystudio.com (T0/T1) ;
-# un T2 promu recevra un domaine premier dédié (Chap 2).
-project_domain:
-  type: str
-  help: "Domaine du projet"
-  default: "{{ project_name }}.mystudio.com"
+# Routeurs métier à scaffolder (liste prefix + handlers). Accepté ici pour le
+# contrat complet ; le scaffolding routers.py est un incrément ultérieur.
+domain_routes:
+  type: yaml
+  help: "Routeurs métier (liste prefix + handlers)"
+  default: []
 
 # Charte graphique injectée dans le frontend (variables CSS).
 branding:
@@ -55,6 +53,13 @@ branding:
     primary_color: "#4F46E5"
     primary_foreground: "#FFFFFF"
     font_family: "Inter"
+
+# Flotte : enregistrement au fleet dashboard + compte Stripe partagé.
+fleet:
+  type: yaml
+  help: "Flotte : register (bool), stripe_account"
+  default:
+    register: true
 
 # _tasks : exécutés après la génération des fichiers (le « post » réel de Copier).
 # Conditionnés à la GÉNÉRATION INITIALE (_copier_operation == 'copy') — pas au
