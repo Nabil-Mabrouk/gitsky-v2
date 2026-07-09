@@ -13,7 +13,7 @@ import sys
 import tempfile
 from pathlib import Path
 
-BACKEND = Path(__file__).resolve().parents[1] / "backend"
+BACKEND = Path(__file__).resolve().parents[1] / "generator" / "template"
 sys.path.insert(0, str(BACKEND))
 
 from fastapi import FastAPI  # noqa: E402

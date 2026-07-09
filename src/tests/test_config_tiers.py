@@ -10,7 +10,7 @@ pydantic-settings) pour tester en process, sans dépendre de l'environnement.
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "backend"))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "generator" / "template"))
 
 from app.core.config import MODULE_FLAGS, Settings  # noqa: E402
 

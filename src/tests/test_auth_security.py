@@ -11,7 +11,7 @@ from pathlib import Path
 import jwt
 import pytest
 
-BACKEND = Path(__file__).resolve().parents[1] / "backend"
+BACKEND = Path(__file__).resolve().parents[1] / "generator" / "template"
 sys.path.insert(0, str(BACKEND))
 
 from app.core.auth import (  # noqa: E402

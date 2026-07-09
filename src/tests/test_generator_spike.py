@@ -17,7 +17,7 @@ import tempfile
 from pathlib import Path
 
 SRC = Path(__file__).resolve().parents[1]
-BACKEND = SRC / "backend"
+BACKEND = SRC / "generator" / "template"
 GENERATOR = SRC / "generator"
 sys.path.insert(0, str(BACKEND))
 

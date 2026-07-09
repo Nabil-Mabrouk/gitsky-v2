@@ -10,7 +10,7 @@ import asyncio
 import sys
 from pathlib import Path
 
-BACKEND = Path(__file__).resolve().parents[1] / "backend"
+BACKEND = Path(__file__).resolve().parents[1] / "generator" / "template"
 sys.path.insert(0, str(BACKEND))
 
 from sqlalchemy import select  # noqa: E402
