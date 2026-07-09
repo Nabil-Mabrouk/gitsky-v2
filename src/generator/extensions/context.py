@@ -118,3 +118,12 @@ class TierResolver(ContextHook):
         context["domain_models"] = _resolve_domain_models(
             _as_obj(context.get("data_models"), [])
         )
+
+        # Branding : garantit les 3 clés même si le branding fourni est partiel.
+        branding = _as_obj(context.get("branding"), {})
+        context["branding"] = {
+            "primary_color": "#4F46E5",
+            "primary_foreground": "#FFFFFF",
+            "font_family": "Inter",
+            **(branding or {}),
+        }

@@ -1,0 +1,41 @@
+# docker-compose.yml — généré pour {{ project_name }} ({{ gitsky_tier }}).
+# Labels Traefik pointant vers le domaine du projet ; réseau proxy-net partagé
+# par toute la flotte (Chap 1). Ne pas éditer à la main : modifier le template.
+services:
+  frontend:
+    container_name: {{ project_name }}_frontend
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.frontend-{{ project_name }}.rule=Host(`{{ project_domain }}`)"
+      - "traefik.http.routers.frontend-{{ project_name }}.entrypoints=websecure"
+      - "traefik.http.routers.frontend-{{ project_name }}.tls.certresolver=letsencrypt"
+    networks:
+      - proxy-net
+      - internal-net
+    depends_on:
+      - backend
+
+  backend:
+    container_name: {{ project_name }}_backend
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.backend-{{ project_name }}.rule=Host(`api.{{ project_domain }}`)"
+      - "traefik.http.routers.backend-{{ project_name }}.entrypoints=websecure"
+      - "traefik.http.routers.backend-{{ project_name }}.tls.certresolver=letsencrypt"
+    networks:
+      - proxy-net
+      - internal-net
+
+  db:
+    image: postgres:16.3-alpine
+    container_name: {{ project_name }}_db
+    networks:
+      - internal-net
+
+networks:
+  proxy-net:
+    external: true
+    name: proxy-net
+  internal-net:
+    driver: bridge
+    internal: true

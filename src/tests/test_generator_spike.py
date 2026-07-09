@@ -226,3 +226,32 @@ def test_domain_accepts_yaml_string_input():
         compile(src, "models.py", "exec")
         assert "class Widget(Base):" in src
         assert '__tablename__ = "widgets"' in src
+
+
+def test_branding_and_traefik_labels():
+    with tempfile.TemporaryDirectory() as tmp:
+        dst = Path(tmp) / "proj"
+        run_copy(
+            str(GENERATOR),
+            str(dst),
+            data={
+                "project_name": "pain-scraper",
+                "gitsky_tier": "t1",
+                # branding partiel : primary_foreground doit retomber sur le défaut.
+                "branding": {"primary_color": "#FF0000", "font_family": "Roboto"},
+            },
+            defaults=True,
+            quiet=True,
+            unsafe=True,
+        )
+        css = (dst / "frontend" / "src" / "theme.css").read_text("utf-8")
+        assert "--color-primary: #FF0000;" in css
+        assert "Roboto" in css
+        assert "--color-primary-foreground: #FFFFFF;" in css  # défaut conservé
+
+        compose = (dst / "docker-compose.yml").read_text("utf-8")
+        assert "container_name: pain-scraper_backend" in compose
+        # Labels Traefik scopés au projet, pointant vers son domaine par défaut.
+        assert "traefik.http.routers.backend-pain-scraper.rule" in compose
+        assert "Host(`api.pain-scraper.mystudio.com`)" in compose
+        assert "Host(`pain-scraper.mystudio.com`)" in compose  # frontend

@@ -40,6 +40,22 @@ data_models:
   help: "Modèles métier (liste name + fields)"
   default: []
 
+# Domaine du projet. Défaut = sous-domaine wildcard *.mystudio.com (T0/T1) ;
+# un T2 promu recevra un domaine premier dédié (Chap 2).
+project_domain:
+  type: str
+  help: "Domaine du projet"
+  default: "{{ project_name }}.mystudio.com"
+
+# Charte graphique injectée dans le frontend (variables CSS).
+branding:
+  type: yaml
+  help: "Branding (primary_color, primary_foreground, font_family)"
+  default:
+    primary_color: "#4F46E5"
+    primary_foreground: "#FFFFFF"
+    font_family: "Inter"
+
 # _tasks : exécutés après la génération des fichiers (le « post » réel de Copier).
 # Conditionnés à la GÉNÉRATION INITIALE (_copier_operation == 'copy') — pas au
 # copier update, où c'est _migrations qui prend le relais.
