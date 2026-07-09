@@ -134,3 +134,24 @@ def test_module_chain_applied_when_flag_enabled():
             db_file.unlink()
         except OSError:
             pass
+
+
+def test_tutorials_chain_applied_when_enabled():
+    fd, path = tempfile.mkstemp(suffix=".db")
+    os.close(fd)
+    db_file = Path(path)
+    try:
+        settings = Settings(gitsky_tier="t0", module_tutorials=True)
+        applied = run_migrations(url=_async_url(db_file), settings=settings)
+
+        assert applied == ["core", "tutorials"]
+        tables = _table_names(db_file)
+        assert {"tutorials", "lessons"} <= tables
+        assert "alembic_version_tutorials" in tables
+        # analytics non activé -> sa chaîne ne tourne pas.
+        assert "visits" not in tables
+    finally:
+        try:
+            db_file.unlink()
+        except OSError:
+            pass
