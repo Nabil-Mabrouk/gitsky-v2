@@ -20,11 +20,16 @@ sys.path.insert(0, str(BACKEND))
 from copier import run_copy  # noqa: E402
 
 
-def _generate(tier: str, name: str, dst: Path) -> set[str]:
+def _generate(
+    tier: str, name: str, dst: Path, modules: dict | None = None
+) -> set[str]:
+    data: dict = {"project_name": name, "gitsky_tier": tier}
+    if modules is not None:
+        data["modules"] = modules
     run_copy(
         str(GENERATOR),
         str(dst),
-        data={"project_name": name, "gitsky_tier": tier},
+        data=data,
         defaults=True,
         quiet=True,
         unsafe=True,
@@ -53,3 +58,32 @@ def test_generator_t2_resolves_full_profile():
         assert "MODULE_MONETIZATION_SUBSCRIPTION=true" in lines
         # tutorials « selon projet » -> désactivé par défaut, même en t2.
         assert "MODULE_TUTORIALS=false" in lines
+
+
+def test_override_enables_module_on_t1():
+    with tempfile.TemporaryDirectory() as tmp:
+        lines = _generate(
+            "t1",
+            "mvp-z",
+            Path(tmp) / "proj",
+            modules={"agentic": True, "monetization_subscription": True},
+        )
+        # Overrides appliqués par-dessus le profil t1.
+        assert "MODULE_AGENTIC=true" in lines
+        assert "MODULE_MONETIZATION_SUBSCRIPTION=true" in lines
+        # Profil t1 conservé pour le reste.
+        assert "MODULE_AUTH=true" in lines
+        assert "MODULE_ADMIN=false" in lines  # non surchargé, reste off en t1
+
+
+def test_override_disables_module_on_t2():
+    with tempfile.TemporaryDirectory() as tmp:
+        lines = _generate(
+            "t2",
+            "saas-w",
+            Path(tmp) / "proj",
+            modules={"monetization_subscription": False},
+        )
+        # L'override peut aussi désactiver un module actif du profil.
+        assert "MODULE_MONETIZATION_SUBSCRIPTION=false" in lines
+        assert "MODULE_MONETIZATION_SHOP=true" in lines  # non touché

@@ -25,3 +25,10 @@ gitsky_tier:
     - t1
     - t2
   default: t0
+
+# Overrides des flags module par-dessus le profil de tier (clés courtes, sans
+# le préfixe module_). Ex. dans config.yaml : modules: { agentic: true }
+modules:
+  type: yaml
+  help: "Overrides des flags module par tier (ex. {agentic: true})"
+  default: {}

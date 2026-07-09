@@ -26,6 +26,14 @@ class TierResolver(ContextHook):
     def hook(self, context: dict) -> None:
         tier = context.get("gitsky_tier", "t0")
         profile = TIER_PROFILES.get(tier, {})
-        context["resolved_modules"] = {
-            flag: profile.get(flag, False) for flag in MODULE_FLAGS
-        }
+        # Overrides depuis config.yaml, clés courtes (agentic) sans préfixe.
+        overrides = context.get("modules") or {}
+
+        resolved: dict[str, bool] = {}
+        for flag in MODULE_FLAGS:
+            short = flag.removeprefix("module_")
+            if short in overrides:
+                resolved[flag] = bool(overrides[short])  # override gagne
+            else:
+                resolved[flag] = profile.get(flag, False)  # sinon profil de tier
+        context["resolved_modules"] = resolved
