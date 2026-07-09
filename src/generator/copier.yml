@@ -1,0 +1,88 @@
+# Générateur create-gitsky-project (Chap 17) — spike Phase 2.
+# API Copier réelle : context hook (résolution du tier) + _tasks + _migrations.
+# Le livre décrit des hooks style Cookiecutter (_pre/_post_generation) ; ici on
+# utilise le vrai mécanisme Copier.
+
+_subdirectory: template
+_templates_suffix: .jinja
+
+# Le TemplateExtensionLoader permet de référencer une extension par chemin
+# relatif au template (extensions/context.py) plutôt qu'un module installé.
+_jinja_extensions:
+  - copier_template_extensions.TemplateExtensionLoader
+  - extensions/context.py:TierResolver
+
+# Contrat config.yaml du livre (Chap 17) : blocs top-level imbriqués. Le context
+# hook dérive project_name / gitsky_tier / project_domain depuis `project`.
+
+# project : identité + tier + domaine. domain optionnel -> défaut wildcard
+# {{ name }}.mystudio.com (T0/T1) ; un T2 promu reçoit un domaine premier dédié.
+project:
+  type: yaml
+  help: "Identité du projet : name, tier (t0|t1|t2), domain"
+  default:
+    name: mon-projet
+    tier: t0
+
+# Overrides des flags module par-dessus le profil de tier (clés courtes, sans
+# le préfixe module_). Ex. : modules: { agentic: true }
+modules:
+  type: yaml
+  help: "Overrides des flags module par tier (ex. {agentic: true})"
+  default: {}
+
+# Modèles métier à scaffolder dans app/domain/. Liste de { name, fields: { champ: type } },
+# type ∈ str|text|int|bool|float|datetime.
+data_models:
+  type: yaml
+  help: "Modèles métier (liste name + fields)"
+  default: []
+
+# Routeurs métier à scaffolder (liste prefix + handlers). Accepté ici pour le
+# contrat complet ; le scaffolding routers.py est un incrément ultérieur.
+domain_routes:
+  type: yaml
+  help: "Routeurs métier (liste prefix + handlers)"
+  default: []
+
+# Charte graphique injectée dans le frontend (variables CSS).
+branding:
+  type: yaml
+  help: "Branding (primary_color, primary_foreground, font_family)"
+  default:
+    primary_color: "#4F46E5"
+    primary_foreground: "#FFFFFF"
+    font_family: "Inter"
+
+# Flotte : enregistrement au fleet dashboard + compte Stripe partagé.
+fleet:
+  type: yaml
+  help: "Flotte : register (bool), stripe_account"
+  default:
+    register: true
+
+# _tasks : exécutés après la génération des fichiers (le « post » réel de Copier).
+# Conditionnés à la GÉNÉRATION INITIALE (_copier_operation == 'copy') — pas au
+# copier update, où c'est _migrations qui prend le relais.
+# provision_db / register_fleet sont SIMULÉS (à connecter aux services réels).
+# Scripts hors du sous-répertoire template/ -> non livrés dans le projet généré.
+_tasks:
+  - command: "{{ _copier_python }} {{ _copier_conf.src_path }}/tasks/provision_db.py {{ project_name }}"
+    when: "{{ _copier_operation == 'copy' }}"
+  - command: "{{ _copier_python }} {{ _copier_conf.src_path }}/tasks/register_fleet.py {{ project_name }} {{ gitsky_tier }}"
+    when: "{{ _copier_operation == 'copy' }}"
+  - command: "git init -q"
+    when: "{{ _copier_operation == 'copy' }}"
+  - command: "git add -A"
+    when: "{{ _copier_operation == 'copy' }}"
+  - command: 'git -c user.email=gen@gitsky -c user.name=create-gitsky-project commit -q -m "Initial commit (create-gitsky-project)"'
+    when: "{{ _copier_operation == 'copy' }}"
+
+# _migrations : exécutées lors d'un `copier update`, quand la version franchie
+# est >= la version déclarée > l'ancienne version. Le script reçoit VERSION_FROM
+# / VERSION_TO en variables d'environnement.
+# ⚠️ SIMULÉ : représente la ré-application des migrations Alembic après évolution
+# du template. À CONNECTER au vrai scripts/migrate.py du projet.
+_migrations:
+  - version: "1.0.0"
+    command: "{{ _copier_python }} {{ _copier_conf.src_path }}/tasks/apply_migrations.py"

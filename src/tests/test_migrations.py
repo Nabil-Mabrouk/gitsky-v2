@@ -22,7 +22,7 @@ from alembic import command
 from alembic.config import Config
 from sqlalchemy import create_engine, inspect
 
-BACKEND = Path(__file__).resolve().parents[1] / "backend"
+BACKEND = Path(__file__).resolve().parents[1] / "generator" / "template"
 sys.path.insert(0, str(BACKEND))
 
 from app.core.config import Settings  # noqa: E402

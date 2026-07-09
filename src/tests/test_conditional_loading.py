@@ -11,7 +11,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-BACKEND = Path(__file__).resolve().parents[1] / "backend"
+BACKEND = Path(__file__).resolve().parents[1] / "generator" / "template"
 
 # Exécuté dans le sous-process : monte l'app, interroge les endpoints, et
 # rapporte ce qui a réellement été importé.

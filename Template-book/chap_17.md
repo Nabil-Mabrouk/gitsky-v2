@@ -102,17 +102,42 @@ cd ~/projects/pain-scraper
 docker compose up -d
 ```
 
-## Hooks Python pour la Logique Complexe
+## Logique Complexe : Context Hooks, Tasks et Migrations
 
-Copier permet d'exécuter des scripts Python à des moments-clés de la génération. GitSky utilise trois hooks :
+Contrairement à Cookiecutter, Copier n'a pas de scripts `pre_gen`/`post_gen`. Il expose **trois mécanismes distincts**, que GitSky combine :
 
-| Hook | Fichier | Rôle |
-|---|---|---|
-| `_pre_generation` | `.copier/hooks/pre.py` | Valide le `config.yaml`, résout le profil de tier |
-| `_post_generation` | `.copier/hooks/post.py` | Provisionne la DB, génère les migrations, enregistre au fleet dashboard, initialise le repo git |
-| `_post_update` | `.copier/hooks/update.py` | Sur une mise à jour de template, applique les nouvelles migrations sans casser les données existantes |
+| Mécanisme | Déclaration | Moment | Rôle dans GitSky |
+|---|---|---|---|
+| **Context hook** | `_jinja_extensions` + classe `ContextHook` (paquet `copier-template-extensions`) | Avant le rendu Jinja | Résout le profil de tier en flags `MODULE_*`, calcule les valeurs dérivées — sans multiplier les questions posées |
+| **`_tasks`** | Liste de commandes dans `copier.yml` | Après la génération des fichiers | Provisionne la DB, génère les migrations, enregistre au fleet dashboard, initialise le repo git |
+| **`_migrations`** | Liste versionnée dans `copier.yml` | Lors d'un `copier update` | Applique les nouvelles migrations sans casser les données existantes |
 
-Ces hooks sont ce qui distingue un scaffolder statique d'un vrai générateur de projet.
+Le **context hook** est l'équivalent d'un « pré-traitement » : il enrichit le contexte Jinja avant que les fichiers ne soient rendus. C'est là que le tier est résolu, avec **exactement la même logique que le runtime** (source unique de vérité) :
+
+```python
+# extensions/context.py
+from copier_template_extensions import ContextHook
+
+class TierResolver(ContextHook):
+    def hook(self, context: dict) -> None:
+        tier = context.get("gitsky_tier", "t0")
+        context["resolved_modules"] = resolve_profile(tier)
+```
+
+Déclaration dans `copier.yml` :
+
+```yaml
+_jinja_extensions:
+  - copier_template_extensions.TemplateExtensionLoader
+  - extensions/context.py:TierResolver
+
+_tasks:
+  - "python .copier/tasks/provision_db.py"
+  - "python .copier/tasks/register_fleet.py"
+  - "git init && git add -A && git commit -m 'Initial commit'"
+```
+
+Comme les context hooks et les `_tasks` exécutent du code, `copier copy` et `copier update` exigent le drapeau **`--trust`** (`unsafe=True` via l'API Python). Ces trois mécanismes sont ce qui distingue un scaffolder statique d'un vrai générateur de projet.
 
 ## Mise à Jour d'un Projet Existant
 
