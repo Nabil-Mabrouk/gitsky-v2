@@ -39,3 +39,14 @@ data_models:
   type: yaml
   help: "Modèles métier (liste name + fields)"
   default: []
+
+# _tasks : exécutés après la génération des fichiers (le « post » réel de Copier).
+# provision_db / register_fleet sont SIMULÉS (à connecter aux services réels).
+# Scripts hors du sous-répertoire template/ -> non livrés dans le projet généré.
+# {{ _copier_python }} = interpréteur qui exécute Copier ; {{ _copier_conf.src_path }} = racine du template.
+_tasks:
+  - "{{ _copier_python }} {{ _copier_conf.src_path }}/tasks/provision_db.py {{ project_name }}"
+  - "{{ _copier_python }} {{ _copier_conf.src_path }}/tasks/register_fleet.py {{ project_name }} {{ gitsky_tier }}"
+  - "git init -q"
+  - "git add -A"
+  - 'git -c user.email=gen@gitsky -c user.name=create-gitsky-project commit -q -m "Initial commit (create-gitsky-project)"'

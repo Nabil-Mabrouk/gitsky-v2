@@ -8,6 +8,10 @@ dont le `.env` porte le bon tier, le bon nom de projet, et les flags MODULE_*
 du code.
 """
 
+import json
+import os
+import shutil
+import stat
 import sys
 import tempfile
 from pathlib import Path
@@ -153,6 +157,42 @@ def test_domain_empty_is_valid_python():
         src = _generate_domain([], Path(tmp) / "proj")
         compile(src, "models.py", "exec")  # valide même sans modèle
         assert "class " not in src
+
+
+def _rmtree_robuste(path: Path) -> None:
+    # Un .git sous Windows contient des fichiers en lecture seule -> rmtree
+    # échoue ; on remet le bit d'écriture puis on réessaie.
+    def _onexc(func, p, exc):
+        os.chmod(p, stat.S_IWRITE)
+        func(p)
+
+    shutil.rmtree(path, onexc=_onexc)
+
+
+def test_tasks_provision_register_and_git_init():
+    tmp = Path(tempfile.mkdtemp())
+    try:
+        dst = tmp / "proj"
+        run_copy(
+            str(GENERATOR),
+            str(dst),
+            data={"project_name": "pain-scraper", "gitsky_tier": "t1"},
+            defaults=True,
+            quiet=True,
+            unsafe=True,
+        )
+        # Task provision_db (SIMULÉE).
+        prov = json.loads((dst / ".gitsky" / "provisioned.json").read_text("utf-8"))
+        assert prov["database"] == "pain-scraper_db"
+        assert prov["status"] == "simulated"
+        # Task register_fleet (SIMULÉE).
+        fleet = json.loads((dst / ".gitsky" / "fleet.json").read_text("utf-8"))
+        assert fleet["project"] == "pain-scraper"
+        assert fleet["tier"] == "t1"
+        # Task git init + commit initial (RÉELLE).
+        assert (dst / ".git").is_dir()
+    finally:
+        _rmtree_robuste(tmp)
 
 
 def test_domain_accepts_yaml_string_input():
