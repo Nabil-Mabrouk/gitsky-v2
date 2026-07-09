@@ -1,0 +1,14 @@
+# Spike GitSky — compose minimal pour prouver un démarrage propre.
+# Le tier se pilote par variable d'env : GITSKY_TIER=t2 docker compose up --build
+# (La base PostgreSQL du Chap 1 n'est pas incluse : le spike ne persiste rien.)
+services:
+  backend:
+    build:
+      context: ./src/backend
+      dockerfile: Dockerfile.dev
+    container_name: gitsky_spike_backend
+    environment:
+      - GITSKY_TIER=${GITSKY_TIER:-t0}
+      - PROJECT_NAME=${PROJECT_NAME:-gitsky-spike}
+    ports:
+      - "8000:8000"
