@@ -4,24 +4,47 @@
 lancé avant génération (style Cookiecutter), Copier expose un *context hook* qui
 enrichit le contexte Jinja avant le rendu des fichiers.
 
-Source unique de vérité : on réutilise `TIER_PROFILES` / `MODULE_FLAGS` de
-`app.core.config` — le générateur et le runtime résolvent le tier de façon
-identique. (En packaging réel, le backend serait vendorisé ou installé ; ici le
-spike ajoute src/backend au sys.path.)
+Les profils de tier sont VENDORISÉS (copie autonome de `app.core.config`) car le
+template génère depuis un checkout git où `src/backend` n'est pas importable. La
+synchro générateur↔runtime est garantie par un test (test_generator_tiers_match_backend).
 """
-
-import sys
-from pathlib import Path
 
 import yaml
 
-_BACKEND = Path(__file__).resolve().parents[2] / "backend"
-if str(_BACKEND) not in sys.path:
-    sys.path.insert(0, str(_BACKEND))
-
 from copier_template_extensions import ContextHook
 
-from app.core.config import MODULE_FLAGS, TIER_PROFILES
+MODULE_FLAGS: tuple[str, ...] = (
+    "module_auth",
+    "module_admin",
+    "module_analytics",
+    "module_onboarding",
+    "module_tutorials",
+    "module_security_middleware",
+    "module_i18n",
+    "module_agentic",
+    "module_monetization_shop",
+    "module_monetization_subscription",
+)
+
+TIER_PROFILES: dict[str, dict[str, bool]] = {
+    "t0": {flag: False for flag in MODULE_FLAGS},
+    "t1": {
+        "module_auth": True,
+        "module_analytics": True,
+        "module_security_middleware": True,
+    },
+    "t2": {
+        "module_auth": True,
+        "module_admin": True,
+        "module_analytics": True,
+        "module_onboarding": True,
+        "module_security_middleware": True,
+        "module_i18n": True,
+        "module_agentic": True,
+        "module_monetization_shop": True,
+        "module_monetization_subscription": True,
+    },
+}
 
 # Types config.yaml -> expression de colonne SQLAlchemy.
 _SA_TYPES: dict[str, str] = {

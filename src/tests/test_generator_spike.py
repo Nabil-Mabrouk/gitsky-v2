@@ -99,6 +99,16 @@ def test_override_disables_module_on_t2():
 
 # --- Logique du scaffolding métier (unitaire, sans Copier) ----------------
 
+def test_generator_tiers_match_backend():
+    # Les profils vendorisés du générateur DOIVENT rester synchronisés avec le
+    # runtime (app.core.config) — source unique garantie par ce test.
+    from app.core.config import MODULE_FLAGS as BACKEND_FLAGS
+    from app.core.config import TIER_PROFILES as BACKEND_PROFILES
+
+    assert ctx.MODULE_FLAGS == BACKEND_FLAGS
+    assert ctx.TIER_PROFILES == BACKEND_PROFILES
+
+
 def test_pluralize():
     assert ctx._pluralize("Company") == "companies"  # y consonne -> ies
     assert ctx._pluralize("Day") == "days"  # y voyelle -> +s
