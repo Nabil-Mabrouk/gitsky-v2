@@ -113,3 +113,31 @@ def test_projects_grid_requires_admin():
     r = client.get("/api/fleet/projects", headers=_auth(SEED["admin_id"]))
     assert r.status_code == 200
     assert any(p["name"] == "pain-scraper" for p in r.json())
+
+
+def test_kill_check_endpoint_kills_and_journals():
+    client.post("/api/fleet/projects/register", json={"name": "dead-idea", "tier": "t0"})
+
+    # Réservé à l'admin.
+    assert client.post("/api/fleet/projects/dead-idea/kill-check", json={}).status_code == 401
+
+    # J+21 sans signal -> kill_now, statut killed.
+    r = client.post(
+        "/api/fleet/projects/dead-idea/kill-check",
+        json={"days_since_deploy": 21},
+        headers=_auth(SEED["admin_id"]),
+    )
+    assert r.status_code == 200
+    body = r.json()
+    assert body["verdict"] == "kill_now"
+    assert body["status"] == "killed"
+
+    # Projet inconnu -> 404.
+    assert (
+        client.post(
+            "/api/fleet/projects/nope/kill-check",
+            json={},
+            headers=_auth(SEED["admin_id"]),
+        ).status_code
+        == 404
+    )
