@@ -18,7 +18,20 @@ class ProjectRead(BaseModel):
     tier: str
     domain: str | None
     status: str
+    publish_status: str
     template_version: str | None
+
+
+class PromoteRequest(BaseModel):
+    guardrails_pass: bool = True
+    human_approved: bool = False
+
+
+class PromoteResult(BaseModel):
+    project: str
+    publish_status: str
+    allowed: bool
+    reason: str
 
 
 class KillCheckMetrics(BaseModel):

@@ -6,6 +6,12 @@
 _subdirectory: template
 _templates_suffix: .jinja
 
+# Frontière châssis/vitrine (Chap 24 — GitSky Studio) : la vitrine (landing
+# art-dirigée par projet) est générée UNE fois puis JAMAIS écrasée par
+# `copier update`. Le châssis (backend/app React) reste propagé normalement.
+_skip_if_exists:
+  - "vitrine/**"
+
 # Le TemplateExtensionLoader permet de référencer une extension par chemin
 # relatif au template (extensions/context.py) plutôt qu'un module installé.
 _jinja_extensions:
@@ -53,6 +59,20 @@ branding:
     primary_color: "#4F46E5"
     primary_foreground: "#FFFFFF"
     font_family: "Inter"
+
+# Vitrine (Chap 24) : landing pilotée par un schéma de blocs ordonnés. Rendu en
+# HTML statique (SEO/vitesse T0). Le Studio produira ce schéma ; ici un défaut.
+landing:
+  type: yaml
+  help: "Landing en blocs (skin + hero, email_capture, ...)"
+  default:
+    skin: clean
+    blocks:
+      - type: hero
+        headline: "Bienvenue"
+        subhead: "Une nouvelle idée à tester."
+      - type: email_capture
+        cta: "Rejoindre la liste"
 
 # Flotte : enregistrement au fleet dashboard + compte Stripe partagé.
 fleet:

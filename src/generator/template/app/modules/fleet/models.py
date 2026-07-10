@@ -18,6 +18,7 @@ class Project(Base):
     tier = Column(String, nullable=False)
     domain = Column(String)
     status = Column(String, nullable=False, default="active")  # active/pending_kill/killed
+    publish_status = Column(String, nullable=False, default="draft")  # draft/preview/live
     template_version = Column(String)
     first_deployed_at = Column(DateTime(timezone=True), server_default=func.now())
     created_at = Column(DateTime(timezone=True), server_default=func.now())

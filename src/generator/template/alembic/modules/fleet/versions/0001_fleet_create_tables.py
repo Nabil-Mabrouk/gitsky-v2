@@ -26,6 +26,7 @@ def upgrade() -> None:
         sa.Column("tier", sa.String(), nullable=False),
         sa.Column("domain", sa.String(), nullable=True),
         sa.Column("status", sa.String(), nullable=False),
+        sa.Column("publish_status", sa.String(), nullable=False),
         sa.Column("template_version", sa.String(), nullable=True),
         sa.Column("first_deployed_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=True),
         sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=True),

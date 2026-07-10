@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{{ project_name }}</title>
+    <style>
+      :root {
+        --primary: {{ branding.primary_color }};
+        --on-primary: {{ branding.primary_foreground }};
+        --font: "{{ branding.font_family }}", system-ui, sans-serif;
+      }
+      /* Base partagée par tous les skins */
+      body { margin: 0; color: #111; line-height: 1.5; }
+      section { padding: 3rem 1.5rem; max-width: 960px; margin: 0 auto; }
+      .features ul, .faq ul, .pricing ul { list-style: none; padding: 0; display: grid; gap: 1rem; }
+      .features li, .faq li, .pricing li { padding: 1rem; }
+      blockquote { margin: 0; }
+      .btn { background: var(--primary); color: var(--on-primary); font: inherit; cursor: pointer; }
+
+      {% if landing.skin == "editorial" %}
+      /* skin: editorial — serif, aligné à gauche, grande typo */
+      body { font-family: Georgia, "Times New Roman", var(--font), serif; }
+      section { max-width: 720px; }
+      .hero { text-align: left; padding: 6rem 1.5rem; }
+      .hero h1 { font-size: 3.5rem; font-weight: 400; letter-spacing: -0.02em; margin: 0 0 1rem; }
+      blockquote { font-size: 1.5rem; font-style: italic; border-left: 3px solid var(--primary); padding-left: 1rem; }
+      .btn { padding: 0.75rem 1.5rem; border: none; border-radius: 999px; }
+      .features li, .faq li, .pricing li { border-bottom: 1px solid #ddd; }
+      {% elif landing.skin == "bold" %}
+      /* skin: bold — brutaliste, contrasté, blocs anguleux */
+      body { font-family: var(--font), system-ui, sans-serif; }
+      .hero { text-align: center; padding: 5rem 1.5rem; }
+      .hero h1 { font-size: 4rem; font-weight: 900; text-transform: uppercase; margin: 0 0 1rem; }
+      section { border-bottom: 4px solid #111; }
+      .btn { border: 3px solid #111; border-radius: 0; font-weight: 800; padding: 0.75rem 1.25rem; }
+      .features li, .faq li, .pricing li { border: 3px solid #111; }
+      {% else %}
+      /* skin: clean — SaaS minimal, sans-serif, centré */
+      body { font-family: var(--font), system-ui, sans-serif; }
+      .hero { text-align: center; padding: 5rem 1.5rem; }
+      .hero h1 { font-size: 2.5rem; margin: 0 0 1rem; }
+      .btn { padding: 0.75rem 1.25rem; border: none; border-radius: 0.5rem; }
+      .features li, .faq li, .pricing li { border: 1px solid #eee; border-radius: 0.5rem; }
+      {% endif %}
+    </style>
+    <script>
+      // email_capture : POST same-origin /leads (Traefik route vers le
+      // landing-collector partagé, Chap 18). Fonctionne pour N formulaires.
+      async function submitLead(e) {
+        e.preventDefault();
+        const email = e.target.querySelector('input[type=email]').value;
+        try {
+          await fetch("/leads", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ project: "{{ project_name }}", email }),
+          });
+        } catch (_) {}
+        e.target.replaceWith(document.createTextNode("Merci !"));
+        return false;
+      }
+    </script>
+  </head>
+  <body>
+    {% for block in landing.blocks -%}
+    {% if block.type == "hero" %}
+    <section class="hero">
+      <h1>{{ block.headline }}</h1>
+      <p>{{ block.subhead }}</p>
+    </section>
+    {% elif block.type == "features" %}
+    <section class="features">
+      {% if block.title %}<h2>{{ block.title }}</h2>{% endif %}
+      <ul>
+        {% for item in block.get("items", []) %}
+        <li><strong>{{ item.title }}</strong><p>{{ item.body }}</p></li>
+        {% endfor %}
+      </ul>
+    </section>
+    {% elif block.type == "email_capture" %}
+    <section class="capture" style="text-align:center">
+      {% if block.headline %}<h2>{{ block.headline }}</h2>{% endif %}
+      <form onsubmit="return submitLead(event)" data-project="{{ project_name }}">
+        <input type="email" placeholder="votre@email.com" required />
+        <button class="btn" type="submit">{{ block.cta }}</button>
+      </form>
+    </section>
+    {% elif block.type == "testimonial" %}
+    <section class="testimonial">
+      <blockquote>{{ block.quote }}</blockquote>
+      <p>— {{ block.author }}</p>
+    </section>
+    {% elif block.type == "faq" %}
+    <section class="faq">
+      {% if block.title %}<h2>{{ block.title }}</h2>{% endif %}
+      <ul>
+        {% for item in block.get("items", []) %}
+        <li><strong>{{ item.q }}</strong><p>{{ item.a }}</p></li>
+        {% endfor %}
+      </ul>
+    </section>
+    {% elif block.type == "pricing" %}
+    <section class="pricing">
+      {% if block.title %}<h2>{{ block.title }}</h2>{% endif %}
+      <ul>
+        {% for plan in block.get("plans", []) %}
+        <li>
+          <strong>{{ plan.name }}</strong> — {{ plan.price }}
+          <ul>{% for feat in plan.get("features", []) %}<li>{{ feat }}</li>{% endfor %}</ul>
+        </li>
+        {% endfor %}
+      </ul>
+    </section>
+    {% endif %}
+    {%- endfor %}
+  </body>
+</html>
