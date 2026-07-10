@@ -76,6 +76,11 @@ if settings.module_monetization_subscription:
         subscription_router, prefix="/api/subscription", tags=["monetization"]
     )
 
+if settings.module_fleet:
+    from app.modules.fleet import router as fleet_router
+
+    app.include_router(fleet_router, prefix="/api/fleet", tags=["fleet"])
+
 
 @app.get("/health")
 async def health() -> dict:
@@ -92,5 +97,6 @@ async def health() -> dict:
             "onboarding": settings.module_onboarding,
             "monetization_shop": settings.module_monetization_shop,
             "monetization_subscription": settings.module_monetization_subscription,
+            "fleet": settings.module_fleet,
         },
     }
