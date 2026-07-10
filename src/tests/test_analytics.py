@@ -30,7 +30,7 @@ from app.core.database import Base, get_db  # noqa: E402
 from app.core.models import User, UserRole  # noqa: E402
 from app.modules.analytics import TrackingMiddleware  # noqa: E402
 from app.modules.analytics import router as analytics_router  # noqa: E402
-from app.modules.analytics.geoip import hash_ip  # noqa: E402
+from app.modules.analytics.geoip import geolocate, hash_ip  # noqa: E402
 from app.modules.analytics.models import Visit  # noqa: E402
 
 
@@ -42,6 +42,26 @@ def test_hash_ip_deterministic_salted_and_opaque():
     assert h != hash_ip("203.0.113.7", "autre-sel")  # le sel change le hash
     assert "203.0.113.7" not in h  # l'IP n'apparaît jamais
     assert len(h) == 64  # SHA-256 hex
+
+
+def test_geolocate_fallbacks_without_service(monkeypatch):
+    monkeypatch.delenv("GEOIP_URL", raising=False)
+    assert geolocate("1.2.3.4") == {"country_code": "??", "city": None}
+
+
+def test_geolocate_uses_shared_service_when_configured(monkeypatch):
+    import httpx
+
+    monkeypatch.setenv("GEOIP_URL", "http://geoip")
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={"country_code": "FR", "city": "Paris"})
+
+    client = httpx.Client(transport=httpx.MockTransport(handler))
+    assert geolocate("1.2.3.4", client=client) == {
+        "country_code": "FR",
+        "city": "Paris",
+    }
 
 
 # --- Intégration middleware + routeur admin -------------------------------
