@@ -141,3 +141,25 @@ def test_kill_check_endpoint_kills_and_journals():
         ).status_code
         == 404
     )
+
+
+def test_publish_promotion_flow():
+    client.post("/api/fleet/projects/register", json={"name": "launch-me", "tier": "t0"})
+    assert client.post("/api/fleet/projects/launch-me/promote", json={}).status_code == 401
+
+    # draft -> preview (toujours autorisé).
+    r1 = client.post(
+        "/api/fleet/projects/launch-me/promote",
+        json={"guardrails_pass": True},
+        headers=_auth(SEED["admin_id"]),
+    )
+    assert r1.json()["allowed"] is True
+    assert r1.json()["publish_status"] == "preview"
+
+    # preview -> live (T0 + guardrails OK => auto).
+    r2 = client.post(
+        "/api/fleet/projects/launch-me/promote",
+        json={"guardrails_pass": True},
+        headers=_auth(SEED["admin_id"]),
+    )
+    assert r2.json()["publish_status"] == "live"

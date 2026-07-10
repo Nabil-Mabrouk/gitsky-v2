@@ -13,13 +13,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.auth.dependencies import require_admin
 from app.core.database import get_db
 from app.core.models import User
-from app.modules.fleet import kill_check
+from app.modules.fleet import kill_check, publish
 from app.modules.fleet.models import FleetLifecycleEvent, Project
 from app.modules.fleet.schemas import (
     KillCheckMetrics,
     KillCheckResult,
     ProjectRegister,
     ProjectRead,
+    PromoteRequest,
+    PromoteResult,
 )
 
 router = APIRouter()
@@ -108,4 +110,44 @@ async def run_kill_check(
     await db.commit()
     return KillCheckResult(
         project=project.name, tier=project.tier, verdict=verdict, status=project.status
+    )
+
+
+@router.post("/projects/{name}/promote", response_model=PromoteResult)
+async def promote(
+    name: str,
+    payload: PromoteRequest,
+    _admin: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+) -> PromoteResult:
+    project = (
+        await db.execute(select(Project).where(Project.name == name))
+    ).scalar_one_or_none()
+    if project is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Projet introuvable"
+        )
+
+    decision = publish.evaluate_promotion(
+        project.publish_status,
+        project.tier,
+        payload.guardrails_pass,
+        payload.human_approved,
+    )
+    if decision["allowed"]:
+        project.publish_status = decision["target"]
+        db.add(
+            FleetLifecycleEvent(
+                project_name=project.name,
+                event_type=f"publish_{decision['target']}",
+                tier=project.tier,
+                reason=decision["reason"],
+            )
+        )
+    await db.commit()
+    return PromoteResult(
+        project=project.name,
+        publish_status=project.publish_status,
+        allowed=decision["allowed"],
+        reason=decision["reason"],
     )
