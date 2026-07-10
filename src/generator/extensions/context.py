@@ -158,3 +158,7 @@ class TierResolver(ContextHook):
             "font_family": "Inter",
             **(branding or {}),
         }
+
+        # Vitrine : garantit la liste de blocs (Chap 24).
+        landing = _as_obj(context.get("landing"), {}) or {}
+        context["landing"] = {"blocks": landing.get("blocks", [])}
