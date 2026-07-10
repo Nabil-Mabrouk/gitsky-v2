@@ -6,6 +6,13 @@ __pycache__/
 
 # Env / secrets
 .env
+# ... sauf le .env par défaut du template frontend (non secret, versionné)
+!src/generator/template/frontend/.env
+
+# Node / frontend build
+node_modules/
+dist/
+*.tsbuildinfo
 
 # SQLite (dev + artefacts de test)
 *.db
