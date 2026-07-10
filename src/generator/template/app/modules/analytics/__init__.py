@@ -1,14 +1,10 @@
-"""Faux module `analytics` (spike).
+"""Module `analytics` — tracking anonymisé RGPD (Chap 13).
 
-Respecte le contrat d'interface minimal du Chap 5 : exposer un `router`.
-Le core ne connaît rien de ce module au-delà de ce `router`.
+Apporte un middleware de tracking (`TrackingMiddleware`) et un routeur admin
+d'agrégation (`router`). Le core installe les deux quand MODULE_ANALYTICS=true.
 """
 
-from fastapi import APIRouter
+from app.modules.analytics.middleware import TrackingMiddleware
+from app.modules.analytics.router import router
 
-router = APIRouter()
-
-
-@router.get("/status")
-async def status() -> dict:
-    return {"module": "analytics", "ok": True}
+__all__ = ["TrackingMiddleware", "router"]

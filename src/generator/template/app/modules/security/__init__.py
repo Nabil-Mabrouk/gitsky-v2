@@ -1,16 +1,11 @@
-"""Faux module `security` (spike).
+"""Module `security` — détection d'intrusion (Chap 14).
 
-Contrairement aux autres modules, `security` s'installe comme middleware
-(Chap 3 §main.py) plutôt que comme router. On prouve son activation via un
-en-tête HTTP ajouté à chaque réponse.
+Contrairement aux autres modules, `security` apporte à la fois un middleware
+(`SecurityMiddleware`, journalisation) et un routeur admin (`router`, synthèse
+et journal). Le core installe les deux quand MODULE_SECURITY_MIDDLEWARE=true.
 """
 
-from starlette.middleware.base import BaseHTTPMiddleware
-from starlette.requests import Request
+from app.modules.security.middleware import SecurityMiddleware
+from app.modules.security.router import router
 
-
-class SecurityMiddleware(BaseHTTPMiddleware):
-    async def dispatch(self, request: Request, call_next):
-        response = await call_next(request)
-        response.headers["X-GitSky-Security"] = "on"
-        return response
+__all__ = ["SecurityMiddleware", "router"]

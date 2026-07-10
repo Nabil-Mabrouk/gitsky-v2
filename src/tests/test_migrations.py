@@ -134,3 +134,117 @@ def test_module_chain_applied_when_flag_enabled():
             db_file.unlink()
         except OSError:
             pass
+
+
+def test_tutorials_chain_applied_when_enabled():
+    fd, path = tempfile.mkstemp(suffix=".db")
+    os.close(fd)
+    db_file = Path(path)
+    try:
+        settings = Settings(gitsky_tier="t0", module_tutorials=True)
+        applied = run_migrations(url=_async_url(db_file), settings=settings)
+
+        assert applied == ["core", "tutorials"]
+        tables = _table_names(db_file)
+        assert {"tutorials", "lessons"} <= tables
+        assert "alembic_version_tutorials" in tables
+        # analytics non activé -> sa chaîne ne tourne pas.
+        assert "visits" not in tables
+    finally:
+        try:
+            db_file.unlink()
+        except OSError:
+            pass
+
+
+def test_security_chain_applied_when_enabled():
+    fd, path = tempfile.mkstemp(suffix=".db")
+    os.close(fd)
+    db_file = Path(path)
+    try:
+        settings = Settings(gitsky_tier="t0", module_security_middleware=True)
+        applied = run_migrations(url=_async_url(db_file), settings=settings)
+
+        assert applied == ["core", "security"]
+        tables = _table_names(db_file)
+        assert "security_events" in tables
+        assert "alembic_version_security" in tables
+    finally:
+        try:
+            db_file.unlink()
+        except OSError:
+            pass
+
+
+def test_onboarding_chain_applied_when_enabled():
+    fd, path = tempfile.mkstemp(suffix=".db")
+    os.close(fd)
+    db_file = Path(path)
+    try:
+        settings = Settings(gitsky_tier="t0", module_onboarding=True)
+        applied = run_migrations(url=_async_url(db_file), settings=settings)
+
+        assert applied == ["core", "onboarding"]
+        tables = _table_names(db_file)
+        assert "user_profiles" in tables
+        assert "alembic_version_onboarding" in tables
+    finally:
+        try:
+            db_file.unlink()
+        except OSError:
+            pass
+
+
+def test_agentic_chain_applied_when_enabled():
+    fd, path = tempfile.mkstemp(suffix=".db")
+    os.close(fd)
+    db_file = Path(path)
+    try:
+        settings = Settings(gitsky_tier="t0", module_agentic=True)
+        applied = run_migrations(url=_async_url(db_file), settings=settings)
+
+        assert applied == ["core", "agentic"]
+        tables = _table_names(db_file)
+        assert "service_executions" in tables
+        assert "alembic_version_agentic" in tables
+    finally:
+        try:
+            db_file.unlink()
+        except OSError:
+            pass
+
+
+def test_monetization_chain_applied_when_shop_enabled():
+    fd, path = tempfile.mkstemp(suffix=".db")
+    os.close(fd)
+    db_file = Path(path)
+    try:
+        settings = Settings(gitsky_tier="t0", module_monetization_shop=True)
+        applied = run_migrations(url=_async_url(db_file), settings=settings)
+
+        assert applied == ["core", "monetization"]
+        tables = _table_names(db_file)
+        assert {"products", "purchases", "subscriptions"} <= tables
+        assert "alembic_version_monetization" in tables
+    finally:
+        try:
+            db_file.unlink()
+        except OSError:
+            pass
+
+
+def test_monetization_chain_applied_when_only_subscription():
+    fd, path = tempfile.mkstemp(suffix=".db")
+    os.close(fd)
+    db_file = Path(path)
+    try:
+        settings = Settings(gitsky_tier="t0", module_monetization_subscription=True)
+        applied = run_migrations(url=_async_url(db_file), settings=settings)
+
+        assert "monetization" in applied
+        assert "subscriptions" in _table_names(db_file)
+    finally:
+        try:
+            db_file.unlink()
+        except OSError:
+            pass

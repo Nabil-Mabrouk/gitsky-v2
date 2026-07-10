@@ -28,6 +28,26 @@ _MODULE_CHAINS: dict[str, tuple[str, str, str]] = {
         "alembic/modules/analytics",
         "alembic_version_analytics",
     ),
+    "module_tutorials": (
+        "tutorials",
+        "alembic/modules/tutorials",
+        "alembic_version_tutorials",
+    ),
+    "module_security_middleware": (
+        "security",
+        "alembic/modules/security",
+        "alembic_version_security",
+    ),
+    "module_onboarding": (
+        "onboarding",
+        "alembic/modules/onboarding",
+        "alembic_version_onboarding",
+    ),
+    "module_agentic": (
+        "agentic",
+        "alembic/modules/agentic",
+        "alembic_version_agentic",
+    ),
 }
 
 
@@ -52,6 +72,20 @@ def run_migrations(url: str | None = None, settings: Settings | None = None) -> 
         if getattr(settings, flag):
             command.upgrade(_config(section, location, version_table, url), "head")
             applied.append(section)
+
+    # Cas spécial : monetization a DEUX flags (shop / subscription) mais une
+    # seule chaîne (products/purchases/subscriptions). Appliquée si l'un des deux.
+    if settings.module_monetization_shop or settings.module_monetization_subscription:
+        command.upgrade(
+            _config(
+                "monetization",
+                "alembic/modules/monetization",
+                "alembic_version_monetization",
+                url,
+            ),
+            "head",
+        )
+        applied.append("monetization")
 
     return applied
 

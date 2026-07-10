@@ -19,8 +19,12 @@ app = FastAPI(title=f"GitSky — {settings.project_name}")
 
 if settings.module_security_middleware:
     from app.modules.security import SecurityMiddleware
+    from app.modules.security import router as security_router
 
     app.add_middleware(SecurityMiddleware)
+    app.include_router(
+        security_router, prefix="/api/admin/security", tags=["security"]
+    )
 
 if settings.module_auth:
     from app.core.auth import router as auth_router
@@ -28,14 +32,49 @@ if settings.module_auth:
     app.include_router(auth_router, prefix="/api/auth", tags=["auth"])
 
 if settings.module_analytics:
+    from app.modules.analytics import TrackingMiddleware
     from app.modules.analytics import router as analytics_router
 
-    app.include_router(analytics_router, prefix="/api/analytics")
+    app.add_middleware(TrackingMiddleware)
+    app.include_router(
+        analytics_router, prefix="/api/admin/analytics", tags=["analytics"]
+    )
 
 if settings.module_agentic:
     from app.modules.agentic import router as agentic_router
 
     app.include_router(agentic_router, prefix="/api/agent-services")
+
+if settings.module_tutorials:
+    from app.modules.tutorials import router as tutorials_router
+
+    app.include_router(tutorials_router, prefix="/api/content", tags=["tutorials"])
+
+if settings.module_onboarding:
+    from app.modules.onboarding import router as onboarding_router
+
+    app.include_router(onboarding_router, prefix="/api/onboarding", tags=["onboarding"])
+
+# Monetization : le webhook (dans shop_router) doit exister dès qu'un des deux
+# flags est actif ; admin réservé à la boutique, subscription à son flag.
+if settings.module_monetization_shop or settings.module_monetization_subscription:
+    from app.modules.monetization import shop_router
+
+    app.include_router(shop_router, prefix="/api/shop", tags=["monetization"])
+
+if settings.module_monetization_shop:
+    from app.modules.monetization import admin_router as shop_admin_router
+
+    app.include_router(
+        shop_admin_router, prefix="/api/admin/shop", tags=["monetization"]
+    )
+
+if settings.module_monetization_subscription:
+    from app.modules.monetization import subscription_router
+
+    app.include_router(
+        subscription_router, prefix="/api/subscription", tags=["monetization"]
+    )
 
 
 @app.get("/health")
@@ -49,5 +88,9 @@ async def health() -> dict:
             "analytics": settings.module_analytics,
             "security_middleware": settings.module_security_middleware,
             "agentic": settings.module_agentic,
+            "tutorials": settings.module_tutorials,
+            "onboarding": settings.module_onboarding,
+            "monetization_shop": settings.module_monetization_shop,
+            "monetization_subscription": settings.module_monetization_subscription,
         },
     }

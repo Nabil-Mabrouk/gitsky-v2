@@ -1,0 +1,18 @@
+# Services agentic déclaratifs (Chap 15). Ajouter un service ici ne demande
+# aucun code Python : le moteur générique traite tout service respectant le schéma.
+services:
+  template_service:
+    enabled: true
+    name: "Service Exemple"
+    description: "Service de démonstration du framework agentic"
+    category: "demo"
+    requires_auth: true
+    agents:
+      - name: "echo_agent"
+        model: "claude-sonnet-4-6"
+        system_prompt: "Tu es un assistant de démonstration."
+        temperature: 0.3
+    workflows:
+      - name: "example_workflow"
+        description: "Workflow de démonstration"
+        steps: ["greet"]
