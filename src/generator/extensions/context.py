@@ -26,6 +26,7 @@ MODULE_FLAGS: tuple[str, ...] = (
     "module_agentic",
     "module_monetization_shop",
     "module_monetization_subscription",
+    "module_fleet",
 )
 
 TIER_PROFILES: dict[str, dict[str, bool]] = {

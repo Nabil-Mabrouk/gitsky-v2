@@ -48,6 +48,11 @@ _MODULE_CHAINS: dict[str, tuple[str, str, str]] = {
         "alembic/modules/agentic",
         "alembic_version_agentic",
     ),
+    "module_fleet": (
+        "fleet",
+        "alembic/modules/fleet",
+        "alembic_version_fleet",
+    ),
 }
 
 

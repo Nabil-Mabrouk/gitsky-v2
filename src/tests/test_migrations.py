@@ -248,3 +248,22 @@ def test_monetization_chain_applied_when_only_subscription():
             db_file.unlink()
         except OSError:
             pass
+
+
+def test_fleet_chain_applied_when_enabled():
+    fd, path = tempfile.mkstemp(suffix=".db")
+    os.close(fd)
+    db_file = Path(path)
+    try:
+        settings = Settings(gitsky_tier="t0", module_fleet=True)
+        applied = run_migrations(url=_async_url(db_file), settings=settings)
+
+        assert applied == ["core", "fleet"]
+        tables = _table_names(db_file)
+        assert {"fleet_projects", "fleet_lifecycle_events"} <= tables
+        assert "alembic_version_fleet" in tables
+    finally:
+        try:
+            db_file.unlink()
+        except OSError:
+            pass

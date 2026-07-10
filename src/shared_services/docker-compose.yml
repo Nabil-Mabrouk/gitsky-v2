@@ -1,0 +1,73 @@
+# Services partagés de la flotte GitSky (Chap 18).
+# Bootstrap unique du VPS : Traefik (seul exposé), et les services internes sur
+# shared-services-net (jamais joignables depuis Internet). Config d'infra —
+# renseigner les secrets via un .env hors VCS (.secrets/ ignoré par git).
+services:
+  traefik:
+    image: traefik:v3.1
+    command:
+      - --providers.docker=true
+      - --providers.docker.network=proxy-net
+      - --entrypoints.web.address=:80
+      - --entrypoints.websecure.address=:443
+      - --certificatesresolvers.letsencrypt.acme.dnsChallenge=true
+      - --certificatesresolvers.letsencrypt.acme.dnsChallenge.provider=cloudflare
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      - CF_DNS_API_TOKEN=${CF_DNS_API_TOKEN}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - traefik_acme:/acme
+    networks:
+      - proxy-net
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      - POSTGRES_PASSWORD=${POSTGRES_ROOT_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - shared-services-net
+
+  landing-collector:
+    build:
+      context: ./landing_collector
+    environment:
+      - LANDING_DB_URL=postgresql+asyncpg://landing:${LANDING_DB_PASSWORD}@postgres/landing
+    networks:
+      - shared-services-net
+    depends_on:
+      - postgres
+
+  llm-proxy:
+    image: ghcr.io/berriai/litellm:main-stable
+    environment:
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - LITELLM_MASTER_KEY=${LITELLM_MASTER_KEY}
+    networks:
+      - shared-services-net
+    depends_on:
+      - postgres
+
+  geoip:
+    image: mystudio/geoip-service:latest
+    volumes:
+      - geoip_data:/data/GeoLite2
+    networks:
+      - shared-services-net
+
+volumes:
+  traefik_acme:
+  postgres_data:
+  geoip_data:
+
+networks:
+  proxy-net:
+    external: true
+    name: proxy-net
+  shared-services-net:
+    driver: bridge
+    internal: true

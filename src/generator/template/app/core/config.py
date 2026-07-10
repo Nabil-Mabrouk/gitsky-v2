@@ -29,6 +29,7 @@ MODULE_FLAGS: tuple[str, ...] = (
     "module_agentic",
     "module_monetization_shop",
     "module_monetization_subscription",
+    "module_fleet",
 )
 
 # Profils par défaut par tier, dérivés du tableau Chap 2 §3.
@@ -88,6 +89,8 @@ class Settings(BaseSettings):
     module_agentic: bool | None = None
     module_monetization_shop: bool | None = None
     module_monetization_subscription: bool | None = None
+    # Module spécial : activé uniquement pour l'app fleet dashboard (mystudio.com).
+    module_fleet: bool | None = None
 
     @model_validator(mode="after")
     def apply_tier_defaults(self) -> "Settings":
