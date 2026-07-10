@@ -7,7 +7,9 @@ et produit un Creative Manifest GELÉ + une StudioTrace immuable (auditabilité)
 import hashlib
 import json
 import uuid
+from pathlib import Path
 
+import yaml
 from pydantic import BaseModel, Field
 
 from studio import agents, guardrails
@@ -39,7 +41,7 @@ def _hash_packet(packet: HarvestPacket) -> str:
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
-def run(packet: HarvestPacket) -> StudioResult:
+def run(packet: HarvestPacket, siblings: list | None = None) -> StudioResult:
     run_id = str(uuid.uuid4())
     inputs_hash = _hash_packet(packet)
     steps: list[StudioStep] = []
@@ -69,9 +71,20 @@ def run(packet: HarvestPacket) -> StudioResult:
         ),
     )
 
-    failures = guardrails.check(manifest)
+    failures = guardrails.check(manifest, siblings=siblings)
     verdict = {"pass": not failures, "failures": failures}
     steps.append(StudioStep(agent="qa", model="deterministic", output=verdict))
 
     trace = StudioTrace(run_id=run_id, project=packet.project, inputs_hash=inputs_hash, steps=steps)
     return StudioResult(manifest=manifest, trace=trace, verdict=verdict)
+
+
+def save_run(result: StudioResult, base_dir: Path) -> Path:
+    """Persiste le run (manifest + trace + verdict) de façon IMMUABLE (par run_id)."""
+    path = base_dir / "runs" / f"{result.trace.run_id}.yaml"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        yaml.safe_dump(result.model_dump(), sort_keys=False, allow_unicode=True),
+        encoding="utf-8",
+    )
+    return path

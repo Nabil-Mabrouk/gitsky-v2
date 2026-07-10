@@ -1,8 +1,19 @@
 """Guardrails du Studio (Chap 24) — vérifications DÉTERMINISTES.
 
-a11y (contraste WCAG) et structure sont calculés, pas jugés par une IA (fiable).
-Les guardrails de marque/claims (juge LLM) et la diversité viennent plus tard.
+a11y (contraste WCAG), structure, claims à risque et diversité inter-projets sont
+CALCULÉS (fiables), pas jugés par une IA. Le juge de marque LLM viendra en plus.
 """
+
+import re
+
+# Allégations absolues à risque (floor déterministe ; le nuancé = juge LLM).
+_BANNED_CLAIM_RES = [
+    re.compile(r"\bn[°o]\s*1\b", re.IGNORECASE),
+    re.compile(r"\bnum[ée]ro\s*1\b", re.IGNORECASE),
+    re.compile(r"\ble meilleur\b", re.IGNORECASE),
+    re.compile(r"\bgaranti\b", re.IGNORECASE),
+    re.compile(r"\b100\s*%\b"),
+]
 
 
 def _srgb_to_linear(channel: int) -> float:
@@ -26,7 +37,31 @@ def contrast_ratio(c1: str, c2: str) -> float:
     return (hi + 0.05) / (lo + 0.05)
 
 
-def check(manifest) -> list[str]:
+def check_claims(blocks) -> list[str]:
+    failures: list[str] = []
+    for block in blocks:
+        text = " ".join(
+            str(v) for v in block.model_dump().values() if isinstance(v, str)
+        )
+        for rx in _BANNED_CLAIM_RES:
+            if rx.search(text):
+                failures.append(f"claims: allégation à risque « {rx.pattern} »")
+                break
+    return failures
+
+
+def check_diversity(manifest, siblings) -> list[str]:
+    """Flag si un projet frère a exactement le même (skin, couleur primaire)."""
+    key = (manifest.brief.skin, manifest.brief.palette.get("primary"))
+    for sib in siblings:
+        if sib.project == manifest.project:
+            continue
+        if (sib.brief.skin, sib.brief.palette.get("primary")) == key:
+            return [f"diversity: identique (skin+palette) au projet frère '{sib.project}'"]
+    return []
+
+
+def check(manifest, siblings=None) -> list[str]:
     """Renvoie la liste des échecs de guardrail (vide = pass)."""
     failures: list[str] = []
 
@@ -39,5 +74,9 @@ def check(manifest) -> list[str]:
         failures.append("structure: aucun bloc hero")
     if not any(b.type == "email_capture" for b in manifest.blocks):
         failures.append("structure: aucun bloc de capture d'email (T0)")
+
+    failures += check_claims(manifest.blocks)
+    if siblings:
+        failures += check_diversity(manifest, siblings)
 
     return failures
