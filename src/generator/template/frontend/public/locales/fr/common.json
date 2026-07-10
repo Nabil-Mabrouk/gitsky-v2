@@ -1,0 +1,17 @@
+{
+  "nav": { "learn": "Apprendre", "login": "Connexion", "logout": "Déconnexion" },
+  "learn": {
+    "title": "Catalogue",
+    "premium": "Premium",
+    "empty": "Aucun cours pour l'instant."
+  },
+  "auth": {
+    "login": {
+      "title": "Connexion",
+      "email": "Adresse email",
+      "password": "Mot de passe",
+      "submit": "Se connecter",
+      "error": "Identifiants invalides"
+    }
+  }
+}

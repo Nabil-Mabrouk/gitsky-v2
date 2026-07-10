@@ -1,0 +1,17 @@
+{
+  "nav": { "learn": "Learn", "login": "Sign in", "logout": "Sign out" },
+  "learn": {
+    "title": "Catalog",
+    "premium": "Premium",
+    "empty": "No courses yet."
+  },
+  "auth": {
+    "login": {
+      "title": "Sign in",
+      "email": "Email address",
+      "password": "Password",
+      "submit": "Sign in",
+      "error": "Invalid credentials"
+    }
+  }
+}
