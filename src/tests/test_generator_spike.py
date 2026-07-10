@@ -228,14 +228,15 @@ def test_tasks_provision_register_and_git_init():
             quiet=True,
             unsafe=True,
         )
-        # Task provision_db (SIMULÉE).
+        # Task provision_db : sans POSTGRES_CONTAINER en test -> skip gracieux.
         prov = json.loads((dst / ".gitsky" / "provisioned.json").read_text("utf-8"))
-        assert prov["database"] == "pain-scraper_db"
-        assert prov["status"] == "simulated"
-        # Task register_fleet (SIMULÉE).
+        assert prov["database"] == "pain_scraper"
+        assert prov["status"] == "skipped_no_postgres"
+        # Task register_fleet : sans FLEET_URL en test -> skip gracieux.
         fleet = json.loads((dst / ".gitsky" / "fleet.json").read_text("utf-8"))
-        assert fleet["project"] == "pain-scraper"
+        assert fleet["name"] == "pain-scraper"
         assert fleet["tier"] == "t1"
+        assert fleet["registered"] == "skipped_no_fleet_url"
         # Task git init + commit initial (RÉELLE).
         assert (dst / ".git").is_dir()
     finally:

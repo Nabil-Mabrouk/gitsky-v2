@@ -74,9 +74,10 @@ def test_copier_update_runs_migration():
             str(project), defaults=True, overwrite=True, quiet=True, unsafe=True
         )
 
-        # La migration _migrations a tourné pendant l'update.
+        # La migration _migrations a RÉELLEMENT tourné (scripts.migrate) pendant l'update.
         upd = json.loads((project / ".gitsky" / "updated.json").read_text("utf-8"))
         assert "1.0.0" in upd["version_to"]
-        assert upd["status"] == "simulated"
+        assert upd["status"] == "applied"
+        assert upd["migrate_returncode"] == 0
     finally:
         _rmtree_robuste(root)

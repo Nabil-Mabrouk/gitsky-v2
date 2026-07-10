@@ -1,12 +1,24 @@
-"""Client LLM (Chap 15).
+"""Client LLM (Chap 15/18).
 
-⚠️ STUB. Un projet GitSky n'appelle JAMAIS Anthropic/OpenAI directement : tout
-transite par le LLM proxy partagé (LiteLLM) hébergé sur la flotte (Chap 18).
-À CONNECTER lors de la passe de dettes — voir la dette explicite du plan.
+Route tous les appels IA par le LLM proxy partagé (LiteLLM), qui expose une API
+compatible OpenAI. Configuré via LLM_PROXY_URL / LLM_PROXY_TOKEN (token de projet
+avec quota). Sans configuration, retombe sur une réponse simulée déterministe —
+pratique en dev/test, jamais d'appel réseau.
 """
+
+import os
 
 
 def call_llm(model: str, messages: list[dict], temperature: float = 0.3) -> str:
-    # SIMULÉ : renvoie une réponse déterministe sans appel réseau.
-    last = messages[-1]["content"] if messages else ""
-    return f"[stub:{model}] réponse simulée à: {last}"
+    base_url = os.environ.get("LLM_PROXY_URL", "")
+    if not base_url:
+        last = messages[-1]["content"] if messages else ""
+        return f"[stub:{model}] réponse simulée à: {last}"
+
+    from openai import OpenAI  # import paresseux : dépend d'openai en prod
+
+    client = OpenAI(base_url=base_url, api_key=os.environ.get("LLM_PROXY_TOKEN", "x"))
+    response = client.chat.completions.create(
+        model=model, messages=messages, temperature=temperature
+    )
+    return response.choices[0].message.content or ""
