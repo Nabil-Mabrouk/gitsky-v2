@@ -159,6 +159,9 @@ class TierResolver(ContextHook):
             **(branding or {}),
         }
 
-        # Vitrine : garantit la liste de blocs (Chap 24).
+        # Vitrine : garantit skin + liste de blocs (Chap 24).
         landing = _as_obj(context.get("landing"), {}) or {}
-        context["landing"] = {"blocks": landing.get("blocks", [])}
+        context["landing"] = {
+            "skin": landing.get("skin", "clean"),
+            "blocks": landing.get("blocks", []),
+        }

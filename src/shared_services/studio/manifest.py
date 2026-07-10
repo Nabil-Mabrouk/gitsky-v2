@@ -60,7 +60,10 @@ def to_copier_data(manifest: CreativeManifest) -> dict:
             "primary_foreground": palette.get("primary_foreground", "#FFFFFF"),
             "font_family": typo.get("body", "Inter"),
         },
-        "landing": {"blocks": [b.model_dump() for b in manifest.blocks]},
+        "landing": {
+            "skin": manifest.brief.skin,
+            "blocks": [b.model_dump() for b in manifest.blocks],
+        },
     }
 
 

@@ -10,18 +10,39 @@
         --on-primary: {{ branding.primary_foreground }};
         --font: "{{ branding.font_family }}", system-ui, sans-serif;
       }
-      body { font-family: var(--font); margin: 0; color: #111; line-height: 1.5; }
+      /* Base partagée par tous les skins */
+      body { margin: 0; color: #111; line-height: 1.5; }
       section { padding: 3rem 1.5rem; max-width: 960px; margin: 0 auto; }
+      .features ul, .faq ul, .pricing ul { list-style: none; padding: 0; display: grid; gap: 1rem; }
+      .features li, .faq li, .pricing li { padding: 1rem; }
+      blockquote { margin: 0; }
+      .btn { background: var(--primary); color: var(--on-primary); font: inherit; cursor: pointer; }
+
+      {% if landing.skin == "editorial" %}
+      /* skin: editorial — serif, aligné à gauche, grande typo */
+      body { font-family: Georgia, "Times New Roman", var(--font), serif; }
+      section { max-width: 720px; }
+      .hero { text-align: left; padding: 6rem 1.5rem; }
+      .hero h1 { font-size: 3.5rem; font-weight: 400; letter-spacing: -0.02em; margin: 0 0 1rem; }
+      blockquote { font-size: 1.5rem; font-style: italic; border-left: 3px solid var(--primary); padding-left: 1rem; }
+      .btn { padding: 0.75rem 1.5rem; border: none; border-radius: 999px; }
+      .features li, .faq li, .pricing li { border-bottom: 1px solid #ddd; }
+      {% elif landing.skin == "bold" %}
+      /* skin: bold — brutaliste, contrasté, blocs anguleux */
+      body { font-family: var(--font), system-ui, sans-serif; }
+      .hero { text-align: center; padding: 5rem 1.5rem; }
+      .hero h1 { font-size: 4rem; font-weight: 900; text-transform: uppercase; margin: 0 0 1rem; }
+      section { border-bottom: 4px solid #111; }
+      .btn { border: 3px solid #111; border-radius: 0; font-weight: 800; padding: 0.75rem 1.25rem; }
+      .features li, .faq li, .pricing li { border: 3px solid #111; }
+      {% else %}
+      /* skin: clean — SaaS minimal, sans-serif, centré */
+      body { font-family: var(--font), system-ui, sans-serif; }
       .hero { text-align: center; padding: 5rem 1.5rem; }
       .hero h1 { font-size: 2.5rem; margin: 0 0 1rem; }
-      .features ul, .faq ul, .pricing ul { list-style: none; padding: 0; display: grid; gap: 1rem; }
-      .features li, .faq li, .pricing li { border: 1px solid #eee; border-radius: 0.5rem; padding: 1rem; }
-      blockquote { font-size: 1.25rem; font-style: italic; margin: 0; }
-      .btn {
-        background: var(--primary); color: var(--on-primary);
-        padding: 0.75rem 1.25rem; border: none; border-radius: 0.5rem;
-        font: inherit; cursor: pointer;
-      }
+      .btn { padding: 0.75rem 1.25rem; border: none; border-radius: 0.5rem; }
+      .features li, .faq li, .pricing li { border: 1px solid #eee; border-radius: 0.5rem; }
+      {% endif %}
     </style>
     <script>
       // email_capture : POST same-origin /leads (Traefik route vers le

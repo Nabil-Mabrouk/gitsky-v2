@@ -64,8 +64,9 @@ branding:
 # HTML statique (SEO/vitesse T0). Le Studio produira ce schéma ; ici un défaut.
 landing:
   type: yaml
-  help: "Landing en blocs (hero, email_capture, ...)"
+  help: "Landing en blocs (skin + hero, email_capture, ...)"
   default:
+    skin: clean
     blocks:
       - type: hero
         headline: "Bienvenue"
