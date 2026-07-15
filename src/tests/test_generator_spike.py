@@ -14,6 +14,7 @@ import shutil
 import stat
 import sys
 import tempfile
+import time
 from pathlib import Path
 
 SRC = Path(__file__).resolve().parents[1]
@@ -207,13 +208,22 @@ def test_domain_routers_empty_is_valid_python():
 
 
 def _rmtree_robuste(path: Path) -> None:
-    # Un .git sous Windows contient des fichiers en lecture seule -> rmtree
-    # échoue ; on remet le bit d'écriture puis on réessaie.
+    # Sous Windows, un .git contient des objets en lecture seule ET un handle
+    # peut rester brièvement ouvert (processus git qui vient de sortir,
+    # antivirus). On rend inscriptible, puis on réessaie le retrait complet
+    # avec un court backoff tant que le verrou transitoire n'est pas relâché.
     def _onexc(func, p, exc):
         os.chmod(p, stat.S_IWRITE)
         func(p)
 
-    shutil.rmtree(path, onexc=_onexc)
+    for essai in range(5):
+        try:
+            shutil.rmtree(path, onexc=_onexc)
+            return
+        except (PermissionError, OSError):
+            if essai == 4:
+                raise
+            time.sleep(0.2 * (essai + 1))
 
 
 def test_tasks_provision_register_and_git_init():

@@ -8,6 +8,7 @@ import os
 import shutil
 import stat
 import tempfile
+import time
 from html.parser import HTMLParser
 from pathlib import Path
 
@@ -18,11 +19,22 @@ GENERATOR = SRC / "generator"
 
 
 def _rmtree_robuste(path: Path) -> None:
+    # Sous Windows, un .git contient des objets en lecture seule ET un handle
+    # peut rester brièvement ouvert (processus git qui vient de sortir,
+    # antivirus). On rend inscriptible, puis on réessaie le retrait complet
+    # avec un court backoff tant que le verrou transitoire n'est pas relâché.
     def _onexc(func, p, exc):
         os.chmod(p, stat.S_IWRITE)
         func(p)
 
-    shutil.rmtree(path, onexc=_onexc)
+    for essai in range(5):
+        try:
+            shutil.rmtree(path, onexc=_onexc)
+            return
+        except (PermissionError, OSError):
+            if essai == 4:
+                raise
+            time.sleep(0.2 * (essai + 1))
 
 
 def _generate_landing(landing: dict) -> str:
