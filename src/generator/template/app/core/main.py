@@ -7,9 +7,12 @@ Reproduit le pattern de chargement conditionnel du Chap 3 / Chap 5 :
   et ne coûte donc aucune RAM.
 """
 
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI, HTTPException
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
+from app.core.database import get_db
 
 settings = get_settings()
 
@@ -83,9 +86,19 @@ if settings.module_fleet:
 
 
 @app.get("/health")
-async def health() -> dict:
+async def health(db: AsyncSession = Depends(get_db)) -> dict:
+    # Le monitoring de disponibilité (UptimeRobot, Chap 23 §4.1) tape ici. Sans
+    # vérif DB, /health répondrait 200 avec une base morte : l'incident passerait
+    # inaperçu. On teste la connexion et on renvoie 503 si elle échoue — Traefik
+    # et le fleet dashboard voient alors le conteneur comme non sain.
+    try:
+        await db.execute(text("SELECT 1"))
+    except Exception:
+        raise HTTPException(status_code=503, detail="Database unavailable")
+
     return {
         "status": "ok",
+        "database": "ok",
         "project": settings.project_name,
         "tier": settings.gitsky_tier,
         "modules": {

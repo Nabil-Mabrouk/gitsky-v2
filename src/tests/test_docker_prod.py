@@ -16,27 +16,15 @@ SRC = Path(__file__).resolve().parents[1]
 GENERATOR = SRC / "generator"
 sys.path.insert(0, str(GENERATOR / "extensions"))
 
-from copier import run_copy  # noqa: E402
-
 import context as ctx  # noqa: E402
-from helpers import projet_temporaire  # noqa: E402
-
-
-def _dockerfile(tier: str, dst: Path) -> str:
-    run_copy(
-        str(GENERATOR),
-        str(dst),
-        data={"project": {"name": "pain-scraper", "tier": tier}},
-        defaults=True,
-        quiet=True,
-        unsafe=True,
-    )
-    return (dst / "Dockerfile").read_text(encoding="utf-8")
+from helpers import projet_genere  # noqa: E402
 
 
 def _render(tier: str) -> str:
-    with projet_temporaire() as dst:
-        return _dockerfile(tier, dst)
+    # skip_tasks : ces tests ne LISENT que des fichiers, pas besoin du commit
+    # initial (et on évite la flakiness Windows du git add).
+    with projet_genere("pain-scraper", tier) as dst:
+        return (dst / "Dockerfile").read_text(encoding="utf-8")
 
 
 def _directives(body: str) -> str:
@@ -52,8 +40,7 @@ def _directives(body: str) -> str:
 
 
 def _env(tier: str) -> set[str]:
-    with projet_temporaire() as dst:
-        _dockerfile(tier, dst)
+    with projet_genere("pain-scraper", tier) as dst:
         return set((dst / ".env").read_text(encoding="utf-8").splitlines())
 
 
@@ -172,8 +159,7 @@ def test_no_tier_or_module_flag_leaks_into_the_image():
 
 
 def test_dockerignore_keeps_secrets_and_frontend_out_of_the_image():
-    with projet_temporaire() as dst:
-        _dockerfile("t1", dst)
+    with projet_genere("pain-scraper", "t1") as dst:
         ignored = set(
             line.strip()
             for line in (dst / ".dockerignore").read_text(encoding="utf-8").splitlines()

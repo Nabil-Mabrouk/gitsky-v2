@@ -15,25 +15,15 @@ from pathlib import Path
 
 SRC = Path(__file__).resolve().parents[1]
 GENERATOR = SRC / "generator"
-sys.path.insert(0, str(GENERATOR / "extensions"))
+sys.path.insert(0, str(SRC / "tests"))
 
-from copier import run_copy  # noqa: E402
-
-from helpers import projet_temporaire  # noqa: E402
+from helpers import projet_genere  # noqa: E402
 
 TEMPLATE_FRONTEND = GENERATOR / "template" / "frontend"
 
 
 def _render(tier: str = "t1") -> str:
-    with projet_temporaire() as dst:
-        run_copy(
-            str(GENERATOR),
-            str(dst),
-            data={"project": {"name": "pain-scraper", "tier": tier}},
-            defaults=True,
-            quiet=True,
-            unsafe=True,
-        )
+    with projet_genere("pain-scraper", tier) as dst:
         return (dst / "frontend" / "Dockerfile").read_text(encoding="utf-8")
 
 
@@ -86,15 +76,7 @@ def test_lockfile_ships_with_the_template():
 
 
 def test_lockfile_is_generated_in_projects():
-    with projet_temporaire() as dst:
-        run_copy(
-            str(GENERATOR),
-            str(dst),
-            data={"project": {"name": "pain-scraper", "tier": "t1"}},
-            defaults=True,
-            quiet=True,
-            unsafe=True,
-        )
+    with projet_genere("pain-scraper", "t1") as dst:
         assert (dst / "frontend" / "package-lock.json").is_file()
 
 
@@ -150,15 +132,7 @@ def test_build_fails_loudly_without_api_url():
 
 
 def test_dev_api_url_cannot_leak_into_the_bundle():
-    with projet_temporaire() as dst:
-        run_copy(
-            str(GENERATOR),
-            str(dst),
-            data={"project": {"name": "pain-scraper", "tier": "t1"}},
-            defaults=True,
-            quiet=True,
-            unsafe=True,
-        )
+    with projet_genere("pain-scraper", "t1") as dst:
         # Le .env du frontend pointe sur localhost:8000 (développement). S'il
         # entrait dans le contexte de build, le bundle de prod risquerait de
         # partir avec cette URL.
