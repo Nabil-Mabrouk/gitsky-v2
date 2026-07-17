@@ -10,6 +10,7 @@ synchro générateur↔runtime est garantie par un test (test_generator_tiers_ma
 """
 
 import re
+import secrets
 
 import yaml
 
@@ -48,6 +49,12 @@ TIER_PROFILES: dict[str, dict[str, bool]] = {
         "module_monetization_subscription": True,
     },
 }
+
+# Workers Gunicorn par tier (Chap 21). Le livre calibre T1 (2) et T2 (4) mais
+# laisse T0 non spécifié. T0 = 1 : chaque worker est une copie complète de l'app
+# (~50 Mo mesurés, table du Chap 21) et le Chap 2 vise 100+ T0 sur les ~7,3 Go
+# restants — 100 x 50 Mo tient, 100 x 2 workers ne tient pas.
+WORKERS_BY_TIER: dict[str, int] = {"t0": 1, "t1": 2, "t2": 4}
 
 # Types config.yaml -> expression de colonne SQLAlchemy.
 _SA_TYPES: dict[str, str] = {
@@ -128,6 +135,15 @@ class TierResolver(ContextHook):
         context["project_domain"] = (
             project.get("domain") or f"{project_name}.mystudio.com"
         )
+        context["gunicorn_workers"] = WORKERS_BY_TIER.get(tier, 1)
+
+        # Secrets du projet, générés à la création (Chap 18 : « le mot de passe
+        # généré est injecté dans le .env du projet »). Aléatoires par projet :
+        # un compromis ne se propage jamais d'un projet à l'autre (Chap 18 §Sécu).
+        # db_name : identifiant PostgreSQL valide (pas de tiret).
+        context["db_name"] = re.sub(r"\W", "_", project_name)
+        context["secret_key"] = secrets.token_hex(32)
+        context["postgres_password"] = secrets.token_hex(24)
 
         profile = TIER_PROFILES.get(tier, {})
         # Overrides depuis config.yaml, clés courtes (agentic) sans préfixe.

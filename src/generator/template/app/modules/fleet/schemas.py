@@ -1,5 +1,7 @@
 """Schémas Pydantic du module fleet (Chap 5)."""
 
+from datetime import datetime
+
 from pydantic import BaseModel, ConfigDict
 
 
@@ -55,3 +57,15 @@ class KillCheckResult(BaseModel):
     tier: str
     verdict: str
     status: str
+
+
+class HealthSweepRequest(BaseModel):
+    # Dernier succès /health par projet (le poller le tient à jour). null =
+    # aucun succès connu. `now` optionnel : sinon l'heure serveur fait foi.
+    last_success: dict[str, datetime | None]
+    now: datetime | None = None
+
+
+class HealthSweepResult(BaseModel):
+    failed: list[str]
+    recovered: list[str]

@@ -87,8 +87,8 @@ if [[ -f "$ENV_FILE" ]]; then
     source "$ENV_FILE"
 fi
 
-POSTGRES_CONTAINER="${POSTGRES_CONTAINER:-hitl_postgres}"
-POSTGRES_DB="${POSTGRES_DB:-hitl}"
+POSTGRES_CONTAINER="${POSTGRES_CONTAINER:-gitsky_db}"
+POSTGRES_DB="${POSTGRES_DB:-gitsky}"
 POSTGRES_USER="${POSTGRES_USER:-postgres}"
 BACKUP_DIR="${BACKUP_DIR:-/backups/postgres}"
 BACKUP_RETENTION="${BACKUP_RETENTION:-14}"
@@ -110,9 +110,12 @@ alert() {
 }
 
 # ── Vérifications préalables ───────────────────────────────────────────────────
-log "=== Démarrage de la sauvegarde ==="
-
+# Créer le répertoire AVANT le premier `log` : la fonction log() écrit dans
+# $BACKUP_DIR/backup.log via tee, et avec `set -o pipefail` un tee vers un
+# dossier inexistant fait échouer la toute première sauvegarde.
 mkdir -p "$BACKUP_DIR"
+
+log "=== Démarrage de la sauvegarde ==="
 
 # Vérifier que le conteneur tourne
 if ! docker inspect "$POSTGRES_CONTAINER" --format='{{.State.Status}}' 2>/dev/null | grep -q "running"; then
@@ -172,12 +175,17 @@ Rendez-le exécutable :
 chmod +x scripts/backup_db.sh
 ```
 
-Créez le fichier de configuration `.env.backup` (ne jamais committer ce fichier) :
+Créez le fichier de configuration `.env.backup` (ne jamais committer ce fichier).
+Sur une flotte GitSky, chaque projet a **son propre conteneur** `{projet}_db` et
+sa base au nom du projet (Chap 18 §2) : ces valeurs viennent donc de
+`.env.backup`, pré-rempli à la génération, jamais codées en dur. Le générateur
+produit d'ailleurs un `.env.backup.example` déjà renseigné pour le projet.
+
 ```bash
-# .env.backup — configuration du script de sauvegarde
-POSTGRES_CONTAINER=hitl_postgres_1
-POSTGRES_DB=hitl
-POSTGRES_USER=postgres
+# .env.backup — configuration du script de sauvegarde (projet « pain-scraper »)
+POSTGRES_CONTAINER=pain-scraper_db
+POSTGRES_DB=pain_scraper
+POSTGRES_USER=pain_scraper
 BACKUP_DIR=/backups/postgres
 BACKUP_RETENTION=14
 # S3_BUCKET=mon-bucket-backups        # décommenter si S3 disponible
@@ -194,10 +202,10 @@ crontab -e
 Ajoutez ces lignes :
 ```cron
 # Sauvegarde quotidienne à 2h00 du matin
-0 2 * * * /opt/0-hitl/scripts/backup_db.sh >> /var/log/hitl_backup.log 2>&1
+0 2 * * * /opt/gitsky/scripts/backup_db.sh >> /var/log/gitsky_backup.log 2>&1
 
 # Vérification hebdomadaire que les sauvegardes existent bien
-0 9 * * 1 /opt/0-hitl/scripts/check_backups.sh >> /var/log/hitl_backup.log 2>&1
+0 9 * * 1 /opt/gitsky/scripts/check_backups.sh >> /var/log/gitsky_backup.log 2>&1
 ```
 
 ### Alternative : Service Docker dédié aux Sauvegardes
@@ -229,7 +237,7 @@ Si vous préférez tout gérer dans Docker Compose, ajoutez ce service dans `doc
 
 Cron pour lancer ce service :
 ```cron
-0 2 * * * cd /opt/0-hitl && docker-compose -f docker-compose.prod.yml --profile backup run --rm backup
+0 2 * * * cd /opt/gitsky && docker compose -f docker-compose.prod.yml --profile backup run --rm backup
 ```
 
 ### Tester la Restauration — Obligatoire
@@ -254,18 +262,18 @@ echo "Test de restauration depuis : $LATEST"
 # Démarrer un PostgreSQL de test
 docker run -d --name pg_restore_test \
     -e POSTGRES_PASSWORD=test \
-    -e POSTGRES_DB=hitl_test \
+    -e POSTGRES_DB=gitsky_test \
     postgres:16-alpine
 
 sleep 3
 
 # Restaurer
 gunzip -c "$LATEST" | docker exec -i pg_restore_test \
-    psql -U postgres hitl_test
+    psql -U postgres gitsky_test
 
 # Vérifier que les tables principales existent
 RESULT=$(docker exec pg_restore_test \
-    psql -U postgres hitl_test -t -c "
+    psql -U postgres gitsky_test -t -c "
         SELECT COUNT(*) FROM information_schema.tables
         WHERE table_schema = 'public';
     ")
@@ -294,38 +302,38 @@ La solution est de créer un utilisateur applicatif avec uniquement les droits n
 
 ```sql
 -- Connectez-vous à PostgreSQL en tant que superutilisateur
--- docker exec -it hitl_postgres psql -U postgres
+-- docker exec -it gitsky_db psql -U postgres
 
 -- 1. Créer l'utilisateur applicatif
-CREATE USER hitl_app WITH PASSWORD 'mot_de_passe_fort_ici';
+CREATE USER gitsky_app WITH PASSWORD 'mot_de_passe_fort_ici';
 
 -- 2. Donner accès à la base uniquement
-GRANT CONNECT ON DATABASE hitl TO hitl_app;
-GRANT USAGE ON SCHEMA public TO hitl_app;
+GRANT CONNECT ON DATABASE gitsky TO gitsky_app;
+GRANT USAGE ON SCHEMA public TO gitsky_app;
 
 -- 3. Donner les permissions CRUD (pas DROP, pas CREATE TABLE)
-GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO hitl_app;
-GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO hitl_app;
+GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO gitsky_app;
+GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO gitsky_app;
 
 -- 4. Appliquer ces droits aux futures tables (créées par les migrations)
 ALTER DEFAULT PRIVILEGES IN SCHEMA public
-    GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO hitl_app;
+    GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO gitsky_app;
 ALTER DEFAULT PRIVILEGES IN SCHEMA public
-    GRANT USAGE, SELECT ON SEQUENCES TO hitl_app;
+    GRANT USAGE, SELECT ON SEQUENCES TO gitsky_app;
 
 -- 5. L'utilisateur de migration (Alembic) doit garder des droits de DDL
 --    Créer un utilisateur séparé pour les migrations
-CREATE USER hitl_migrate WITH PASSWORD 'autre_mot_de_passe_fort';
-GRANT ALL PRIVILEGES ON DATABASE hitl TO hitl_migrate;
+CREATE USER gitsky_migrate WITH PASSWORD 'autre_mot_de_passe_fort';
+GRANT ALL PRIVILEGES ON DATABASE gitsky TO gitsky_migrate;
 ```
 
 Mettez ensuite à jour votre `.env` :
 ```env
 # Connexion applicative (lecture/écriture uniquement) — driver async
-DATABASE_URL=postgresql+asyncpg://hitl_app:mot_de_passe_fort@postgres/hitl
+DATABASE_URL=postgresql+asyncpg://gitsky_app:mot_de_passe_fort@postgres/gitsky
 
 # Connexion migrations (droits DDL complets) — driver async (env.py Alembic async)
-DATABASE_URL_MIGRATE=postgresql+asyncpg://hitl_migrate:autre_mdp@postgres/hitl
+DATABASE_URL_MIGRATE=postgresql+asyncpg://gitsky_migrate:autre_mdp@postgres/gitsky
 ```
 
 ### 2.2 Calendrier de Rotation des Secrets
@@ -388,7 +396,7 @@ echo "=== Audit de sécurité réseau ==="
 ERRORS=0
 
 # 1. PostgreSQL ne doit pas écouter sur 0.0.0.0
-PG_BINDING=$(docker inspect hitl_postgres_1 \
+PG_BINDING=$(docker inspect gitsky_db \
     --format='{{range $p, $b := .NetworkSettings.Ports}}{{$p}} -> {{$b}}{{end}}' 2>/dev/null || echo "")
 
 if echo "$PG_BINDING" | grep -q "0.0.0.0"; then
@@ -493,7 +501,7 @@ Ce script de diagnostic vous donne une vue claire de l'état de vos tables :
 
 ```sql
 -- scripts/db_health.sql
--- Exécuter avec : docker exec -i hitl_postgres psql -U postgres hitl < scripts/db_health.sql
+-- Exécuter avec : docker exec -i gitsky_db psql -U postgres gitsky < scripts/db_health.sql
 
 \echo '=== État des tables (lignes mortes vs vivantes) ==='
 SELECT
@@ -542,7 +550,7 @@ LIMIT 10;
 
 Exécution :
 ```bash
-docker exec -i hitl_postgres_1 psql -U postgres hitl < scripts/db_health.sql
+docker exec -i gitsky_db psql -U postgres gitsky < scripts/db_health.sql
 ```
 
 **Interprétation :**
@@ -551,7 +559,7 @@ docker exec -i hitl_postgres_1 psql -U postgres hitl < scripts/db_health.sql
 
 VACUUM manuel si nécessaire :
 ```bash
-docker exec hitl_postgres_1 psql -U postgres hitl -c "VACUUM ANALYZE;"
+docker exec gitsky_db psql -U postgres gitsky -c "VACUUM ANALYZE;"
 ```
 
 ### 3.2 Vérification de la Taille du Disque
@@ -654,18 +662,26 @@ Vous devez être informé avant vos utilisateurs en cas de panne. Configurez un 
 3. Configurez les alertes email / Telegram / Slack
 4. Fréquence de vérification : toutes les 5 minutes (plan gratuit)
 
-L'endpoint `/api/health` est déjà présent dans le template GitSky. Vérifiez qu'il retourne une vérification de la base de données :
+L'endpoint `/health` est déjà présent dans le template GitSky (dans
+`app/core/main.py`, servi sous `/api/health` derrière Traefik). Le stack étant
+**asynchrone** (SQLAlchemy async), la vérification base l'est aussi — et
+l'endpoint conserve sa charge utile existante (tier, modules activés) en plus du
+statut base :
 
 ```python
-# backend/app/routers/health.py (vérifier qu'il ressemble à ça)
-@router.get("/health")
-def health_check(db: Session = Depends(get_db)):
+# app/core/main.py
+@app.get("/health")
+async def health(db: AsyncSession = Depends(get_db)) -> dict:
     try:
-        db.execute(text("SELECT 1"))
-        return {"status": "ok", "database": "ok"}
+        await db.execute(text("SELECT 1"))
     except Exception:
         raise HTTPException(status_code=503, detail="Database unavailable")
+    return {"status": "ok", "database": "ok", "tier": settings.gitsky_tier, ...}
 ```
+
+Sans ce `SELECT 1`, `/health` répondrait `200` avec une base morte — l'incident
+passerait inaperçu. Le `503` marque le conteneur non sain côté Traefik et fleet
+dashboard.
 
 **Alertes Traefik** — vérifiez vos logs d'accès pour détecter des anomalies :
 
@@ -674,7 +690,7 @@ def health_check(db: Session = Depends(get_db)):
 # scripts/check_errors.sh
 # Analyse les logs Traefik pour détecter des taux d'erreurs anormaux.
 
-CONTAINER="${TRAEFIK_CONTAINER:-hitl_traefik_1}"
+CONTAINER="${TRAEFIK_CONTAINER:-traefik}"
 WINDOW_MINUTES=60
 THRESHOLD_5XX=10  # Alerte si plus de 10 erreurs 5xx en 1 heure
 
@@ -745,24 +761,27 @@ Développement → Staging (clone de prod) → Production
 
 set -euo pipefail
 
-PROJECT_DIR="/opt/0-hitl"
+PROJECT_DIR="/opt/gitsky"
 COMPOSE_FILE="docker-compose.prod.yml"
 
 cd "$PROJECT_DIR"
 
 echo "=== Mise à jour des images Docker - $(date) ==="
 
-# Récupérer les nouvelles versions des images de base
-docker pull postgres:16-alpine
-docker pull node:20-alpine
+# Récupérer les nouvelles versions des images de base. Épingler une LTS
+# SUPPORTÉE : Node 20 est en fin de vie depuis 2026-04-30 — utiliser Node 24
+# (LTS active), sans quoi la base ne reçoit plus de correctifs de sécurité.
+docker pull postgres:16.3-alpine
+docker pull node:24-alpine
 docker pull python:3.12-slim
-docker pull traefik:v3.0
+docker pull traefik:v3.1
 
-# Reconstruire les images applicatives
-docker-compose -f "$COMPOSE_FILE" build --no-cache
+# Reconstruire les images applicatives (Compose v2 : `docker compose`, pas
+# `docker-compose` v1 déprécié).
+docker compose -f "$COMPOSE_FILE" build --no-cache
 
 # Redémarrer avec les nouvelles images (zéro downtime si répliqué)
-docker-compose -f "$COMPOSE_FILE" up -d --remove-orphans
+docker compose -f "$COMPOSE_FILE" up -d --remove-orphans
 
 # Supprimer les anciennes images non utilisées
 docker image prune -f
@@ -811,7 +830,7 @@ echo "=== Audit des dépendances - $(date) ==="
 
 # Python
 echo "--- Backend Python ---"
-if pip-audit -r /opt/0-hitl/backend/requirements.txt 2>&1; then
+if pip-audit -r /opt/gitsky/backend/requirements.txt 2>&1; then
     echo "✓ Aucune CVE Python détectée."
 else
     echo "✗ Des vulnérabilités ont été détectées dans les dépendances Python."
@@ -820,7 +839,7 @@ fi
 
 # Node.js
 echo "--- Frontend Node.js ---"
-if (cd /opt/0-hitl/frontend && npm audit --audit-level=high 2>&1); then
+if (cd /opt/gitsky/frontend && npm audit --audit-level=high 2>&1); then
     echo "✓ Aucune CVE Node.js critique détectée."
 else
     echo "✗ Des vulnérabilités critiques ont été détectées dans les dépendances Node.js."
@@ -885,33 +904,33 @@ PATH=/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin
 
 # ── Sauvegardes ─────────────────────────────────────────────
 # Sauvegarde quotidienne à 2h00
-0 2 * * * /opt/0-hitl/scripts/backup_db.sh >> /var/log/hitl_backup.log 2>&1
+0 2 * * * /opt/gitsky/scripts/backup_db.sh >> /var/log/gitsky_backup.log 2>&1
 
 # ── Surveillance disque ──────────────────────────────────────
 # Vérification de l'espace disque toutes les heures
-0 * * * * /opt/0-hitl/scripts/check_disk.sh >> /var/log/hitl_monitor.log 2>&1
+0 * * * * /opt/gitsky/scripts/check_disk.sh >> /var/log/gitsky_monitor.log 2>&1
 
 # ── Surveillance des erreurs ─────────────────────────────────
 # Analyse des logs d'erreurs toutes les heures
-30 * * * * /opt/0-hitl/scripts/check_errors.sh >> /var/log/hitl_monitor.log 2>&1
+30 * * * * /opt/gitsky/scripts/check_errors.sh >> /var/log/gitsky_monitor.log 2>&1
 
 # ── Audit de sécurité ────────────────────────────────────────
 # Audit de sécurité réseau chaque dimanche à 3h
-0 3 * * 0 /opt/0-hitl/scripts/check_security.sh >> /var/log/hitl_security.log 2>&1
+0 3 * * 0 /opt/gitsky/scripts/check_security.sh >> /var/log/gitsky_security.log 2>&1
 
 # Scan CVE des dépendances le 1er de chaque mois
-0 4 1 * * /opt/0-hitl/scripts/audit_dependencies.sh >> /var/log/hitl_security.log 2>&1
+0 4 1 * * /opt/gitsky/scripts/audit_dependencies.sh >> /var/log/gitsky_security.log 2>&1
 
 # ── Mises à jour ─────────────────────────────────────────────
 # Mise à jour de sécurité OS chaque lundi à 4h (sans redémarrage auto)
-0 4 * * 1 apt-get update -qq && apt-get upgrade -y -o Dpkg::Options::="--force-confdef" >> /var/log/hitl_updates.log 2>&1
+0 4 * * 1 apt-get update -qq && apt-get upgrade -y -o Dpkg::Options::="--force-confdef" >> /var/log/gitsky_updates.log 2>&1
 
 # ── Nettoyage ────────────────────────────────────────────────
 # Nettoyage des images Docker non utilisées chaque dimanche
-0 5 * * 0 docker image prune -f >> /var/log/hitl_cleanup.log 2>&1
+0 5 * * 0 docker image prune -f >> /var/log/gitsky_cleanup.log 2>&1
 
 # Rotation des logs de maintenance (garder 30 jours)
-0 6 1 * * find /var/log/hitl_*.log -mtime +30 -delete 2>/dev/null || true
+0 6 1 * * find /var/log/gitsky_*.log -mtime +30 -delete 2>/dev/null || true
 ```
 
 ---
@@ -935,8 +954,8 @@ En cas de corruption ou de suppression accidentelle :
 set -euo pipefail
 
 BACKUP_DIR="/backups/postgres"
-POSTGRES_CONTAINER="${POSTGRES_CONTAINER:-hitl_postgres_1}"
-POSTGRES_DB="${POSTGRES_DB:-hitl}"
+POSTGRES_CONTAINER="${POSTGRES_CONTAINER:-gitsky_db}"
+POSTGRES_DB="${POSTGRES_DB:-gitsky}"
 POSTGRES_USER="${POSTGRES_USER:-postgres}"
 
 # Choisir la sauvegarde
@@ -966,7 +985,7 @@ fi
 
 # Arrêter l'application pour éviter les écritures pendant la restauration
 echo "1/4 Arrêt des services applicatifs..."
-cd /opt/0-hitl && docker-compose -f docker-compose.prod.yml stop backend
+cd /opt/gitsky && docker compose -f docker-compose.prod.yml stop backend
 
 # Réinitialiser la base
 echo "2/4 Réinitialisation de la base..."
@@ -990,7 +1009,7 @@ gunzip -c "$BACKUP_FILE" | docker exec -i "$POSTGRES_CONTAINER" \
 
 # Redémarrer
 echo "4/4 Redémarrage des services..."
-docker-compose -f docker-compose.prod.yml up -d backend
+docker compose -f docker-compose.prod.yml up -d backend
 
 echo ""
 echo "=== Restauration terminée ==="
@@ -1027,8 +1046,10 @@ projets, elles doivent être **orchestrées** depuis le fleet dashboard
 
 ### Sauvegarde Multi-Projets
 
-Un cron unique boucle sur toutes les DBs projets du service PostgreSQL
-partagé et applique la stratégie 3-2-1 à chacune :
+Un cron unique boucle sur **tous les conteneurs de bases projet** et applique la
+stratégie 3-2-1 à chacun. Chaque projet ayant son propre conteneur PostgreSQL
+(Chap 18 §2), on énumère les conteneurs `*_db` — et non les bases d'une instance
+partagée :
 
 ```bash
 # scripts/backup-fleet.sh — extrait
@@ -1038,16 +1059,16 @@ set -euo pipefail
 DATE=$(date +%Y%m%d_%H%M%S)
 S3_BUCKET="s3://mystudio-backups"
 
-# Liste des DBs à sauvegarder (exclusion des DBs système)
-DBS=$(docker exec postgres psql -U postgres -tAc \
-    "SELECT datname FROM pg_database
-     WHERE datname NOT IN ('postgres', 'template0', 'template1');")
+# Conteneurs de bases projet : convention de nommage {projet}_db.
+CONTAINERS=$(docker ps --format '{{.Names}}' --filter 'name=_db$')
 
-for db in $DBS; do
-    echo "Sauvegarde de $db..."
-    docker exec postgres pg_dump -U postgres -Fc "$db" \
-        | gzip > "/backups/${db}_${DATE}.dump.gz"
-    aws s3 cp "/backups/${db}_${DATE}.dump.gz" "$S3_BUCKET/$db/"
+for container in $CONTAINERS; do
+    project="${container%_db}"
+    dbname="${project//-/_}"        # identifiant PostgreSQL (pas de tiret)
+    echo "Sauvegarde de $project..."
+    docker exec "$container" pg_dump -U postgres -Fc "$dbname" \
+        | gzip > "/backups/${dbname}_${DATE}.dump.gz"
+    aws s3 cp "/backups/${dbname}_${DATE}.dump.gz" "$S3_BUCKET/$project/"
 done
 
 # Rotation : garder 14 jours de dumps locaux

@@ -34,19 +34,48 @@ RUN groupadd -r appuser && useradd -r -g appuser appuser
 USER appuser
 ```
 
+**Le code reste en lecture seule pour `appuser`.** Le dossier `/app` appartient
+à `root` : `appuser` peut l'exécuter mais pas le réécrire — une faille
+applicative ne peut donc pas modifier le code en place. Attention au piège :
+`WORKDIR /app` crée le dossier en `root`, et `COPY --chown=appuser` ne change que
+les *fichiers copiés*, pas le dossier lui-même. Les écritures runtime légitimes
+(SQLite d'un T0, uploads) vont donc dans un dossier `/data` dédié, seul
+emplacement rendu inscriptible pour `appuser` :
+
+```dockerfile
+RUN mkdir -p /data && chown appuser:appuser /data
+VOLUME /data
+```
+
 ## Serveur de Production : Gunicorn + Uvicorn
 
 En développement, nous utilisons `uvicorn --reload`. En production, **Gunicorn** orchestre plusieurs "workers" Uvicorn. Cela permet de traiter plusieurs requêtes simultanément et de redémarrer automatiquement un worker s'il échoue.
 
 ```bash
-gunicorn app.core.main:app -w 4 -k uvicorn.workers.UvicornWorker --bind 0.0.0.0:8000
+gunicorn app.core.main:app -k uvicorn_worker.UvicornWorker --bind 0.0.0.0:8000
 ```
 
-Le nombre de workers `-w` est calibré par tier — 2 workers suffisent pour un T1, 4 pour un T2 sous charge normale.
+⚠️ **Classe de worker.** On utilise le paquet `uvicorn-worker`
+(`uvicorn_worker.UvicornWorker`), et non l'ancien `uvicorn.workers.UvicornWorker`
+intégré à Uvicorn : ce dernier est **déprécié depuis Uvicorn 0.30** et émet un
+avertissement au démarrage.
+
+**Le nombre de workers ne figure pas dans le `CMD`.** Le calibrage est par tier —
+1 pour un T0, 2 pour un T1, 4 pour un T2 sous charge normale — mais le figer au
+build produirait *une image par tier*, en contradiction avec la règle « un seul
+Dockerfile » ci-dessous. On passe donc le nombre par la variable
+`WEB_CONCURRENCY`, que Gunicorn lit nativement, injectée depuis le `.env` du
+projet. Promouvoir un T1 en T2 se résume alors à changer cette valeur et
+redéployer — sans rebuild.
 
 ## Surveillance de l'État (Healthchecks)
 
-Pour que Traefik sache si un conteneur est réellement prêt à recevoir du trafic, une instruction `HEALTHCHECK` interroge l'endpoint `/health` toutes les 30 secondes.
+Pour que Traefik sache si un conteneur est réellement prêt à recevoir du trafic, une instruction `HEALTHCHECK` interroge l'endpoint `/health` toutes les 30 secondes. On sonde avec **Python** (`urllib.request`, déjà présent dans l'image) plutôt qu'avec `curl` : cela évite une couche `apt-get` supplémentaire, allège l'image, et supprime une dépendance réseau au build. `urlopen` lève sur un `503` — le conteneur est alors marqué non sain, ce qui est exactement le comportement voulu quand la base est injoignable (Chap 23 §4.1).
+
+```dockerfile
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+    CMD ["python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8000/health', timeout=4).status == 200 else 1)"]
+```
 
 ## Un Seul Dockerfile pour Trois Tiers
 
@@ -58,7 +87,7 @@ Trois avantages :
 - **Passer de T1 à T2** se fait via un simple redéploiement avec un `.env` mis à jour, sans rebuild.
 - **La revue de sécurité** se fait sur une seule image, pas trois.
 
-L'empreinte disque de l'image reste identique (~200 Mo pour le backend, ~30 Mo pour le frontend). L'empreinte **mémoire** au runtime, en revanche, varie fortement selon les modules activés — c'est cette variation qui permet de porter 100 T0 sur le même VPS.
+L'empreinte disque de l'image reste identique quel que soit le tier — **~320 Mo pour le backend, ~260 Mo pour le frontend** (tailles mesurées). Le backend part de `python:3.12-slim` (~180 Mo) plus les dépendances installées ; le frontend de `node:24-alpine` (~230 Mo) plus `serve` et le `dist/` (le bundle statique lui-même ne pèse que quelques centaines de Ko, mais l'image qui le sert porte la base Node). L'empreinte **mémoire** au runtime, en revanche, varie fortement selon les modules activés — c'est cette variation qui permet de porter 100 T0 sur le même VPS.
 
 ## Empreinte Mémoire par Tier (Mesurée)
 

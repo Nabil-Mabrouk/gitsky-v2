@@ -14,7 +14,7 @@ Ce chapitre décrit chacun de ces services : rôle, implémentation recommandée
 +--------------------------------------------------+
 |                                                  |
 |  [Traefik]         HTTPS wildcard + routing      |
-|  [PostgreSQL]      1 instance, N databases       |
+|  [PostgreSQL]      données des services partagés  |
 |  [Landing          Collecte des leads T0         |
 |   Collector]       partagée                      |
 |  [LLM Proxy]       Clés API + quotas             |
@@ -59,39 +59,54 @@ services:
       - proxy-net
 ```
 
-## 2. PostgreSQL Multi-Bases
+## 2. PostgreSQL : un conteneur par projet
 
-Une seule instance PostgreSQL, mais **une base par projet**. Cette isolation permet :
+Chaque projet doté d'une base embarque **son propre conteneur PostgreSQL**,
+défini dans son `docker-compose.yml` (Chap 1), plutôt qu'une base parmi d'autres
+dans une instance partagée. Cette isolation par conteneur permet :
 
-- La restauration ou le kill d'un projet sans impacter les autres.
-- Des sauvegardes indépendantes.
-- Une révocation nette des accès (`DROP DATABASE`).
+- La restauration ou le kill d'un projet sans impacter les autres — on détruit
+  un conteneur et son volume, rien d'autre.
+- Des sauvegardes indépendantes, un dump par conteneur (Chap 23).
+- Une révocation nette : supprimer le conteneur coupe tout accès, plus
+  radicalement qu'un `REVOKE`.
+- **Une isolation CPU/I-O réelle** : une requête lourde ou un autovacuum emballé
+  sur un projet ne dégrade pas les autres. On ne peut pas plafonner le CPU d'une
+  *base* au sein d'une instance ; on le peut pour un *conteneur*.
+- **Un plafond de connexions par projet** : chaque conteneur dispose de ses
+  ~100 connexions, sans se disputer un pool commun.
 
-```yaml
-# shared-services/postgres/docker-compose.yml
-services:
-  postgres:
-    image: postgres:16-alpine
-    environment:
-      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_root
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-    networks:
-      - shared-services-net
-```
+Le prix est de ~52 Mo de RAM par conteneur PostgreSQL au repos (mesuré,
+`postgres:16.3-alpine`). Sur une flotte réaliste — une dizaine de T1/T2 dotés
+d'une base — cela reste sous 1 Go, largement dans le budget du VPS (voir le
+tableau des coûts). **Les T0 n'ont pas de base propre** (§3) et ne coûtent rien
+de ce côté.
 
-Chaque projet reçoit ses credentials à la génération via un script :
+> **Note d'architecture.** Une première version du template mutualisait une
+> seule instance PostgreSQL avec une base par projet. Elle économisait ~500 Mo
+> de RAM sur le VPS de 8 Go, mais au prix d'un couplage fort : une requête
+> pathologique ou un autovacuum en retard sur un projet T1 non validé pouvait
+> dégrader les T2 qui, eux, génèrent du revenu. Sur une *startup factory* où le
+> code T0/T1 est expérimental par construction, concentrer des codebases non
+> éprouvées dans la même instance que les projets rentables était le mauvais
+> compromis. Le conteneur par projet a donc été retenu — les trois bénéfices
+> ci-dessus (restauration, sauvegarde, révocation) y sont d'ailleurs *plus*
+> vrais qu'avec une base partagée.
+
+La création de la base est prise en charge par Compose au premier démarrage
+(variables `POSTGRES_DB` / `POSTGRES_USER` / `POSTGRES_PASSWORD` du `.env`). Le
+générateur produit ces credentials — un mot de passe aléatoire par projet — et
+les injecte dans le `.env` :
 
 ```bash
-# scripts/provision-project-db.sh
-docker exec postgres createdb -U postgres pain_scraper
-docker exec postgres psql -U postgres -c \
-    "CREATE USER pain_scraper WITH PASSWORD '$(openssl rand -hex 32)';"
-docker exec postgres psql -U postgres -c \
-    "GRANT ALL ON DATABASE pain_scraper TO pain_scraper;"
+# À la génération (create-gitsky-project) : credentials uniques par projet.
+POSTGRES_PASSWORD=$(python -c "import secrets; print(secrets.token_hex(24))")
 ```
 
-Le mot de passe généré est injecté dans le `.env` du projet.
+Une instance PostgreSQL partagée subsiste néanmoins dans les services partagés,
+mais **uniquement pour les données des services eux-mêmes** : la table centrale
+du landing collector (§3) et les logs du LLM proxy. Elle n'héberge aucune base
+de projet.
 
 ## 3. Landing Collector
 
@@ -212,15 +227,19 @@ Sur le VPS 8 Go à 20 €/mois, les services partagés consomment :
 | Service | RAM | Disque |
 |---|---|---|
 | Traefik | ~50 Mo | ~100 Mo |
-| PostgreSQL | ~200 Mo | ~5 Go (grandit avec la flotte) |
+| PostgreSQL (données des services partagés) | ~200 Mo | ~2 Go (logs LLM + leads) |
 | Landing Collector | ~50 Mo | négligeable |
 | LLM Proxy (LiteLLM) | ~150 Mo | ~200 Mo (logs) |
 | SMTP Relay (Postfix local) | ~80 Mo | ~100 Mo |
 | GeoIP Service | ~100 Mo | ~200 Mo (base MaxMind) |
 | Stripe Webhook Router | ~40 Mo | négligeable |
-| **Total** | **~670 Mo** | **~5,6 Go** |
+| **Total** | **~670 Mo** | **~2,6 Go** |
 
-Il reste donc ~7,3 Go de RAM pour les projets applicatifs — largement de quoi porter la centaine de T0 mentionnée au Chap 2.
+Il reste donc ~7,3 Go de RAM pour les projets applicatifs. À cela s'ajoutent les
+conteneurs PostgreSQL **par projet** (§2) : ~52 Mo au repos chacun (mesuré,
+`postgres:16.3-alpine`), uniquement pour les T1/T2 — les T0 n'ont pas de base.
+Une flotte de 10 T1 + 5 T2 ajoute ainsi ~780 Mo, laissant de quoi porter la
+centaine de T0 mentionnée au Chap 2 (les T0 ne consomment que leur backend).
 
 ---
 

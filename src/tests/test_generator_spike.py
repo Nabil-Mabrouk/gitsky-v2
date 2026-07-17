@@ -12,6 +12,7 @@ import json
 import os
 import shutil
 import stat
+import subprocess
 import sys
 import tempfile
 import time
@@ -249,6 +250,63 @@ def test_tasks_provision_register_and_git_init():
         assert fleet["registered"] == "skipped_no_fleet_url"
         # Task git init + commit initial (RÉELLE).
         assert (dst / ".git").is_dir()
+    finally:
+        _rmtree_robuste(tmp)
+
+
+def test_generated_project_ships_no_local_artifacts():
+    # Copier n'applique ses exclusions par défaut (__pycache__, *.pyc, ...) QUE
+    # si le template n'a pas de _subdirectory (copier/_template.py, `exclude`).
+    # On en déclare un : sans _exclude explicite dans copier.yml, la liste tombe
+    # à [] et chaque projet généré partait avec les .pyc et la base SQLite de
+    # développement de la machine qui génère — committés par le `git add -A`
+    # des _tasks.
+    tmp = Path(tempfile.mkdtemp())
+    try:
+        dst = tmp / "proj"
+        run_copy(
+            str(GENERATOR),
+            str(dst),
+            data={"project": {"name": "pain-scraper", "tier": "t2"}},
+            defaults=True,
+            quiet=True,
+            unsafe=True,
+        )
+        assert [str(p.relative_to(dst)) for p in dst.rglob("*.pyc")] == []
+        assert [str(p.relative_to(dst)) for p in dst.rglob("__pycache__")] == []
+        # Bases de dev : jamais les données d'une machine de dev dans un projet.
+        assert [str(p.relative_to(dst)) for p in dst.rglob("*.db")] == []
+        # Le code applicatif, lui, doit bien être là.
+        assert (dst / "app" / "core" / "main.py").is_file()
+    finally:
+        _rmtree_robuste(tmp)
+
+
+def test_initial_commit_contains_no_artifacts():
+    # Le `git add -A` des _tasks fige l'état livré : si un artefact passe, il
+    # entre dans l'historique du projet dès son premier commit.
+    tmp = Path(tempfile.mkdtemp())
+    try:
+        dst = tmp / "proj"
+        run_copy(
+            str(GENERATOR),
+            str(dst),
+            data={"project": {"name": "pain-scraper", "tier": "t2"}},
+            defaults=True,
+            quiet=True,
+            unsafe=True,
+        )
+        suivis = subprocess.run(
+            ["git", "ls-files"],
+            cwd=dst,
+            capture_output=True,
+            text=True,
+            check=True,
+        ).stdout.splitlines()
+        assert suivis, "le commit initial ne doit pas être vide"
+        assert [f for f in suivis if f.endswith(".pyc")] == []
+        assert [f for f in suivis if "__pycache__" in f] == []
+        assert [f for f in suivis if f.endswith(".db")] == []
     finally:
         _rmtree_robuste(tmp)
 

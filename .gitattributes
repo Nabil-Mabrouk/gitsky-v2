@@ -1,0 +1,6 @@
+# Fins de ligne du dépôt. core.autocrlf=true sans .gitattributes donnait des
+# scripts CRLF au checkout Windows — or les scripts shell/SQL tournent sur
+# l'Ubuntu de production (Chap 22/23), où un « \r » casse bash et psql.
+# (Le template a son propre .gitattributes, livré dans les projets générés.)
+*.sh   text eol=lf
+*.sql  text eol=lf
