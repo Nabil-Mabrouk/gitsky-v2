@@ -1,0 +1,41 @@
+# =============================================================================
+# crontab.fleet — Maintenance automatisée de la flotte GitSky (Chap 23 §6).
+# Installer sur le VPS partagé : crontab crontab.fleet  (ou coller via crontab -e)
+#
+# Chemin de déploiement des services partagés : /opt/gitsky (ajuster si besoin —
+# cron n'expanse pas les variables dans les commandes, les chemins sont en dur).
+#
+# ÉCART AU LIVRE : le Chap 23 utilise /opt/0-hitl et des scripts par projet.
+# Sur la flotte, la maintenance est MUTUALISÉE (conclusion du Chap 23) : un seul
+# jeu de crons pour tous les projets, appuyé sur les scripts shared_services.
+# =============================================================================
+
+SHELL=/bin/bash
+PATH=/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin
+MAILTO=""
+
+# ── Disponibilité ────────────────────────────────────────────────────────────
+# Poll /health de toute la flotte toutes les 60 s ; le dashboard journalise
+# deployment_failed pour tout projet muet > 5 min (Chap 23 §Monitoring flotte).
+* * * * * /opt/gitsky/shared_services/scripts/fleet-health.sh >> /var/log/gitsky_health.log 2>&1
+
+# ── Sauvegardes ──────────────────────────────────────────────────────────────
+# Sauvegarde 3-2-1 de toutes les bases projet à 02:00 — AVANT le kill_check de
+# 03:00, pour préserver les projets sur le point d'être tués.
+0 2 * * * /opt/gitsky/shared_services/scripts/backup-fleet.sh >> /var/log/gitsky_backup.log 2>&1
+
+# ── Kill check (Chap 20) ─────────────────────────────────────────────────────
+# Le kill_check de 03:00 est déclenché par le fleet dashboard (mécanisme du
+# Chap 20, endpoint /projects/{name}/kill-check alimenté par les métriques
+# agrégées) — pas par un script de maintenance. Il DOIT rester après 02:00.
+
+# ── Surveillance disque ──────────────────────────────────────────────────────
+# Jauge disque consolidée toutes les heures.
+0 * * * * /opt/gitsky/shared_services/scripts/fleet-disk.sh >> /var/log/gitsky_monitor.log 2>&1
+
+# ── Nettoyage ────────────────────────────────────────────────────────────────
+# Images Docker orphelines, chaque dimanche à 05:00.
+0 5 * * 0 docker image prune -f >> /var/log/gitsky_cleanup.log 2>&1
+
+# Rotation des logs de maintenance (> 30 jours), le 1er du mois.
+0 6 1 * * find /var/log/gitsky_*.log -mtime +30 -delete 2>/dev/null || true
