@@ -6,6 +6,38 @@
 _subdirectory: template
 _templates_suffix: .jinja
 
+# ⚠️ _exclude est OBLIGATOIRE ici. Copier n'applique ses exclusions par défaut
+# (__pycache__, *.pyc, ...) QUE si le template n'a pas de _subdirectory :
+#
+#     DEFAULT_EXCLUDE if Path(self.subdirectory) == Path() else []
+#     (copier/_template.py, propriété `exclude`)
+#
+# Comme on déclare `_subdirectory: template`, la liste par défaut tombe à [] et
+# TOUT le contenu du dossier est copié — y compris les artefacts locaux de la
+# machine qui génère. Sans cette liste, les projets générés partaient avec 69
+# fichiers .pyc et la base SQLite de développement du template, le tout committé
+# par le `git add -A` des _tasks.
+_exclude:
+  - "copier.yml"
+  - "copier.yaml"
+  - "~*"
+  - ".git"
+  - ".DS_Store"
+  - ".svn"
+  # Artefacts Python locaux.
+  - "__pycache__"
+  - "*.py[co]"
+  - ".pytest_cache"
+  - ".ruff_cache"
+  - ".venv"
+  # Artefacts front locaux (un `npm install` dans le template embarquerait
+  # sinon tout node_modules dans chaque projet généré).
+  - "node_modules"
+  - "dist"
+  # Bases de développement : jamais livrer les données d'une machine de dev.
+  - "*.db"
+  - "*.sqlite3"
+
 # Frontière châssis/vitrine (Chap 24 — GitSky Studio) : la vitrine (landing
 # art-dirigée par projet) est générée UNE fois puis JAMAIS écrasée par
 # `copier update`. Le châssis (backend/app React) reste propagé normalement.
