@@ -1,5 +1,9 @@
 fastapi
 uvicorn[standard]
+# Production (Chap 21) : Gunicorn orchestre des workers Uvicorn. uvicorn-worker
+# remplace uvicorn.workers, déprécié depuis uvicorn 0.30.
+gunicorn
+uvicorn-worker
 pydantic-settings
 sqlalchemy[asyncio]
 alembic
