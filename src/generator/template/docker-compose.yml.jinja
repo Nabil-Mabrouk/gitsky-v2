@@ -45,8 +45,10 @@ services:
       - .env
     environment:
 {%- if gitsky_tier == "t0" %}
-      # T0 : pas de base propre (Chap 18 §3) — les leads vont au collecteur partagé.
-      - DATABASE_URL=sqlite+aiosqlite:///./gitsky.db
+      # T0 : pas de base propre (Chap 18 §3) — les leads vont au collecteur
+      # partagé. Le backend garde un SQLite minimal (juste pour /health) dans
+      # /data, seul dossier inscriptible par appuser (le code /app est en RO).
+      - DATABASE_URL=sqlite+aiosqlite:////data/gitsky.db
 {%- else %}
       # T1/T2 : chaque projet a SON conteneur PostgreSQL (isolation CPU/IO et
       # plafond de connexions par projet — décision d'archi Phase 6, cf. Chap 18).

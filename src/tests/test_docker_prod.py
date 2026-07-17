@@ -94,6 +94,24 @@ def test_healthcheck_polls_health_every_30s():
     assert "/health" in body
 
 
+def test_healthcheck_uses_python_not_an_extra_package():
+    # On sonde avec Python (déjà présent) plutôt que curl : pas de couche apt,
+    # image plus légère, build sans dépendance réseau supplémentaire.
+    body = _render("t1")
+    assert "urllib.request" in body
+    assert "apt-get" not in _directives(body)
+
+
+def test_appuser_has_a_writable_data_dir_while_code_stays_readonly():
+    # Bug attrapé par le build réel : /app est root (code en RO, règle Chap 21),
+    # donc appuser ne pouvait pas écrire le SQLite d'un T0. /data est le seul
+    # emplacement inscriptible par appuser.
+    body = _render("t1")
+    assert "mkdir -p /data && chown appuser:appuser /data" in body
+    # Le code n'est jamais chown pour appuser en écriture : /app reste root.
+    assert "chown appuser:appuser /app" not in body
+
+
 # --- Workers calibrés par tier (Chap 21 §« Gunicorn + Uvicorn ») -----------
 
 
