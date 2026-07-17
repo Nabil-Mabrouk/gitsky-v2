@@ -10,12 +10,16 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from datetime import datetime, timezone
+
 from app.core.auth.dependencies import require_admin
 from app.core.database import get_db
 from app.core.models import User
-from app.modules.fleet import kill_check, publish
+from app.modules.fleet import health_monitor, kill_check, publish
 from app.modules.fleet.models import FleetLifecycleEvent, Project
 from app.modules.fleet.schemas import (
+    HealthSweepRequest,
+    HealthSweepResult,
     KillCheckMetrics,
     KillCheckResult,
     ProjectRegister,
@@ -111,6 +115,19 @@ async def run_kill_check(
     return KillCheckResult(
         project=project.name, tier=project.tier, verdict=verdict, status=project.status
     )
+
+
+@router.post("/projects/health-sweep", response_model=HealthSweepResult)
+async def health_sweep(
+    payload: HealthSweepRequest,
+    _admin: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+) -> HealthSweepResult:
+    # Le poller (cron 60 s) poste les derniers succès /health de la flotte ;
+    # le dashboard journalise les transitions deployment_failed/recovered.
+    now = payload.now or datetime.now(timezone.utc)
+    changed = await health_monitor.record_health_sweep(db, payload.last_success, now)
+    return HealthSweepResult(**changed)
 
 
 @router.post("/projects/{name}/promote", response_model=PromoteResult)
