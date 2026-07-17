@@ -19,6 +19,10 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
 
+from copier import run_copy
+
+GENERATOR = Path(__file__).resolve().parents[1] / "generator"
+
 
 def rmtree_robuste(path: Path) -> None:
     """Supprime une arborescence contenant potentiellement un .git Windows."""
@@ -49,3 +53,27 @@ def projet_temporaire() -> Iterator[Path]:
         yield tmp / "proj"
     finally:
         rmtree_robuste(tmp)
+
+
+@contextmanager
+def projet_genere(name: str, tier: str, **data) -> Iterator[Path]:
+    """Génère un projet SANS les _tasks (git init/add/commit) et cède son chemin.
+
+    Les tests qui ne font que LIRE des fichiers générés n'ont aucun besoin du
+    commit initial — et ce `git add -A` est la source d'une flakiness Windows
+    tenace (antivirus verrouillant les objets .git fraîchement créés pendant
+    l'exécution de la tâche). `skip_tasks=True` supprime la cause à la racine
+    et accélère nettement ces tests. Les tests qui vérifient les _tasks
+    eux-mêmes (commit initial, provision) génèrent avec les tâches, à part.
+    """
+    with projet_temporaire() as dst:
+        run_copy(
+            str(GENERATOR),
+            str(dst),
+            data={"project": {"name": name, "tier": tier}, **data},
+            defaults=True,
+            quiet=True,
+            unsafe=True,
+            skip_tasks=True,
+        )
+        yield dst

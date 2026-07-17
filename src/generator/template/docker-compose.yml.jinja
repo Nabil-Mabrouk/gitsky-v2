@@ -1,37 +1,121 @@
-# docker-compose.yml — généré pour {{ project_name }} ({{ gitsky_tier }}).
-# Labels Traefik pointant vers le domaine du projet ; réseau proxy-net partagé
-# par toute la flotte (Chap 1). Ne pas éditer à la main : modifier le template.
+# docker-compose.yml — PRODUCTION, généré pour {{ project_name }} ({{ gitsky_tier }}).
+#
+# Le développement utilise docker-compose.dev.yml (hot-reload, ports exposés,
+# db exposée pour DBeaver). Ici : images buildées, rien d'exposé hors Traefik.
+#
+# Labels Traefik pointant vers le domaine du projet ; proxy-net est le réseau
+# partagé de toute la flotte (Chap 1). internal-net est privé et isolé : la db
+# n'y est JAMAIS joignable depuis Internet (Chap 23 §2.3).
+#
+# Ne pas éditer à la main : modifier le template du générateur.
 services:
   frontend:
+    build:
+      context: ./frontend
+      args:
+        # Vite inline VITE_API_URL dans le bundle au BUILD (Chap 21) : l'URL de
+        # l'API doit donc arriver ici, pas dans environment:.
+        VITE_API_URL: "https://api.{{ project_domain }}"
     container_name: {{ project_name }}_frontend
+    restart: unless-stopped
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.frontend-{{ project_name }}.rule=Host(`{{ project_domain }}`)"
       - "traefik.http.routers.frontend-{{ project_name }}.entrypoints=websecure"
       - "traefik.http.routers.frontend-{{ project_name }}.tls.certresolver=letsencrypt"
+      - "traefik.http.services.frontend-{{ project_name }}.loadbalancer.server.port=3000"
     networks:
       - proxy-net
       - internal-net
     depends_on:
       - backend
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "5"
 
   backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
     container_name: {{ project_name }}_backend
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+{%- if gitsky_tier == "t0" %}
+      # T0 : pas de base propre (Chap 18 §3) — les leads vont au collecteur partagé.
+      - DATABASE_URL=sqlite+aiosqlite:///./gitsky.db
+{%- else %}
+      # T1/T2 : chaque projet a SON conteneur PostgreSQL (isolation CPU/IO et
+      # plafond de connexions par projet — décision d'archi Phase 6, cf. Chap 18).
+      - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+{%- endif %}
+      - SECRET_KEY=${SECRET_KEY}
+      - ENVIRONMENT=production
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.backend-{{ project_name }}.rule=Host(`api.{{ project_domain }}`)"
       - "traefik.http.routers.backend-{{ project_name }}.entrypoints=websecure"
       - "traefik.http.routers.backend-{{ project_name }}.tls.certresolver=letsencrypt"
+      - "traefik.http.services.backend-{{ project_name }}.loadbalancer.server.port=8000"
     networks:
       - proxy-net
       - internal-net
-
+{%- if gitsky_tier != "t0" %}
+    depends_on:
+      db:
+        condition: service_healthy
+{%- endif %}
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "5"
+{% if gitsky_tier != "t0" %}
   db:
     image: postgres:16.3-alpine
     container_name: {{ project_name }}_db
+    restart: unless-stopped
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_DB=${POSTGRES_DB}
+    volumes:
+      - db_data:/var/lib/postgresql/data
+    # Aucun `ports:` : la db reste strictement sur internal-net (Chap 23 §2.3).
     networks:
       - internal-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "100m"
+        max-file: "3"
 
+  migrate:
+    # Service éphémère : applique core + chaînes des modules activés, puis sort.
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: {{ project_name }}_migrate
+    command: python -m scripts.migrate
+    env_file:
+      - .env
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+    networks:
+      - internal-net
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: "no"
+{% endif %}
 networks:
   proxy-net:
     external: true
@@ -39,3 +123,8 @@ networks:
   internal-net:
     driver: bridge
     internal: true
+{%- if gitsky_tier != "t0" %}
+
+volumes:
+  db_data:
+{%- endif %}
