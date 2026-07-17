@@ -2,7 +2,7 @@
 
 ## Ce que nous avons construit
 
-En vingt-deux chapitres, nous sommes partis d'une page blanche pour arriver à un **template industriel** capable de porter un portefeuille de projets à des tiers de maturité variés, du test rapide d'une idée jusqu'au SaaS en production avec revenus récurrents.
+En vingt-cinq chapitres, nous sommes partis d'une page blanche pour arriver à un **template industriel** capable de porter un portefeuille de projets à des tiers de maturité variés, du test rapide d'une idée jusqu'au SaaS en production avec revenus récurrents. Le Chap 25 réunit d'ailleurs tout le parcours opérateur — **utiliser, déployer, maintenir** — en un seul guide de bout en bout.
 
 GitSky n'est plus une seule application, mais un **système** :
 
@@ -26,18 +26,18 @@ GitSky n'est plus une seule application, mais un **système** :
 |               Security, i18n, Agentic, Monetization      |
 |    domain   : Métier propre à chaque projet              |
 |                                                          |
-|  Générateur create-gitsky-project (Chap 16)              |
+|  Générateur create-gitsky-project (Chap 17)              |
 |    config.yaml → projet prêt à démarrer                  |
 |                                                          |
-|  Services Partagés VPS (Chap 17)                         |
+|  Services Partagés VPS (Chap 18)                         |
 |    Traefik wildcard SSL                                  |
-|    PostgreSQL multi-bases                                |
+|    PostgreSQL (données des services) + DB par projet     |
 |    Landing collector, LLM proxy, GeoIP, SMTP             |
 |                                                          |
-|  Fleet Dashboard (Chap 18)                               |
+|  Fleet Dashboard (Chap 19)                               |
 |    Vue unifiée, alertes, kill mechanism                  |
 |                                                          |
-|  Cycle de Vie (Chap 19)                                  |
+|  Cycle de Vie (Chap 20)                                  |
 |    Harvest → T0 → T1 → T2 → Émancip. ou Kill             |
 |                                                          |
 +----------------------------------------------------------+
@@ -50,7 +50,7 @@ Tout au long de ce parcours, huit règles d'or ont guidé chaque décision archi
 1. **Un template, trois tiers.** Aucun projet ne démarre au niveau final — il gagne ses tiers par signal mesurable.
 2. **Core minimal, modules activables.** Un projet ne paie que le coût des fonctionnalités qu'il utilise.
 3. **Isolation stricte par projet.** Une DB, un domaine, une allocation Stripe metadata-namespacée — jamais de code partagé entre projets.
-4. **Mutualisation des services externes.** Une seule instance PostgreSQL, un seul LLM proxy, un seul Traefik — le VPS porte le socle, les projets ne dupliquent rien d'infra.
+4. **Mutualisation des services partagés.** Un seul LLM proxy, un seul Traefik, un seul landing collector — le VPS porte le socle. La base de données, elle, est **isolée par projet** (un conteneur PostgreSQL chacun) : c'est ce qui contient les pannes et la charge CPU/I-O d'un projet non validé sans toucher aux autres (Chap 18 §2).
 5. **Un unique Dockerfile pour tous les tiers.** L'empreinte varie en mémoire au runtime, jamais en artefacts de build.
 6. **Génération et mise à jour reproductibles.** Copier + hooks Python transforment un `config.yaml` en projet prêt, et propagent les correctifs à toute la flotte.
 7. **Kill par défaut, pas par exception.** Un projet qui n'atteint pas ses critères est archivé automatiquement. C'est le succès du protocole, pas un échec.

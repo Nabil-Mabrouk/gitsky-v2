@@ -39,7 +39,7 @@ Ce livre est structuré en cinq parties :
 2.  **GitSky-core** — Ce qui est présent à tous les tiers : initialisation FastAPI, modèles core, authentification, admin shell, frontend, SEO.
 3.  **Modules Optionnels** — i18n, onboarding, contenu pédagogique, analytics, sécurité, framework agentic, monétisation Stripe.
 4.  **Industrialisation** — Générateur `create-gitsky-project`, services partagés sur un VPS, fleet dashboard, cycle de vie complet d'un projet.
-5.  **Production et Maintenance** — Docker prod par tier, configuration serveur Ubuntu 24.04, sauvegardes et surveillance de flotte.
+5.  **Production et Maintenance** — Docker de production (un seul artefact, calibré par tier), configuration serveur Ubuntu 24.04, sauvegardes et surveillance de flotte, et un guide opérateur de bout en bout : utiliser, déployer, maintenir.
 
 À l'issue de ce parcours, vous disposerez non seulement d'un template exploitable pour lancer un portefeuille de projets, mais surtout d'une discipline opérationnelle pour maintenir la flotte en bonne santé.
 

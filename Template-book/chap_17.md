@@ -91,7 +91,7 @@ Ce que le générateur fait, en 30 secondes :
 4. **Génère la migration Alembic initiale** pour le domaine et pour chaque module activé.
 5. **Applique le branding** en réécrivant les variables CSS Tailwind et le logo.
 6. **Génère les labels Traefik** pointant vers le domaine du projet dans le `docker-compose.yml`.
-7. **Provisionne la base PostgreSQL** dans le service partagé (voir Chap 18).
+7. **Prépare la base PostgreSQL** du projet : génère des credentials aléatoires dans le `.env` ; le conteneur PostgreSQL du projet crée la base au premier démarrage (voir Chap 18 §2).
 8. **Enregistre le projet** auprès du fleet dashboard via son API (voir Chap 19).
 9. **Crée un commit git initial** dans le nouveau repo.
 
