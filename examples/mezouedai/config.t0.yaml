@@ -1,0 +1,36 @@
+# MezouedAI — configuration de génération, tier T0 (landing de validation).
+#
+# T0 = une simple landing pour valider la demande (harvest de mots-clés, capture
+# d'emails, kill mechanism à 21 j). Aucun module local activé (profil t0).
+# Passé en `data` à copier (voir README.md).
+project:
+  name: mezouedai
+  tier: t0
+  domain: mezouedai.com
+
+# Charte festive/chaleureuse (mezoued = musique populaire tunisienne).
+branding:
+  primary_color: "#C8452D"        # terracotta
+  primary_foreground: "#FFFFFF"
+  font_family: "Inter"
+
+# Landing pilotée par blocs (Chap 24). Skin "bold" = brutaliste/énergique,
+# adapté à un produit créatif musical.
+landing:
+  skin: bold
+  blocks:
+    - type: hero
+      headline: "Compose ta chanson de mezoued avec l'IA"
+      subhead: "Choisis ton chanteur, ton thème et ton rythme — l'IA écrit les paroles et compose la musique."
+    - type: features
+      title: "Comment ça marche"
+      items:
+        - title: "Choisis ta voix"
+          body: "Un chanteur parmi une galerie d'avatars, chacun avec son timbre."
+        - title: "Construis ta structure"
+          body: "Intro, refrain, couplet, pont — glisse-dépose l'ossature de ta chanson."
+        - title: "Génère en un clic"
+          body: "Un ensemble d'agents écrit les paroles et compose la mélodie."
+    - type: email_capture
+      headline: "Sois parmi les premiers à créer"
+      cta: "Rejoindre la liste"
