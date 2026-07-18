@@ -81,72 +81,125 @@ Le proxy authentifie le projet via son token, décrémente son quota, journalise
 
 Le framework utilise une configuration déclarative en YAML pour définir les services disponibles. Cette approche permet de modifier le comportement des agents sans toucher au code Python.
 
-### Exemple de configuration : News Scraper
+### Schéma d'un service
+
+Un service déclare deux choses : des **steps** et des **workflows**.
+
+- Un **step** est une unité de travail nommée, de deux natures possibles :
+  - `type: agent` — un appel LLM (modèle + prompt système + température) ;
+  - `type: tool` — un appel à un **tool** enregistré (callable Python du registre
+    `tools/`), qui encapsule une API externe (génération d'image, d'audio…).
+- Un **workflow** est une liste ordonnée de noms de steps. Un même service peut
+  en exposer plusieurs (un aperçu court, une génération complète…).
+- `async_workflows` liste les workflows **longs**, exécutés en job de fond
+  (voir plus bas) ; les autres s'exécutent de façon synchrone.
+- `cost_credits` est débité lorsqu'un workflow payant (asynchrone) démarre.
 
 ```yaml
-# backend/app/config/agent_services.yaml
+# app/modules/agentic/agent_services.yaml
 services:
-  news_scraper:
+  song_generator:
     enabled: true
-    name: "News Scraper"
-    description: "Scrape l'actualité et génère des tweets automatiquement"
-    category: "content"
-    requires_auth: true
-    agents:
-      - name: "news_fetcher"
-        model: "gpt-4"
-        tools: ["web_scraper", "rss_reader", "news_api"]
-        system_prompt: "You are a news aggregation assistant..."
-        temperature: 0.3
-      - name: "tweet_writer"
-        model: "claude-3-sonnet"
-        tools: ["tone_analyzer", "hashtag_generator", "schedule_post"]
-        system_prompt: "You are a social media content creator..."
-        temperature: 0.7
+    name: "Générateur de chanson"
+    description: "Écrit les paroles puis génère l'audio via une API externe"
+    category: "music"
+    cost_credits: 3
+    steps:
+      analyze:
+        type: agent
+        model: "claude-sonnet-5"
+        system_prompt: "Résume en 3 lignes l'intention artistique..."
+        temperature: 0.5
+      lyrics:
+        type: agent
+        model: "claude-opus-4-8"
+        system_prompt: "Écris les paroles fidèles au thème et à la structure..."
+        temperature: 0.8
+      render:
+        type: tool               # appel d'API externe (registre tools/)
+        tool: suno_generate
     workflows:
-      - name: "daily_news_digest"
-        description: "Récupère les actualités du jour et génère des tweets"
-        steps: ["fetch_news", "summarize", "generate_tweets"]
-        default_params:
-          topics: ["technology", "ai", "startups"]
-          num_articles: 5
-          language: "fr"
+      concept: [analyze, lyrics]         # synchrone : aperçu peu coûteux
+      song: [analyze, lyrics, render]    # complet
+    async_workflows: [song]              # « song » tourne en job de fond
 ```
 
-### Services Pré-configurés
+> **IDs de modèles.** Utilisez toujours des identifiants Claude à jour
+> (`claude-opus-4-8`, `claude-sonnet-5`, `claude-sonnet-4-6`…). Un ID obsolète
+> recopié depuis un exemple casse silencieusement le service en production.
 
-Le framework inclut trois services prêts à l'emploi :
+### Services de référence
 
-1. **News Scraper** : Surveillance d'actualités et génération de contenu social
-2. **Research Assistant** : Recherche académique et rédaction de rapports
-3. **Crypto Analyst** : Analyse de marchés crypto et génération de rapports multimédias
+Le châssis embarque `template_service` (démo minimale d'un step agent). L'exemple
+complet — un générateur de chanson à pipeline `analyze → lyrics → style → Suno` —
+est livré dans `examples/mezouedai/` (voir la démonstration T0→T1→T2).
 
 ## Modèles de Données pour le Tracking des Exécutions
 
-Pour assurer la traçabilité et l'audit, le framework utilise quatre tables dédiées :
+Pour la traçabilité et l'audit, le module utilise trois tables :
 
 ```python
-# backend/app/models.py - Extraits
+# app/modules/agentic/models.py — extraits
 class ServiceExecution(Base):
-    """Exécution complète d'un service."""
+    """Exécution complète d'un workflow."""
     __tablename__ = "service_executions"
-    # Champs : user_id, service_slug, workflow_name, status, input_params, result
+    # user_id, service_slug, workflow_name, status, input_params, result, created_at
+    # status : pending -> running -> completed | failed
 
-class ServiceExecutionStep(Base):
-    """Étape individuelle dans l'exécution."""
-    __tablename__ = "service_execution_steps"
-    # Champs : execution_id, step_id, agent_name, input_data, output_data, status
+class ExecutionStep(Base):
+    """Une étape du workflow — checkpoint pour l'audit et la reprise."""
+    __tablename__ = "execution_steps"
+    # execution_id, idx, name, kind (agent|tool), status, output, created_at
 
-class ServiceResult(Base):
-    """Résultats détaillés (fichiers, médias, données)."""
-    __tablename__ = "service_results"
-    # Champs : execution_id, result_type, content, file_path, metadata
-
-class UserServicePreference(Base):
-    """Préférences utilisateur par service."""
-    __tablename__ = "user_service_preferences"
-    # Champs : user_id, service_slug, preferences, is_favorite, usage_count
+class CreditAccount(Base):
+    """Portefeuille de crédits : une génération payante débite ici."""
+    __tablename__ = "credit_accounts"
+    # user_id (unique), balance
 ```
+
+`ExecutionStep` est la « table steps » : chaque étape exécutée y est persistée,
+ce qui rend l'exécution auditable et **reprenable** (un job interrompu peut
+repartir de sa dernière étape). Des raffinements ultérieurs (résultats médias
+détaillés, préférences utilisateur par service) viendront s'ajouter au besoin.
+
+## Le Moteur d'Orchestration
+
+Le moteur (`app/modules/agentic/engine.py`) exécute un workflow : il enchaîne les
+steps déclarés, **passe un `context` accumulé** d'une étape à la suivante (la
+sortie de `analyze` nourrit `lyrics`, etc.), trace chaque étape dans
+`execution_steps`, et remplit le résultat. C'est le pipeline du GitSky Studio
+(Chap 24) généralisé et rendu piloté par YAML.
+
+Deux principes hérités du Studio :
+
+- **Stub par défaut.** Sans LLM proxy configuré, `call_llm` renvoie une réponse
+  simulée déterministe, et un tool comme `suno_generate` renvoie une URL d'exemple.
+  On développe et teste **sans aucune clé** ; le réel s'active en fournissant les
+  variables d'environnement (proxy LLM, `SUNO_API_KEY`).
+- **Sortie structurée et tracée.** Le résultat expose la sortie de chaque step,
+  plus une clé `output` pratique (le dernier texte d'agent — les paroles, pour un
+  aperçu).
+
+## Tâches Longues : Job Asynchrone, sans Broker
+
+La génération média délègue le gros du travail à une **API externe** (Suno) : le
+backend ne calcule rien, il **attend**. Inutile donc d'introduire un worker
+Celery + broker (qui casserait la densité de la flotte, Chap 2/21). Le pattern
+retenu, pour un workflow listé dans `async_workflows` :
+
+1. `execute` débite les crédits, crée l'exécution `pending`, lance le pipeline en
+   **tâche de fond in-process** (`asyncio`) et **rend la main immédiatement**
+   (submit-and-return) — la connexion HTTP n'est jamais tenue pendant des minutes.
+2. Le client **suit** l'avancement via `GET /executions/{id}` (polling) jusqu'à
+   `completed`.
+3. Si une étape échoue, l'exécution passe `failed` et les crédits sont remboursés.
+
+Les étapes étant **I/O-bound** (appels LLM et API), une simple tâche async suffit :
+la durabilité vient de la ligne d'exécution persistée + des checkpoints
+`ExecutionStep`. Pour une API réellement asynchrone (soumission puis webhook de
+fin), l'exécution passerait par un statut `awaiting_callback` repris par un
+endpoint webhook — extension documentée, non nécessaire tant que le tool répond
+en ligne.
 
 ## API Agent-Services
 
@@ -155,42 +208,48 @@ Le backend expose une API REST complète pour interagir avec le framework :
 ### Endpoints Principaux
 
 ```python
-# backend/app/routers/agent_services.py
+# app/modules/agentic/router.py
 
-# Liste des services disponibles
-GET /api/agent-services/services
+# Catalogue des services (public)
+GET  /api/agent-services/services
+GET  /api/agent-services/services/{service_slug}
 
-# Détails d'un service spécifique
-GET /api/agent-services/services/{service_slug}
+# Solde de crédits de l'utilisateur (auth)
+GET  /api/agent-services/credits
 
-# Exécution d'un service
+# Exécution d'un workflow (auth)
 POST /api/agent-services/services/{service_slug}/execute
-Body: { "workflow_name": "daily_news_digest", "parameters": {...} }
+Body: { "workflow_name": "song", "parameters": {...} }
+#  - workflow court           -> synchrone : renvoie `completed` + résultat ;
+#  - workflow dans async_workflows -> submit-and-return : renvoie `pending` + id.
 
-# Suivi des exécutions
-GET /api/agent-services/executions/{execution_id}
-
-# Liste des outils disponibles
-GET /api/agent-services/tools
+# Suivi / polling d'une exécution (auth)
+GET  /api/agent-services/executions/{execution_id}
 ```
+
+Il n'y a pas d'endpoint « liste des outils » : un tool n'est pas exposé seul, il
+est un **type de step** référencé par nom depuis le YAML (`type: tool`).
 
 ### Exemple d'Exécution
 
 ```python
 import requests
 
-# Exécuter le service News Scraper
+# Lancer la génération complète (workflow asynchrone)
 response = requests.post(
-    "https://api.votre-domaine.com/api/agent-services/services/news_scraper/execute",
+    "https://api.votre-domaine.com/api/agent-services/services/song_generator/execute",
     headers={"Authorization": "Bearer <token>"},
     json={
-        "workflow_name": "daily_news_digest",
-        "parameters": {
-            "topics": ["artificial intelligence", "machine learning"],
-            "num_articles": 10,
-            "language": "en"
-        }
-    }
+        "workflow_name": "song",
+        "parameters": {"singer": "Slah", "theme": "Exil", "rhythm": "Saltana"},
+    },
+)
+job_id = response.json()["id"]      # statut initial : "pending"
+
+# Puis suivre le job jusqu'à "completed" (polling)
+requests.get(
+    f"https://api.votre-domaine.com/api/agent-services/executions/{job_id}",
+    headers={"Authorization": "Bearer <token>"},
 )
 ```
 
@@ -230,8 +289,8 @@ frontend/src/
        name: "Mon Nouveau Service"
        description: "Description du service"
        category: "custom"
-       agents: [...]
-       workflows: [...]
+       steps: { ... }          # agents et/ou tools
+       workflows: { ... }      # listes ordonnées de noms de steps
    ```
 
 2. **Implémenter la logique métier**
