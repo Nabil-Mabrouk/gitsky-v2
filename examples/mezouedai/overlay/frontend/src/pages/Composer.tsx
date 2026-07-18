@@ -12,6 +12,9 @@ type Catalog = {
 };
 
 const SECTIONS = ["intro", "couplet", "refrain", "pont", "outro"];
+const SERVICE = "/api/agent-services";
+const EXEC = `${SERVICE}/services/mezoued-song/execute`;
+const CREDITS = `${SERVICE}/credits`;
 
 export default function Composer() {
   const [catalog, setCatalog] = useState<Catalog | null>(null);
@@ -22,13 +25,29 @@ export default function Composer() {
   const [instruments, setInstruments] = useState<string[]>([]);
   const [structure, setStructure] = useState<string[]>([]);
   const [message, setMessage] = useState("");
+  // Génération (T2) : détectée à la volée — indisponible en T1 (pas de module).
+  const [genAvailable, setGenAvailable] = useState(false);
+  const [credits, setCredits] = useState<number | null>(null);
+  const [concept, setConcept] = useState("");
+  const [audioUrl, setAudioUrl] = useState("");
+  const [busy, setBusy] = useState(false);
   const dragIndex = useRef<number | null>(null);
 
   useEffect(() => {
-    apiFetch("/api/songs/catalog")
+    apiFetch(`${"/api/songs"}/catalog`)
       .then((r) => r.json())
       .then(setCatalog)
       .catch(() => setMessage("Catalogue indisponible"));
+    // Détection de la génération agentique (présente uniquement en T2).
+    apiFetch(CREDITS)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (d) {
+          setGenAvailable(true);
+          setCredits(d.balance);
+        }
+      })
+      .catch(() => {});
   }, []);
 
   const toggleInstrument = (name: string) =>
@@ -48,8 +67,6 @@ export default function Composer() {
       return next;
     });
 
-  // Drag-and-drop natif (progressive enhancement ; les flèches ↑↓ restent la
-  // voie accessible et testable).
   const onDrop = (target: number) => {
     const src = dragIndex.current;
     dragIndex.current = null;
@@ -61,6 +78,19 @@ export default function Composer() {
       return next;
     });
   };
+
+  const voiceOf = (name: string) =>
+    catalog?.singers.find((s) => s.name === name)?.voice ?? "";
+
+  const params = () => ({
+    title,
+    singer,
+    voice: voiceOf(singer),
+    theme,
+    rhythm,
+    instruments,
+    structure,
+  });
 
   const save = async () => {
     setMessage("");
@@ -79,11 +109,79 @@ export default function Composer() {
     }
   };
 
+  // Concept : workflow synchrone (analyze + lyrics) — aperçu des paroles.
+  const runConcept = async () => {
+    setBusy(true);
+    setConcept("");
+    setMessage("");
+    const res = await apiFetch(EXEC, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ workflow_name: "concept", parameters: params() }),
+    });
+    if (res.ok) {
+      const ex = await res.json();
+      setConcept(ex.result?.output ?? "");
+    } else if (res.status === 401) {
+      setMessage("Connecte-toi pour générer.");
+    } else {
+      setMessage("Échec du concept.");
+    }
+    setBusy(false);
+  };
+
+  // Generate : workflow long asynchrone (submit-and-return) — on poll le job
+  // jusqu'à obtenir l'URL audio.
+  const runGenerate = async () => {
+    setBusy(true);
+    setAudioUrl("");
+    setMessage("");
+    const res = await apiFetch(EXEC, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ workflow_name: "song", parameters: params() }),
+    });
+    if (res.status === 402) {
+      setMessage("Crédits insuffisants.");
+      setBusy(false);
+      return;
+    }
+    if (!res.ok) {
+      setMessage("Échec du lancement.");
+      setBusy(false);
+      return;
+    }
+    const job = await res.json();
+    for (let i = 0; i < 60; i++) {
+      const r = await apiFetch(`${SERVICE}/executions/${job.id}`);
+      const ex = await r.json();
+      if (ex.status === "completed") {
+        setAudioUrl(ex.result?.suno?.audio_url ?? "");
+        break;
+      }
+      if (ex.status === "failed") {
+        setMessage("La génération a échoué.");
+        break;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 800));
+    }
+    const cr = await apiFetch(CREDITS);
+    if (cr.ok) setCredits((await cr.json()).balance);
+    setBusy(false);
+  };
+
   if (!catalog) return <p>Chargement du catalogue…</p>;
 
   return (
     <div className="grid gap-8" style={{ maxWidth: 720 }}>
-      <h1 className="text-2xl font-bold">Compose ta chanson</h1>
+      <div className="flex items-center gap-3">
+        <h1 className="text-2xl font-bold">Compose ta chanson</h1>
+        {genAvailable && credits !== null && (
+          <span className="text-sm border rounded px-2 py-1" data-testid="credits">
+            {credits} crédits
+          </span>
+        )}
+      </div>
 
       <label className="grid gap-1">
         <span className="font-medium">Titre</span>
@@ -179,18 +277,42 @@ export default function Composer() {
         </ol>
       </section>
 
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-3 flex-wrap">
         <button onClick={save} className="border rounded px-4 py-2 font-medium">
           Sauvegarder
         </button>
-        <button disabled title="Disponible en T2" className="border rounded px-4 py-2 opacity-50">
+        <button
+          onClick={runConcept}
+          disabled={!genAvailable || busy}
+          title={genAvailable ? "" : "Disponible en T2"}
+          className="border rounded px-4 py-2"
+        >
           Concept
         </button>
-        <button disabled title="Disponible en T2" className="border rounded px-4 py-2 opacity-50">
+        <button
+          onClick={runGenerate}
+          disabled={!genAvailable || busy}
+          title={genAvailable ? "" : "Disponible en T2"}
+          className="border rounded px-4 py-2"
+        >
           Generate
         </button>
         {message && <span role="status">{message}</span>}
       </div>
+
+      {concept && (
+        <section className="grid gap-2">
+          <h2 className="font-medium">Paroles (aperçu)</h2>
+          <pre className="border rounded p-3 whitespace-pre-wrap">{concept}</pre>
+        </section>
+      )}
+
+      {audioUrl && (
+        <section className="grid gap-2">
+          <h2 className="font-medium">Ta chanson</h2>
+          <audio controls src={audioUrl} data-testid="audio-player" />
+        </section>
+      )}
     </div>
   );
 }

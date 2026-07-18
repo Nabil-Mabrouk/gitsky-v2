@@ -1,18 +1,21 @@
-# Services agentic déclaratifs (Chap 15). Ajouter un service ici ne demande
-# aucun code Python : le moteur générique traite tout service respectant le schéma.
+# Services agentic déclaratifs (Chap 15). Un service = des `steps` (chacun
+# `type: agent` [appel LLM] ou `type: tool` [callable enregistré]) et des
+# `workflows` (listes ordonnées de noms de steps). Un workflow listé dans
+# `async_workflows` s'exécute en job de fond (submit-and-return) ; les autres
+# sont synchrones. Ajouter un service ne demande aucun code Python.
 services:
   template_service:
     enabled: true
     name: "Service Exemple"
-    description: "Service de démonstration du framework agentic"
+    description: "Service de démonstration du moteur agentic"
     category: "demo"
-    requires_auth: true
-    agents:
-      - name: "echo_agent"
+    cost_credits: 0
+    steps:
+      greet:
+        type: agent
         model: "claude-sonnet-4-6"
         system_prompt: "Tu es un assistant de démonstration."
         temperature: 0.3
     workflows:
-      - name: "example_workflow"
-        description: "Workflow de démonstration"
-        steps: ["greet"]
+      example_workflow: [greet]
+    async_workflows: []

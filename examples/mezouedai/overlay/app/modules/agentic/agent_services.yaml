@@ -1,0 +1,45 @@
+# Services agentic de MezouedAI (overlay projet — remplace le service démo).
+#
+# Le pipeline de génération d'une chanson : analyse de la demande -> écriture des
+# paroles -> description du style -> appel Suno. Deux workflows partagent ces
+# étapes :
+#   - `concept` (analyze + lyrics) : synchrone, aperçu peu coûteux (bouton Concept) ;
+#   - `song` (tout) : asynchrone et payant (bouton Generate), débit de crédits.
+services:
+  mezoued-song:
+    enabled: true
+    name: "Générateur de chanson mezoued"
+    description: "Compose une chanson de mezoued à partir des préférences de l'utilisateur"
+    category: "music"
+    cost_credits: 3
+    steps:
+      analyze:
+        type: agent
+        model: "claude-sonnet-5"
+        system_prompt: >
+          Tu es directeur artistique de mezoued (musique populaire tunisienne).
+          À partir des préférences (chanteur, thème, rythme, instruments,
+          structure), résume en 3 lignes l'intention artistique de la chanson.
+        temperature: 0.5
+      lyrics:
+        type: agent
+        model: "claude-opus-4-8"
+        system_prompt: >
+          Tu es parolier de mezoued. Écris des paroles en arabe tunisien
+          (transcrites en caractères latins), fidèles au thème et à la structure
+          demandée (une section par bloc : intro, refrain, couplet, pont, outro).
+        temperature: 0.8
+      style:
+        type: agent
+        model: "claude-sonnet-5"
+        system_prompt: >
+          Décris en une phrase le style musical (tempo, instruments, ambiance)
+          pour guider la génération audio, à partir du rythme et des instruments.
+        temperature: 0.4
+      suno:
+        type: tool
+        tool: suno_generate
+    workflows:
+      concept: [analyze, lyrics]
+      song: [analyze, lyrics, style, suno]
+    async_workflows: [song]

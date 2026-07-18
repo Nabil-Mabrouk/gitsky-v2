@@ -1,0 +1,37 @@
+# MezouedAI — configuration de génération, tier T2 (produit agentique complet).
+#
+# T2 active le catalogue complet de modules (auth, analytics, sécurité, i18n,
+# onboarding, agentic, monetization). C'est le tier où vit la génération : un
+# pipeline d'agents écrit les paroles, décrit le style et appelle Suno.
+project:
+  name: mezouedai
+  tier: t2
+  domain: mezouedai.com
+
+branding:
+  primary_color: "#C8452D"
+  primary_foreground: "#FFFFFF"
+  font_family: "Inter"
+
+# Mêmes modèles métier qu'en T1 (persistance des chansons + catalogues).
+data_models:
+  - name: Singer
+    fields: { name: str, voice: str, avatar: str, tagline: str }
+  - name: Theme
+    fields: { name: str, description: str }
+  - name: Rhythm
+    fields: { name: str, bpm: int, description: str }
+  - name: Instrument
+    fields: { name: str, family: str }
+  - name: Song
+    fields:
+      user_id: int
+      title: str
+      singer: str
+      theme: str
+      rhythm: str
+      instruments: text
+      structure: text
+      lyrics: text
+      status: str
+      audio_url: str

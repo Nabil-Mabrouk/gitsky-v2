@@ -12,7 +12,7 @@ GitSky *idée → landing → app → produit agentique complet* :
 |------|--------|---------------------|
 | **T0** | `config.t0.yaml` | Landing de validation (blocs, SEO, capture d'emails) |
 | **T1** | `config.t1.yaml` + overlay | App avec comptes + modèles métier scaffoldés + interface de composition (drag-and-drop) |
-| **T2** | `config.t2.yaml` + overlay | Génération agentique de bout en bout + Suno + crédits (à venir) |
+| **T2** | `config.t2.yaml` + overlay | Génération agentique de bout en bout : pipeline d'agents + Suno + crédits |
 
 À partir de T1, une partie du code est **bespoke** (routeur métier, pages front)
 et ne peut pas s'exprimer en config générateur : elle vit dans `overlay/` et se
@@ -68,3 +68,18 @@ python -m http.server 4173      # http://localhost:4173/landing.html
 
 > La capture d'email poste vers `/leads` (le collecteur partagé en prod) — sans
 > effet en local, c'est normal.
+
+## T2 : générer une chanson
+
+À T2, le compositeur active deux boutons (le stub Suno rend une URL audio
+d'exemple, donc aucun secret requis) :
+
+- **Concept** → workflow synchrone `analyze + lyrics` : un aperçu des paroles.
+- **Generate** → workflow long `analyze + lyrics + style + suno`, lancé comme
+  **job asynchrone** (l'API rend la main tout de suite), suivi par polling
+  jusqu'à obtenir l'URL audio. Débite des crédits (10 au départ, 3 par chanson).
+
+Le moteur d'orchestration, le tool Suno et le portefeuille de crédits sont
+**réutilisables** (`src/generator/template/app/modules/agentic/`) ; MezouedAI ne
+fournit que la déclaration du workflow (`overlay/app/modules/agentic/agent_services.yaml`)
+et le câblage UI.
