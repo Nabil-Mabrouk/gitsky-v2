@@ -69,6 +69,16 @@ class Settings(BaseSettings):
     environment: str = "development"
     gitsky_tier: str = "t0"
 
+    # SEO (Chap 10, core à tous les tiers). `site_url` est l'origine publique
+    # canonique du projet (https://mon-projet.com) — sert de préfixe absolu aux
+    # URLs du sitemap et à la ligne Sitemap: de robots.txt. En dev on retombe
+    # sur frontend_url ; la prod fournit le vrai domaine via l'environnement.
+    site_url: str = "http://localhost:5173"
+    # Langues indexées, la première étant la langue par défaut (sans préfixe
+    # d'URL). Le sitemap n'émet des alternates hreflang que si module_i18n est
+    # actif ET qu'au moins deux langues sont déclarées (Chap 10 §i18n).
+    supported_languages: list[str] = ["fr"]
+
     # SQLAlchemy async. Défaut SQLite local pour le dev ; la prod fournit une
     # URL PostgreSQL asyncpg (postgresql+asyncpg://...) via l'environnement.
     database_url: str = "sqlite+aiosqlite:///./gitsky.db"

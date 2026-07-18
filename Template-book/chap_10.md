@@ -34,23 +34,30 @@ Pour que les robots d'indexation découvrent tout le contenu, un fichier `sitema
 
 ### Génération Côté Backend (FastAPI)
 
-L'endpoint `/sitemap.xml` parcourt les tables publiques exposées par les modules activés — par exemple `Tutorial` si `MODULE_TUTORIALS=true`, `Product` si `MODULE_MONETIZATION_SHOP=true` — et génère un flux XML listant toutes les URLs indexables avec leur date de dernière modification.
+L'endpoint `/sitemap.xml` parcourt les tables publiques exposées par les modules activés — par exemple `Tutorial` si `MODULE_TUTORIALS=true`, `Product` si `MODULE_MONETIZATION_SHOP=true` — et génère un flux XML listant les URLs **indexables** (les pages publiques uniquement). Chaque module importe ses modèles **à l'intérieur du `if`** : c'est le même chargement conditionnel que pour les routeurs (Chap 5 §3), et il garantit qu'un module désactivé n'introduit ni ses URLs ni ses dépendances dans le sitemap.
+
+Le critère « indexable » s'appuie sur les champs réels de chaque modèle : un tutorial l'est quand son `access_role` vaut `anonymous` (page publique, cf. Chap 11), un produit quand il est `is_active`. La stack étant asynchrone (Chap 3), la requête passe par `await db.execute(select(...))`.
 
 ```python
 # app/core/seo.py — extrait
-@router.get("/sitemap.xml", response_class=Response)
-async def sitemap(db: Session = Depends(get_db)):
+@router.get("/sitemap.xml")
+async def sitemap(db: AsyncSession = Depends(get_db)) -> Response:
     urls = _static_urls()
     if settings.module_tutorials:
+        from app.core.models import UserRole
         from app.modules.tutorials.models import Tutorial
-        urls += _tutorial_urls(db.query(Tutorial).filter(Tutorial.is_published).all())
+        rows = (await db.execute(
+            select(Tutorial).where(Tutorial.access_role == UserRole.anonymous)
+        )).scalars().all()
+        urls += [SeoUrl(path=f"/learn/{t.slug}") for t in rows]
     if settings.module_monetization_shop:
         from app.modules.monetization.models import Product
-        urls += _product_urls(db.query(Product).filter(Product.is_active).all())
-    return Response(content=_render_xml(urls), media_type="application/xml")
+        rows = (await db.execute(
+            select(Product).where(Product.is_active.is_(True))
+        )).scalars().all()
+        urls += [SeoUrl(path=f"/shop/{p.slug}") for p in rows]
+    return Response(content=_render_sitemap(urls), media_type="application/xml")
 ```
-
-Ce pattern garantit qu'un module désactivé n'introduit ni ses URLs ni ses dépendances dans le sitemap.
 
 ## Données Structurées (JSON-LD)
 

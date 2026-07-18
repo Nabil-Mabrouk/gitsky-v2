@@ -18,6 +18,12 @@ settings = get_settings()
 
 app = FastAPI(title=f"GitSky — {settings.project_name}")
 
+# --- Core : SEO (Chap 10). Présent à tous les tiers, pas de flag MODULE_*.
+# Monté à la racine : /sitemap.xml et /robots.txt doivent vivre à l'origine.
+from app.core.seo import router as seo_router  # noqa: E402
+
+app.include_router(seo_router, tags=["seo"])
+
 # --- Modules optionnels : import à l'INTÉRIEUR du if (règle Chap 5 §3) ---
 
 if settings.module_security_middleware:
