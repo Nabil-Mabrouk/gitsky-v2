@@ -4,8 +4,8 @@ Ce dépôt réunit **deux projets** liés :
 
 | Dossier | Contenu |
 |---------|---------|
-| [`formation-claude-code/`](formation-claude-code/) | Un **cursus de formation** (français) à l'usage professionnel de Claude Code : 9 modules + évaluation finale. 100 % Markdown, aucun code. Voir son [README](formation-claude-code/README.md). |
-| [`Template-book/`](Template-book/) + [`src/`](src/) | **GitSky** : le livre d'une *startup-factory* (`Template-book/`) et son implémentation de référence (`src/`) — un générateur de projets web (FastAPI + React) tiérisés T0/T1/T2. |
+| [`docs/formation-claude-code/`](docs/formation-claude-code/) | Un **cursus de formation** (français) à l'usage professionnel de Claude Code : 9 modules + évaluation finale. 100 % Markdown, aucun code. Voir son [README](docs/formation-claude-code/README.md). |
+| [`docs/Template-book/`](docs/Template-book/) + [`src/`](src/) | **GitSky** : le livre d'une *startup-factory* (`docs/Template-book/`) et son implémentation de référence (`src/`) — un générateur de projets web (FastAPI + React) tiérisés T0/T1/T2. |
 
 Le reste de ce README concerne **GitSky** (le code).
 
@@ -81,12 +81,12 @@ docker compose -f docker-compose.dev.yml up --build
 
 Le `docker-compose.yml` (sans suffixe) est le déploiement **production** : images
 buildées, réseau `proxy-net`, TLS Let's Encrypt — il n'est pas destiné au poste
-local. Voir `Template-book/` (Chap. 21–23) pour le déploiement.
+local. Voir `docs/Template-book/` (Chap. 21–23) pour le déploiement.
 
 ## Conventions de contribution
 
 - Tout le code GitSky vit sous `src/`.
 - **Chaque changement est accompagné d'un test** et validé en le lançant.
 - On ne contourne pas un test qui échoue en l'affaiblissant : on corrige le code.
-- Le **livre (`Template-book/`) fait foi** : si le code diverge du plan, on
+- Le **livre (`docs/Template-book/`) fait foi** : si le code diverge du plan, on
   s'arrête et on tranche avant de modifier le livre.
