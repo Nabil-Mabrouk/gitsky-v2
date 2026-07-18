@@ -1,0 +1,24 @@
+# Dockerfile.dev — image de DÉVELOPPEMENT du frontend (Vite + HMR).
+#
+# La PRODUCTION utilise le Dockerfile multi-stage (build -> `dist` servi par
+# `serve`). Ici, le serveur de dev Vite sert directement les sources avec
+# rechargement à chaud. Utilisé uniquement par docker-compose.dev.yml.
+#
+# Ne pas éditer à la main : modifier le template du générateur.
+FROM node:24-alpine
+
+WORKDIR /app
+
+# npm ci installe exactement le lockfile. node_modules est ensuite préservé par
+# un volume anonyme dans le compose de dev (le montage du code source ne l'écrase
+# donc pas).
+COPY package.json package-lock.json ./
+RUN npm ci
+
+COPY . .
+
+EXPOSE 5173
+
+# --host 0.0.0.0 est indispensable : sans lui, Vite n'écoute que sur la loopback
+# INTERNE au conteneur et le port publié reste injoignable depuis l'hôte.
+CMD ["npm", "run", "dev", "--", "--host", "0.0.0.0"]
