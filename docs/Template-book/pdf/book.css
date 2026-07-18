@@ -1,0 +1,125 @@
+/* Feuille de style d'impression du livre GitSky (pandoc HTML -> Edge -> PDF). */
+
+@page {
+  size: A4;
+  margin: 18mm 20mm 20mm 20mm;
+}
+
+html { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+
+body {
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 11pt;
+  line-height: 1.55;
+  color: #1a1a1a;
+  margin: 0;
+  hyphens: auto;
+}
+
+/* ---- Couverture (bloc titre pandoc) ---- */
+#title-block-header {
+  text-align: center;
+  min-height: 92vh;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  page-break-after: always;
+  border-bottom: none;
+}
+#title-block-header .title {
+  font-size: 3.4em;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: #C8452D;
+  margin: 0 0 0.2em;
+  border: none;
+}
+#title-block-header .subtitle {
+  font-size: 1.4em;
+  font-style: italic;
+  color: #444;
+  margin: 0 0 2em;
+}
+#title-block-header .author,
+#title-block-header .date { font-size: 1.05em; color: #333; margin: 0.2em 0; }
+
+/* ---- Table des matières ---- */
+nav#TOC {
+  page-break-after: always;
+}
+nav#TOC::before {
+  content: "Table des matières";
+  display: block;
+  font-size: 1.8em;
+  font-weight: 700;
+  color: #C8452D;
+  margin-bottom: 0.8em;
+}
+nav#TOC ul { list-style: none; padding-left: 1.2em; }
+nav#TOC > ul { padding-left: 0; }
+nav#TOC a { color: #1a1a1a; text-decoration: none; }
+nav#TOC > ul > li { margin: 0.35em 0; font-weight: 600; }
+nav#TOC > ul > li > ul { font-weight: 400; font-size: 0.95em; }
+
+/* ---- Titres ---- */
+h1 {
+  page-break-before: always;
+  font-size: 2em;
+  color: #C8452D;
+  border-bottom: 2px solid #C8452D;
+  padding-bottom: 0.15em;
+  margin: 0 0 0.8em;
+}
+h1.unnumbered { }
+h2 { font-size: 1.4em; margin: 1.6em 0 0.5em; color: #222; }
+h3 { font-size: 1.15em; margin: 1.3em 0 0.4em; color: #333; }
+h4 { font-size: 1.02em; margin: 1.1em 0 0.3em; color: #444; }
+h2, h3, h4 { page-break-after: avoid; }
+
+p { margin: 0.6em 0; orphans: 3; widows: 3; }
+
+/* ---- Code ---- */
+code {
+  font-family: "Consolas", "DejaVu Sans Mono", "Courier New", monospace;
+  font-size: 0.92em;
+  background: #f0f0f0;
+  padding: 0.1em 0.3em;
+  border-radius: 3px;
+}
+pre {
+  font-family: "Consolas", "DejaVu Sans Mono", "Courier New", monospace;
+  font-size: 8.4pt;
+  line-height: 1.32;
+  background: #f7f7f7;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  padding: 0.7em 0.9em;
+  white-space: pre;
+  overflow: visible;
+  page-break-inside: avoid;
+}
+pre code { background: none; padding: 0; font-size: inherit; }
+
+/* ---- Tableaux ---- */
+table {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 1em 0;
+  font-size: 9.5pt;
+  page-break-inside: avoid;
+}
+th, td { border: 1px solid #ccc; padding: 5px 8px; text-align: left; vertical-align: top; }
+th { background: #f0f0f0; font-weight: 700; }
+
+/* ---- Divers ---- */
+blockquote {
+  border-left: 3px solid #C8452D;
+  margin: 1em 0;
+  padding: 0.2em 0 0.2em 1em;
+  color: #555;
+}
+a { color: #0b5; text-decoration: none; }
+ul, ol { padding-left: 1.4em; }
+li { margin: 0.25em 0; }
+img { max-width: 100%; }
+hr { border: none; border-top: 1px solid #ccc; margin: 2em 0; }

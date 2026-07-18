@@ -17,6 +17,9 @@ dist/
 # SQLite (dev + artefacts de test)
 *.db
 
+# Livre : HTML intermédiaire du build PDF (le .pdf, lui, est versionné)
+docs/Template-book/pdf/gitsky-book.html
+
 # OS
 .DS_Store
 Thumbs.db
