@@ -7,6 +7,8 @@ Reproduit le pattern de chargement conditionnel du Chap 3 / Chap 5 :
   et ne coûte donc aucune RAM.
 """
 
+from contextlib import asynccontextmanager
+
 from fastapi import Depends, FastAPI, HTTPException
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -16,7 +18,28 @@ from app.core.database import get_db
 
 settings = get_settings()
 
-app = FastAPI(title=f"GitSky — {settings.project_name}")
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    # DEV uniquement : crée les tables sans Alembic — le dev-compose n'a pas
+    # d'étape `migrate`, on veut néanmoins une app qui tourne d'un `up`. La PROD
+    # crée les tables via les migrations (service `migrate`), JAMAIS par
+    # create_all — d'où le garde sur ENVIRONMENT.
+    if settings.environment == "development":
+        import app.core.models  # noqa: F401  (enregistre User)
+
+        try:
+            import app.domain.models  # noqa: F401  (tables métier scaffoldées)
+        except ImportError:
+            pass
+        from app.core.database import Base, engine
+
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
+    yield
+
+
+app = FastAPI(title=f"GitSky — {settings.project_name}", lifespan=lifespan)
 
 # --- Core : SEO (Chap 10). Présent à tous les tiers, pas de flag MODULE_*.
 # Monté à la racine : /sitemap.xml et /robots.txt doivent vivre à l'origine.
@@ -89,6 +112,21 @@ if settings.module_fleet:
     from app.modules.fleet import router as fleet_router
 
     app.include_router(fleet_router, prefix="/api/fleet", tags=["fleet"])
+
+# --- Métier : le core inclut tout APIRouter exposé par app.domain.routers
+# (scaffolding data_models/domain_routes, ou code métier du projet). Chaque
+# routeur porte son propre prefix. Import optionnel : dans un projet généré,
+# app/domain/routers.py existe (rendu depuis le .jinja) ; sans routeur métier,
+# la boucle ne fait rien.
+try:
+    from app.domain import routers as _domain_routers  # noqa: E402
+except ImportError:
+    _domain_routers = None
+
+if _domain_routers is not None:
+    for _name in dir(_domain_routers):
+        if _name.endswith("_router"):
+            app.include_router(getattr(_domain_routers, _name))
 
 
 @app.get("/health")

@@ -11,8 +11,12 @@ GitSky *idée → landing → app → produit agentique complet* :
 | Tier | Config | Ce qui est démontré |
 |------|--------|---------------------|
 | **T0** | `config.t0.yaml` | Landing de validation (blocs, SEO, capture d'emails) |
-| **T1** | `config.t1.yaml` | App avec comptes + modèles métier + interface de composition (à venir) |
-| **T2** | `config.t2.yaml` | Génération agentique de bout en bout + Suno + crédits (à venir) |
+| **T1** | `config.t1.yaml` + overlay | App avec comptes + modèles métier scaffoldés + interface de composition (drag-and-drop) |
+| **T2** | `config.t2.yaml` + overlay | Génération agentique de bout en bout + Suno + crédits (à venir) |
+
+À partir de T1, une partie du code est **bespoke** (routeur métier, pages front)
+et ne peut pas s'exprimer en config générateur : elle vit dans `overlay/` et se
+copie par-dessus l'arbre généré via `apply-overlay.sh`.
 
 Les briques **réutilisables** que ce produit a forcées (moteur d'agents, tool
 d'API externe, job async) vivent dans le générateur (`src/generator/template/`),
@@ -32,6 +36,12 @@ run_copy('src/generator', 'out/mezouedai-t0', data=data, defaults=True, unsafe=T
 ```
 
 (Remplacer `t0` par `t1` / `t2` pour les autres tiers.)
+
+### À partir de T1 : appliquer l'overlay bespoke
+
+```bash
+./examples/mezouedai/apply-overlay.sh out/mezouedai-t1
+```
 
 ## Lancer
 

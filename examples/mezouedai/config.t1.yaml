@@ -1,0 +1,39 @@
+# MezouedAI — configuration de génération, tier T1 (app + comptes + composition).
+#
+# T1 active auth/analytics/security (profil de tier). L'utilisateur se connecte,
+# compose la *spec* d'une chanson (chanteur, thème, rythme, instruments,
+# structure) et la sauvegarde. Pas encore de génération (Concept/Generate = T2).
+project:
+  name: mezouedai
+  tier: t1
+  domain: mezouedai.com
+
+branding:
+  primary_color: "#C8452D"
+  primary_foreground: "#FFFFFF"
+  font_family: "Inter"
+
+# Modèles métier scaffoldés dans app/domain/models.py (Chap 17). Tables plates :
+# la structure/les instruments d'une chanson sont stockés en JSON (colonne text),
+# ce que le scaffolder sait produire (pas de relations FK).
+data_models:
+  - name: Singer
+    fields: { name: str, voice: str, avatar: str, tagline: str }
+  - name: Theme
+    fields: { name: str, description: str }
+  - name: Rhythm
+    fields: { name: str, bpm: int, description: str }
+  - name: Instrument
+    fields: { name: str, family: str }
+  - name: Song
+    fields:
+      user_id: int
+      title: str
+      singer: str
+      theme: str
+      rhythm: str
+      instruments: text     # JSON: ["mezoued", "darbouka", ...]
+      structure: text       # JSON: ["intro", "refrain", "couplet", ...]
+      lyrics: text
+      status: str
+      audio_url: str
