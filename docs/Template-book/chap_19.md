@@ -140,6 +140,8 @@ Un projet n'est pas "vivant" dans la flotte tant qu'il n'est pas enregistré dan
 
 Cette convention garantit qu'aucun projet ne peut exister « en dehors » du dashboard, échappant au kill mechanism ou à la comptabilité budgétaire.
 
+**Cet endpoint est protégé.** `register` n'est pas une route utilisateur (le générateur n'a ni compte ni JWT) : elle est gardée par un **token partagé machine-à-machine**, exigé dans l'en-tête `X-Fleet-Token` et comparé à `FLEET_REGISTER_TOKEN` (comparaison à temps constant). Le générateur l'envoie depuis son environnement. Même sémantique que les autres stubs du châssis : ouvert en développement sans token, mais **fail-closed** en production — un token non configuré fait répondre `503`, jamais un register public. Sans ce garde-fou, n'importe qui pouvait créer ou **écraser** (tier, domaine) les projets de la flotte. La lecture des stats du landing collector (Chap 18) suit exactement le même modèle (`X-Collector-Token`).
+
 ## Un Kill est un Événement du Dashboard, pas un Script Manuel
 
 L'exécution du kill mechanism passe **toujours** par le dashboard, jamais par un `docker compose down` ad hoc — sinon l'archivage, la libération des ressources et la journalisation ne se font pas. Cette discipline est ce qui permet aux calculs de ROI de flotte de rester justes à long terme.

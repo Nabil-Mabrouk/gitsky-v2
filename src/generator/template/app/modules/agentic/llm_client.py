@@ -12,6 +12,13 @@ import os
 def call_llm(model: str, messages: list[dict], temperature: float = 0.3) -> str:
     base_url = os.environ.get("LLM_PROXY_URL", "")
     if not base_url:
+        # Fail-closed : en production, servir le stub reviendrait à facturer des
+        # crédits pour des réponses simulées.
+        if os.environ.get("ENVIRONMENT", "").lower() == "production":
+            raise RuntimeError(
+                "LLM_PROXY_URL manquant alors que ENVIRONMENT=production — "
+                "refus du mode stub (fail-closed)"
+            )
         last = messages[-1]["content"] if messages else ""
         return f"[stub:{model}] réponse simulée à: {last}"
 

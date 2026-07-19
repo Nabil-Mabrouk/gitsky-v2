@@ -35,6 +35,19 @@ GitSky utilise une stratégie hybride pour sécuriser les sessions :
 
 Le refresh est déclenché automatiquement par un intercepteur `apiFetch` lorsque l'API renvoie un `401` — l'utilisateur ne perçoit rien.
 
+## Fin de Session et Révocation
+
+Un JWT est *stateless* : une fois émis, le serveur lui fait confiance jusqu'à expiration. Trois mécanismes complètent donc la stratégie hybride :
+
+1. **`POST /api/auth/logout`** — expire le cookie refresh HttpOnly côté serveur. Vider le `localStorage` ne suffit pas : sans cet appel, le refresh resterait valable 7 jours sur la machine. `AuthContext.logout()` l'appelle systématiquement. L'endpoint est volontairement sans auth : il doit fonctionner même avec un access token expiré.
+2. **`POST /api/auth/logout-all`** — révoque *tous* les refresh émis pour le compte (« déconnexion partout »). Chaque `User` porte un compteur `token_version`, embarqué dans le refresh (claim `tv`) ; l'endpoint incrémente le compteur, et `/refresh` refuse tout jeton dont le `tv` est périmé — même signé, même non expiré. C'est le seul levier de révocation d'un JWT stateless (cookie exfiltré, machine compromise).
+3. **Politique de mot de passe** — 8 caractères minimum, appliquée **au register uniquement** (`RegisterRequest`). Le login reste non contraint : un compte créé avant la règle doit toujours pouvoir se connecter.
+
+❌ `logout()` frontend qui ne vide que le localStorage — le cookie survit.
+✅ `logout()` qui appelle l'endpoint, et `logout-all` en cas de doute sur un poste.
+
+Le **rate limiting du login** (5 req/min) n'est pas dans l'application : conformément à la doctrine du Chap 14, il est porté par un routeur Traefik dédié généré dans le `docker-compose.yml` de production (voir Chap 21) — chaque essai coûtant un hachage argon2, un login illimité serait à la fois du credential stuffing et un DoS CPU à bas coût.
+
 ## Protection des Routes (Guards)
 
 Toutes les pages ne sont pas accessibles à tout le monde. Trois composants "Guards" encapsulent la logique d'accès :

@@ -49,6 +49,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   function logout() {
+    // Expire le cookie refresh HttpOnly côté serveur : sans cet appel, il
+    // resterait valable 7 jours sur la machine après la « déconnexion ».
+    void fetch(`${API}/api/auth/logout`, {
+      method: "POST",
+      credentials: "include",
+    });
     localStorage.removeItem("access_token");
     setUser(null);
   }

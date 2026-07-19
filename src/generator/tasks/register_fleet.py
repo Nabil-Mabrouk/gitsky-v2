@@ -22,6 +22,7 @@ def register(
     domain: str,
     template_version: str,
     fleet_url: str,
+    token: str = "",
     client: httpx.Client | None = None,
 ) -> None:
     payload = {
@@ -41,8 +42,13 @@ def register(
         return
 
     http = client or httpx.Client(timeout=10)
+    # Le dashboard exige X-Fleet-Token (durcissement) : sans lui, register est
+    # refusé en production.
+    headers = {"X-Fleet-Token": token} if token else {}
     response = http.post(
-        f"{fleet_url.rstrip('/')}/api/fleet/projects/register", json=payload
+        f"{fleet_url.rstrip('/')}/api/fleet/projects/register",
+        json=payload,
+        headers=headers,
     )
     response.raise_for_status()
     (out / "fleet.json").write_text(
@@ -61,6 +67,7 @@ def main() -> None:
         domain=os.environ.get("PROJECT_DOMAIN", ""),
         template_version=os.environ.get("VERSION_TO", ""),
         fleet_url=os.environ.get("FLEET_URL", ""),
+        token=os.environ.get("FLEET_REGISTER_TOKEN", ""),
     )
 
 

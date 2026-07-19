@@ -143,8 +143,11 @@ Pour la traçabilité et l'audit, le module utilise trois tables :
 class ServiceExecution(Base):
     """Exécution complète d'un workflow."""
     __tablename__ = "service_executions"
-    # user_id, service_slug, workflow_name, status, input_params, result, created_at
+    # user_id, service_slug, workflow_name, status, input_params, result,
+    # cost_credits, created_at
     # status : pending -> running -> completed | failed
+    # cost_credits : le coût réellement débité, PERSISTÉ — condition du
+    # remboursement après un redémarrage qui a tué le job en vol (voir §Jobs).
 
 class ExecutionStep(Base):
     """Une étape du workflow — checkpoint pour l'audit et la reprise."""
@@ -156,6 +159,10 @@ class CreditAccount(Base):
     __tablename__ = "credit_accounts"
     # user_id (unique), balance
 ```
+
+`ServiceExecution` porte aussi `cost_credits` : le coût réellement débité,
+**persisté** (et pas seulement passé en paramètre au job). C'est la condition
+du remboursement après coup — voir « Reprise après redémarrage » plus bas.
 
 `ExecutionStep` est la « table steps » : chaque étape exécutée y est persistée,
 ce qui rend l'exécution auditable et **reprenable** (un job interrompu peut
@@ -172,10 +179,16 @@ sortie de `analyze` nourrit `lyrics`, etc.), trace chaque étape dans
 
 Deux principes hérités du Studio :
 
-- **Stub par défaut.** Sans LLM proxy configuré, `call_llm` renvoie une réponse
-  simulée déterministe, et un tool comme `suno_generate` renvoie une URL d'exemple.
-  On développe et teste **sans aucune clé** ; le réel s'active en fournissant les
-  variables d'environnement (proxy LLM, `SUNO_API_KEY`).
+- **Stub par défaut, fail-closed en production.** Sans LLM proxy configuré,
+  `call_llm` renvoie une réponse simulée déterministe, et un tool comme
+  `suno_generate` renvoie une URL d'exemple. On développe et teste **sans aucune
+  clé** ; le réel s'active en fournissant les variables d'environnement (proxy
+  LLM, `SUNO_API_KEY`). Garde-fou impératif : si `ENVIRONMENT=production` et
+  que la clé manque, le client **lève** au lieu de servir le stub — facturer des
+  crédits pour une réponse simulée n'est jamais un fallback acceptable. Ce
+  contrat vaut pour toute intégration externe du châssis (Stripe compris,
+  Chap 16) et est verrouillé par un test paramétré
+  (`test_failclosed_contract.py`).
 - **Sortie structurée et tracée.** Le résultat expose la sortie de chaque step,
   plus une clé `output` pratique (le dernier texte d'agent — les paroles, pour un
   aperçu).
@@ -200,6 +213,26 @@ la durabilité vient de la ligne d'exécution persistée + des checkpoints
 fin), l'exécution passerait par un statut `awaiting_callback` repris par un
 endpoint webhook — extension documentée, non nécessaire tant que le tool répond
 en ligne.
+
+### Reprise après redémarrage
+
+Le revers du « job in-process » : une tâche `asyncio` ne survit pas à un
+redémarrage (deploy, crash, OOM). Sans filet, une exécution resterait
+`running` pour toujours et ses crédits, débités, ne seraient jamais rendus. Au
+démarrage de l'app (`lifespan`), avant que la moindre tâche ne tourne, toute
+exécution encore `pending`/`running` est donc **par définition orpheline** :
+`recover_orphan_executions` la passe `failed` et rembourse son `cost_credits`
+persisté. C'est précisément pourquoi le coût est stocké sur la ligne
+d'exécution et pas seulement dans la variable du job.
+
+### Propriété des exécutions
+
+`GET /executions/{id}` ne renvoie l'exécution qu'à **son propriétaire** (un
+admin gardant l'accès pour le support). Pour tout autre utilisateur, la réponse
+est `404`, pas `403` : renvoyer `403` confirmerait l'existence de l'id (fuite
+par énumération). Le débit de crédits, lui, est un `UPDATE` conditionnel
+atomique (`balance >= coût`) et non un lire-puis-écrire — sans quoi deux
+requêtes concurrentes pourraient dépenser deux fois le même solde.
 
 ## API Agent-Services
 

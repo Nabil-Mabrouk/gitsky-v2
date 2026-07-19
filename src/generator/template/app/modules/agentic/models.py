@@ -24,6 +24,10 @@ class ServiceExecution(Base):
     status = Column(String, nullable=False, default="pending")
     input_params = Column(JSON)
     result = Column(JSON)
+    # Crédits réellement débités pour ce job. Persisté (et pas seulement passé
+    # en paramètre au job) pour que le remboursement reste possible après un
+    # redémarrage qui a tué la tâche en vol (recovery.py).
+    cost_credits = Column(Integer, nullable=False, default=0, server_default="0")
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
 

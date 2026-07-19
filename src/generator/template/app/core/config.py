@@ -88,6 +88,12 @@ class Settings(BaseSettings):
     access_token_expire_minutes: int = 15
     refresh_token_expire_days: int = 7
 
+    # Token partagé exigé par POST /api/fleet/projects/register (header
+    # X-Fleet-Token). Vide en dev = endpoint ouvert (philosophie stub) ; en
+    # production un token vide REFUSE tout register (fail-closed) — sans ça,
+    # n'importe qui pouvait créer/écraser les projets de la flotte.
+    fleet_register_token: str = ""
+
     # None = « non spécifié » -> rempli par le profil de tier.
     module_auth: bool | None = None
     module_admin: bool | None = None

@@ -49,7 +49,19 @@ def _git(cwd: Path, *args: str) -> None:
 
 
 def _make_versioned_template(dst: Path) -> None:
-    shutil.copytree(GENERATOR, dst)
+    # Copie fidèle à un CHECKOUT GIT du template : node_modules, __pycache__ et
+    # les caches locaux sont gitignorés dans le vrai dépôt et n'existeraient
+    # jamais dans un template versionné. Les embarquer rendait le `git add -A`
+    # ci-dessous flaky sous Windows (~40 000 fichiers : antivirus, chemins
+    # longs) et n'apportait rien au scénario testé.
+    shutil.copytree(
+        GENERATOR,
+        dst,
+        ignore=shutil.ignore_patterns(
+            "node_modules", "__pycache__", ".pytest_cache", ".ruff_cache",
+            "dist", "*.pyc", "*.db",
+        ),
+    )
     _git(dst, "init", "-q")
     _git(dst, "config", "core.autocrlf", "false")  # évite un worktree "sale"
     _git(dst, "config", "user.email", "t@t")

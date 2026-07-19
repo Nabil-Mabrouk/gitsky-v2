@@ -12,7 +12,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth.dependencies import get_current_user
-from app.core.auth.schemas import Credentials, Token, UserRead
+from app.core.auth.schemas import Credentials, RegisterRequest, Token, UserRead
 from app.core.auth.security import (
     create_access_token,
     create_refresh_token,
@@ -43,7 +43,7 @@ def _set_refresh_cookie(response: Response, token: str) -> None:
 
 
 @router.post("/register", response_model=UserRead, status_code=status.HTTP_201_CREATED)
-async def register(payload: Credentials, db: AsyncSession = Depends(get_db)) -> User:
+async def register(payload: RegisterRequest, db: AsyncSession = Depends(get_db)) -> User:
     exists = (
         await db.execute(select(User).where(User.email == payload.email))
     ).scalar_one_or_none()
@@ -76,7 +76,11 @@ async def login(
             status_code=status.HTTP_403_FORBIDDEN, detail="Compte inactif"
         )
 
-    _set_refresh_cookie(response, create_refresh_token(user.id))
+    # Le refresh embarque la version de token du compte (claim `tv`) :
+    # incrémenter user.token_version révoque tous les refresh déjà émis.
+    _set_refresh_cookie(
+        response, create_refresh_token(user.id, tv=user.token_version)
+    )
     return Token(access_token=create_access_token(user.id, role=user.role.value))
 
 
@@ -101,7 +105,42 @@ async def refresh(
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED, detail="Utilisateur invalide"
         )
+    # Révocation : un refresh émis avant le dernier logout-all porte un `tv`
+    # périmé — il est refusé même si sa signature et son expiration sont
+    # valides. Seule défense possible contre un JWT stateless volé.
+    if payload.get("tv", 0) != user.token_version:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="Refresh token révoqué"
+        )
     return Token(access_token=create_access_token(user.id, role=user.role.value))
+
+
+@router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)
+async def logout(response: Response) -> None:
+    """Expire le cookie refresh HttpOnly.
+
+    Sans cet endpoint, « se déconnecter » ne vidait que le localStorage : le
+    refresh restait valable 7 jours sur la machine. Volontairement sans auth —
+    il doit fonctionner même avec un access token déjà expiré.
+    """
+    response.delete_cookie(REFRESH_COOKIE, path="/api/auth")
+
+
+@router.post("/logout-all", status_code=status.HTTP_204_NO_CONTENT)
+async def logout_all(
+    response: Response,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> None:
+    """Révoque TOUS les refresh tokens du compte (« déconnexion partout »).
+
+    /logout ne supprime que le cookie du navigateur courant : un refresh copié
+    avant (machine compromise) resterait valable 7 jours. Incrémenter
+    token_version périme le claim `tv` de tous les refresh émis.
+    """
+    current_user.token_version += 1
+    await db.commit()
+    response.delete_cookie(REFRESH_COOKIE, path="/api/auth")
 
 
 @router.get("/me", response_model=UserRead)

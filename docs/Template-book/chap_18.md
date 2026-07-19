@@ -134,7 +134,7 @@ await fetch("https://landing-collector.mystudio.internal/leads", {
 });
 ```
 
-Le fleet dashboard (Chap 19) lit cette table pour afficher le funnel de chaque projet T0.
+Le fleet dashboard (Chap 19) lit cette table pour afficher le funnel de chaque projet T0. La **capture** (`POST /leads`) reste publique — les landings postent sans secret — mais la **lecture** des stats (`GET /leads/{project}/stats`) est réservée au dashboard : elle exige un en-tête `X-Collector-Token` comparé à `COLLECTOR_STATS_TOKEN`. Sinon, le funnel (nombre d'inscrits) de n'importe quel projet fuiterait à quiconque joint le collecteur. Comme partout dans le châssis : ouvert en développement sans token, `503` fail-closed en production non configurée.
 
 ## 4. LLM Proxy Partagé
 

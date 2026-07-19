@@ -186,11 +186,19 @@ def test_checkout_then_webhook_fulfills():
 # --- Abonnement -----------------------------------------------------------
 
 def test_subscription_webhook_grants_premium():
+    # Forme RÉELLE d'un événement Stripe : nos identifiants ne voyagent que
+    # dans metadata (posé au checkout), jamais en champ direct de l'objet.
     assert asyncio.run(_user_role(SEED["user_id"])) == UserRole.user
 
     event = {
         "type": "customer.subscription.updated",
-        "data": {"object": {"id": "sub_1", "user_id": SEED["user_id"], "status": "active"}},
+        "data": {
+            "object": {
+                "id": "sub_1",
+                "status": "active",
+                "metadata": {"user_id": str(SEED["user_id"])},
+            }
+        },
     }
     assert client.post("/api/shop/webhook", json=event).status_code == 200
 
@@ -199,3 +207,14 @@ def test_subscription_webhook_grants_premium():
     r = client.get("/api/subscription/status", headers=_auth(SEED["user_id"]))
     assert r.status_code == 200
     assert r.json()["status"] == "active"
+
+
+def test_subscription_webhook_without_metadata_is_ignored():
+    # Événement sans metadata.user_id (webhook mal câblé, abonnement créé hors
+    # checkout) : impossible de relier un compte -> ignoré, aucun rôle modifié.
+    event = {
+        "type": "customer.subscription.updated",
+        "data": {"object": {"id": "sub_orphan", "status": "active"}},
+    }
+    assert client.post("/api/shop/webhook", json=event).status_code == 200
+    assert asyncio.run(_user_role(SEED["admin_id"])) == UserRole.admin

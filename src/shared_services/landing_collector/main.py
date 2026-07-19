@@ -6,9 +6,11 @@
 Les tables sont créées au démarrage (service minimal, pas d'Alembic).
 """
 
+import os
+import secrets
 from contextlib import asynccontextmanager
 
-from fastapi import Depends, FastAPI
+from fastapi import Depends, FastAPI, Header, HTTPException, status
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -40,7 +42,36 @@ async def collect_lead(lead: LeadIn, db: AsyncSession = Depends(get_session)) ->
     return {"ok": True}
 
 
-@app.get("/leads/{project}/stats", response_model=LeadStats)
+async def verify_stats_token(
+    x_collector_token: str | None = Header(default=None),
+) -> None:
+    """Garde de lecture des stats (durcissement, même sémantique que fleet).
+
+    La CAPTURE (/leads) reste publique — les landings T0 postent sans secret.
+    La LECTURE du funnel, elle, est réservée au fleet dashboard : token
+    configuré -> header exigé ; absent -> ouvert en dev, refus en production.
+    """
+    expected = os.environ.get("COLLECTOR_STATS_TOKEN", "")
+    if not expected:
+        if os.environ.get("ENVIRONMENT", "").lower() == "production":
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="COLLECTOR_STATS_TOKEN non configuré",
+            )
+        return
+    if x_collector_token is None or not secrets.compare_digest(
+        x_collector_token, expected
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="Token invalide"
+        )
+
+
+@app.get(
+    "/leads/{project}/stats",
+    response_model=LeadStats,
+    dependencies=[Depends(verify_stats_token)],
+)
 async def project_stats(
     project: str, db: AsyncSession = Depends(get_session)
 ) -> LeadStats:

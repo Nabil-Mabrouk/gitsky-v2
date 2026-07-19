@@ -4,3 +4,6 @@
 # (Le template a son propre .gitattributes, livré dans les projets générés.)
 *.sh   text eol=lf
 *.sql  text eol=lf
+# La crontab de la flotte est installée telle quelle sur l'Ubuntu de prod : un
+# « \r » y invalide silencieusement chaque ligne (cron ignore l'entrée).
+crontab.fleet text eol=lf

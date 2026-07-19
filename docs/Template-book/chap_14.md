@@ -80,7 +80,8 @@ Trois choses volontairement absentes :
 
 1. **Pas de blocage** — comme expliqué, c'est le rôle de Traefik.
 2. **Pas de notification temps réel** par événement — les alertes agrégées vont dans le fleet dashboard (Chap 19), un email par événement noierait le signal.
-3. **Pas de rate limiting** — Traefik gère cela via son propre middleware `RateLimit`.
+3. **Pas de rate limiting** — Traefik gère cela via son propre middleware `RateLimit`. Cette doctrine n'est pas qu'une intention : le générateur émet dans le `docker-compose.yml` de production un routeur Traefik dédié à `/api/auth/login` (5 req/min, burst 10) dès que le module auth est actif — voir Chap 21.
+4. **Pas d'inspection des endpoints d'infrastructure** — `/health` (pollé toutes les 60 s par le fleet poller), `/robots.txt` et `/sitemap.xml` sont exclus du middleware, comme du tracking analytics (Chap 13) : journaliser chaque poll noierait les vraies détections et coûterait un commit DB par requête pour rien.
 
 Ces choix maintiennent le module léger et prévisible.
 
