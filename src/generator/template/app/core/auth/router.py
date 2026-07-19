@@ -12,7 +12,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth.dependencies import get_current_user
-from app.core.auth.schemas import Credentials, Token, UserRead
+from app.core.auth.schemas import Credentials, RegisterRequest, Token, UserRead
 from app.core.auth.security import (
     create_access_token,
     create_refresh_token,
@@ -43,7 +43,7 @@ def _set_refresh_cookie(response: Response, token: str) -> None:
 
 
 @router.post("/register", response_model=UserRead, status_code=status.HTTP_201_CREATED)
-async def register(payload: Credentials, db: AsyncSession = Depends(get_db)) -> User:
+async def register(payload: RegisterRequest, db: AsyncSession = Depends(get_db)) -> User:
     exists = (
         await db.execute(select(User).where(User.email == payload.email))
     ).scalar_one_or_none()
@@ -102,6 +102,17 @@ async def refresh(
             status_code=status.HTTP_401_UNAUTHORIZED, detail="Utilisateur invalide"
         )
     return Token(access_token=create_access_token(user.id, role=user.role.value))
+
+
+@router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)
+async def logout(response: Response) -> None:
+    """Expire le cookie refresh HttpOnly.
+
+    Sans cet endpoint, « se déconnecter » ne vidait que le localStorage : le
+    refresh restait valable 7 jours sur la machine. Volontairement sans auth —
+    il doit fonctionner même avec un access token déjà expiré.
+    """
+    response.delete_cookie(REFRESH_COOKIE, path="/api/auth")
 
 
 @router.get("/me", response_model=UserRead)
