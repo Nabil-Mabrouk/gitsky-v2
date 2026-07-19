@@ -26,6 +26,13 @@ async def suno_generate(context: dict, step_def: dict) -> dict:
     }
 
     if not os.environ.get("SUNO_API_KEY"):
+        # Fail-closed : en production, une URL d'exemple facturée en crédits
+        # n'est pas un fallback acceptable.
+        if os.environ.get("ENVIRONMENT", "").lower() == "production":
+            raise RuntimeError(
+                "SUNO_API_KEY manquant alors que ENVIRONMENT=production — "
+                "refus du mode stub (fail-closed)"
+            )
         # Stub : URL stable dérivée du prompt (mêmes entrées -> même URL).
         digest = hashlib.sha256(str(prompt).encode("utf-8")).hexdigest()[:12]
         return {"status": "done", "audio_url": _SAMPLE.format(h=digest), "stub": True}

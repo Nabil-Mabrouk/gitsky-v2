@@ -37,6 +37,15 @@ async def lifespan(_app: FastAPI):
 
         async with engine.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)
+
+    # Les jobs agentic vivent dans des asyncio.Task : un redémarrage les emporte.
+    # Au boot, personne ne tourne encore -> toute exécution pending/running est
+    # orpheline : on la clôt en failed et on rembourse son coût persisté.
+    if settings.module_agentic:
+        from app.core.database import SessionLocal
+        from app.modules.agentic.recovery import recover_orphan_executions
+
+        await recover_orphan_executions(SessionLocal)
     yield
 
 

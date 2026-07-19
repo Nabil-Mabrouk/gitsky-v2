@@ -205,8 +205,20 @@ def test_agentic_chain_applied_when_enabled():
 
         assert applied == ["core", "agentic"]
         tables = _table_names(db_file)
-        assert "service_executions" in tables
+        # 0002 : TOUTES les tables des modèles agentic doivent exister — le trou
+        # historique (steps/credits sans migration) ne cassait qu'en prod, où
+        # create_all ne tourne jamais.
+        assert {"service_executions", "execution_steps", "credit_accounts"} <= tables
         assert "alembic_version_agentic" in tables
+
+        engine = create_engine(f"sqlite:///{db_file.as_posix()}")
+        try:
+            columns = {
+                c["name"] for c in inspect(engine).get_columns("service_executions")
+            }
+        finally:
+            engine.dispose()
+        assert "cost_credits" in columns  # coût persisté pour recovery.py
     finally:
         try:
             db_file.unlink()

@@ -19,7 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth.dependencies import get_current_user
 from app.core.database import SessionLocal, get_db
-from app.core.models import User
+from app.core.models import User, UserRole
 from app.modules.agentic import credits, engine
 from app.modules.agentic.models import ServiceExecution
 from app.modules.agentic.registry import get_service, load_services
@@ -93,6 +93,9 @@ async def execute(
         status="pending",
         input_params=payload.parameters,
         result=None,
+        # Persisté pour que le remboursement survive à un redémarrage
+        # (recovery.py) — la variable locale `cost`, elle, meurt avec le process.
+        cost_credits=cost,
     )
     db.add(execution)
     await db.commit()
@@ -132,6 +135,12 @@ async def _run_job(
         try:
             await engine.execute_workflow(db, execution, service, workflow, params)
         except Exception:  # noqa: BLE001
+            # La session peut être invalidée par l'échec : rollback obligatoire
+            # avant de pouvoir committer le statut d'échec.
+            await db.rollback()
+            execution = await db.get(ServiceExecution, execution_id)
+            if execution is None:
+                return
             execution.status = "failed"
             await db.commit()
         if execution.status == "failed" and cost:
@@ -145,6 +154,10 @@ async def get_execution(
     db: AsyncSession = Depends(get_db),
 ) -> ServiceExecution:
     execution = await db.get(ServiceExecution, execution_id)
-    if execution is None:
+    # 404 aussi quand l'exécution appartient à un autre utilisateur : renvoyer
+    # 403 confirmerait l'existence de l'id (IDOR). L'admin garde l'accès (support).
+    if execution is None or (
+        execution.user_id != user.id and user.role != UserRole.admin
+    ):
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Exécution introuvable")
     return execution
