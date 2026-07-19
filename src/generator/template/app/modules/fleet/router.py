@@ -6,13 +6,16 @@
 Monté sous /api/fleet par le core (module_fleet, app dashboard uniquement).
 """
 
-from fastapi import APIRouter, Depends, HTTPException, status
+import secrets
+
+from fastapi import APIRouter, Depends, Header, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from datetime import datetime, timezone
 
 from app.core.auth.dependencies import require_admin
+from app.core.config import get_settings
 from app.core.database import get_db
 from app.core.models import User
 from app.modules.fleet import health_monitor, kill_check, publish
@@ -39,7 +42,35 @@ _VERDICT_ACTIONS: dict[str, tuple[str | None, str | None]] = {
 }
 
 
-@router.post("/projects/register", response_model=ProjectRead)
+async def verify_fleet_register_token(
+    x_fleet_token: str | None = Header(default=None),
+) -> None:
+    """Garde du register : token partagé émis pour le générateur.
+
+    Register n'est PAS un endpoint utilisateur (pas de compte/JWT côté
+    générateur) : un secret machine-à-machine suffit. Sémantique alignée sur
+    les stubs du châssis : ouvert en dev sans token, fail-closed en prod.
+    """
+    settings = get_settings()
+    expected = settings.fleet_register_token
+    if not expected:
+        if settings.environment == "production":
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="FLEET_REGISTER_TOKEN non configuré",
+            )
+        return  # dev : ouvert, comme les autres stubs
+    if x_fleet_token is None or not secrets.compare_digest(x_fleet_token, expected):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="Token fleet invalide"
+        )
+
+
+@router.post(
+    "/projects/register",
+    response_model=ProjectRead,
+    dependencies=[Depends(verify_fleet_register_token)],
+)
 async def register_project(
     payload: ProjectRegister, db: AsyncSession = Depends(get_db)
 ) -> Project:
