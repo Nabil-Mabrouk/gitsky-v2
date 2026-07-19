@@ -62,6 +62,22 @@ services:
       - "traefik.http.routers.backend-{{ project_name }}.entrypoints=websecure"
       - "traefik.http.routers.backend-{{ project_name }}.tls.certresolver=letsencrypt"
       - "traefik.http.services.backend-{{ project_name }}.loadbalancer.server.port=8000"
+{%- if resolved_modules.module_auth %}
+      # Rate limiting du login AU NIVEAU INFRA (doctrine Chap 14 : l'app
+      # journalise, Traefik/fail2ban bloquent). Routeur dédié plus prioritaire
+      # que le routeur backend, même service : seule /api/auth/login est
+      # limitée — chaque essai coûte un hachage argon2, sans limite c'est du
+      # credential stuffing et un DoS CPU à bas coût.
+      - "traefik.http.middlewares.authlimit-{{ project_name }}.ratelimit.average=5"
+      - "traefik.http.middlewares.authlimit-{{ project_name }}.ratelimit.period=1m"
+      - "traefik.http.middlewares.authlimit-{{ project_name }}.ratelimit.burst=10"
+      - "traefik.http.routers.authlimit-{{ project_name }}.rule=Host(`api.{{ project_domain }}`) && Path(`/api/auth/login`)"
+      - "traefik.http.routers.authlimit-{{ project_name }}.entrypoints=websecure"
+      - "traefik.http.routers.authlimit-{{ project_name }}.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.authlimit-{{ project_name }}.priority=100"
+      - "traefik.http.routers.authlimit-{{ project_name }}.middlewares=authlimit-{{ project_name }}"
+      - "traefik.http.routers.authlimit-{{ project_name }}.service=backend-{{ project_name }}"
+{%- endif %}
     networks:
       - proxy-net
       - internal-net

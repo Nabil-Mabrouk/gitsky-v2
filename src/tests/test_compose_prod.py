@@ -65,6 +65,23 @@ def test_t0_backend_uses_sqlite_not_a_missing_db():
     assert "depends_on" not in backend
 
 
+def test_login_rate_limit_declared_when_auth_module_present():
+    # Doctrine Chap 14 rendue RÉELLE : l'app ne limite pas le login, Traefik
+    # oui. Sans ces labels, la doctrine n'était implémentée nulle part —
+    # credential stuffing et DoS argon2 gratuits.
+    labels = _compose("t1")["services"]["backend"]["labels"]
+    assert any("ratelimit.average=5" in lab for lab in labels)
+    assert any("Path(`/api/auth/login`)" in lab for lab in labels)
+    # Le routeur dédié doit primer sur le routeur backend générique.
+    assert any("authlimit-pain-scraper.priority=100" in lab for lab in labels)
+
+
+def test_no_login_rate_limit_on_t0_without_auth():
+    # T0 n'a pas de module auth : pas de route login, pas de limite fantôme.
+    labels = _compose("t0")["services"]["backend"]["labels"]
+    assert not any("authlimit" in lab for lab in labels)
+
+
 def test_t1_and_t2_each_own_a_postgres_container():
     for tier in ("t1", "t2"):
         services = _compose(tier)["services"]
