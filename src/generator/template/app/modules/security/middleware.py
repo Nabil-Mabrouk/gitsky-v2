@@ -15,9 +15,18 @@ from app.core import database
 from app.modules.security.detectors import detect_event
 from app.modules.security.models import SecurityEvent
 
+# Endpoints d'infrastructure (poller fleet, crawlers SEO) : hors radar — le
+# blocage réseau est le rôle de Traefik/fail2ban, et journaliser chaque poll
+# /health noierait les vraies détections.
+EXCLUDED_PATHS: frozenset[str] = frozenset(
+    {"/health", "/robots.txt", "/sitemap.xml"}
+)
+
 
 class SecurityMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
+        if request.url.path in EXCLUDED_PATHS:
+            return await call_next(request)
         # Décode la query : un attaquant peut URL-encoder sa charge (%27 -> ').
         event = detect_event(
             request.url.path,

@@ -14,14 +14,22 @@ from app.core.config import get_settings
 from app.modules.analytics.geoip import geolocate, hash_ip
 from app.modules.analytics.models import Visit
 
+# Endpoints d'infrastructure : pas des visites. /health seul, pollé toutes les
+# 60 s par le fleet poller, générait ~43 000 lignes de bruit par mois et par
+# projet — et un commit DB inutile sur chaque poll.
+EXCLUDED_PATHS: frozenset[str] = frozenset(
+    {"/health", "/robots.txt", "/sitemap.xml"}
+)
+
 
 class TrackingMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         response = await call_next(request)
-        await self._store_visit(
-            request.client.host if request.client else "",
-            request.url.path,
-        )
+        if request.url.path not in EXCLUDED_PATHS:
+            await self._store_visit(
+                request.client.host if request.client else "",
+                request.url.path,
+            )
         return response
 
     async def _store_visit(self, ip: str, path: str) -> None:
