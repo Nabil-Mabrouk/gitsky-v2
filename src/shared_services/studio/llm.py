@@ -13,6 +13,13 @@ from collections.abc import Callable
 def generate(model: str, prompt: str, stub: Callable[[], dict]) -> dict:
     base_url = os.environ.get("LLM_PROXY_URL", "")
     if not base_url:
+        # Fail-closed : une vitrine « art-dirigée » par le stub ne doit jamais
+        # partir en production silencieusement.
+        if os.environ.get("ENVIRONMENT", "").lower() == "production":
+            raise RuntimeError(
+                "LLM_PROXY_URL manquant alors que ENVIRONMENT=production — "
+                "refus du mode stub (fail-closed)"
+            )
         return stub()
 
     from openai import OpenAI  # import paresseux : dépend d'openai en prod

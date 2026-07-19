@@ -10,9 +10,20 @@ import json
 import os
 
 
+def _forbid_stub_in_production(missing: str) -> None:
+    """Fail-closed : en production, un secret manquant est une erreur, jamais
+    une bascule silencieuse sur le stub (webhooks forgés, checkouts fictifs)."""
+    if os.environ.get("ENVIRONMENT", "").lower() == "production":
+        raise RuntimeError(
+            f"{missing} manquant alors que ENVIRONMENT=production — "
+            "refus du mode stub (fail-closed)"
+        )
+
+
 def create_checkout_session(slug: str, email: str) -> dict:
     key = os.environ.get("STRIPE_SECRET_KEY", "")
     if not key:
+        _forbid_stub_in_production("STRIPE_SECRET_KEY")
         return {"id": f"cs_stub_{slug}", "url": f"https://checkout.stripe.test/{slug}"}
 
     import stripe  # import paresseux : dépend du SDK stripe en prod
@@ -31,6 +42,9 @@ def verify_webhook(payload: bytes, signature: str | None, secret: str) -> dict:
     wh_secret = os.environ.get("STRIPE_WEBHOOK_SECRET", "") or secret
     if not wh_secret:
         # Dev/test : corps déjà supposé validé (relais interne), parse direct.
+        # En production ce chemin accepterait des événements FORGÉS (fulfillment
+        # gratuit, passage premium arbitraire) : interdit.
+        _forbid_stub_in_production("STRIPE_WEBHOOK_SECRET")
         return json.loads(payload)
 
     import stripe

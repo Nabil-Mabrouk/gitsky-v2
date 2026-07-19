@@ -104,7 +104,20 @@ async def download(token: str, db: AsyncSession = Depends(get_db)) -> dict:
 @shop_router.post("/webhook", include_in_schema=False)
 async def stripe_webhook(request: Request, db: AsyncSession = Depends(get_db)) -> dict:
     payload = await request.body()
-    event = verify_webhook(payload, request.headers.get("stripe-signature"), "")
+    try:
+        event = verify_webhook(payload, request.headers.get("stripe-signature"), "")
+    except RuntimeError:
+        # Secret absent en production (fail-closed) : 503 -> Stripe réessaiera
+        # une fois le webhook configuré, aucun événement n'est perdu.
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Webhook non configuré",
+        )
+    except Exception:
+        # Signature invalide ou corps illisible : on refuse sans détail.
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail="Signature invalide"
+        )
 
     etype = event.get("type")
     obj = event.get("data", {}).get("object", {})
