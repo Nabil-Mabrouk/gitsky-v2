@@ -245,6 +245,13 @@ class Subscription(Base):
 
 **La règle est simple :** `status in (active, trialing)` → rôle `premium`. Tout autre statut → rôle `user`. Cette logique est appliquée automatiquement dans les handlers webhook.
 
+**Relier l'événement à un compte — via `metadata`.** Un point qui piège : les événements `customer.subscription.*` de Stripe ne portent **aucun de nos identifiants internes** (Stripe ne connaît que ses `cus_…`/`sub_…`). Le lien vers notre `user_id` est établi au moment du checkout, où on l'écrit dans `metadata` ; Stripe renvoie ce `metadata` tel quel dans chaque événement, et le handler y lit `metadata.user_id`.
+
+❌ `user_id = event.data.object.user_id` — toujours `None` sur un vrai événement Stripe ; le compte ne passe jamais premium.
+✅ `user_id = event.data.object.metadata.get("user_id")` — posé au checkout, présent partout ensuite.
+
+Un événement sans `metadata.user_id` (abonnement créé hors de notre checkout, webhook mal configuré) est **ignoré** plutôt que d'appliquer un rôle au mauvais compte.
+
 ### Configurer un plan d'abonnement
 
 **Dans Stripe Dashboard :**
@@ -316,6 +323,8 @@ async def stripe_webhook(request: Request, db: Session = Depends(get_db)):
             # Mettre en past_due, notifier l'utilisateur
             ...
 ```
+
+**Fail-closed en production.** En développement, sans `STRIPE_WEBHOOK_SECRET`, le client Stripe est stubbé et le corps est parsé directement (relais interne déjà validé). Ce raccourci est **interdit en production** : si `ENVIRONMENT=production` et que le secret manque, `verify_webhook` lève et l'endpoint répond `503` — Stripe réessaiera une fois le webhook configuré, aucun événement n'est perdu. Sans ce garde-fou, un secret oublié laisserait accepter des événements **forgés** : fulfillment gratuit et passage premium arbitraire. Une signature invalide (secret présent) donne un `400`. Ce contrat est verrouillé par `test_failclosed_contract.py`.
 
 ### Configurer le webhook en production
 
