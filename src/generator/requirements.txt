@@ -1,3 +1,5 @@
-copier
-copier-template-extensions
-httpx
+# Épinglé (durcissement) : le générateur doit produire le même résultat dans
+# 6 mois — versions validées par la suite de tests, à monter volontairement.
+copier==9.16.0
+copier-template-extensions==0.3.3
+httpx==0.28.1
