@@ -76,7 +76,11 @@ async def login(
             status_code=status.HTTP_403_FORBIDDEN, detail="Compte inactif"
         )
 
-    _set_refresh_cookie(response, create_refresh_token(user.id))
+    # Le refresh embarque la version de token du compte (claim `tv`) :
+    # incrémenter user.token_version révoque tous les refresh déjà émis.
+    _set_refresh_cookie(
+        response, create_refresh_token(user.id, tv=user.token_version)
+    )
     return Token(access_token=create_access_token(user.id, role=user.role.value))
 
 
@@ -101,6 +105,13 @@ async def refresh(
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED, detail="Utilisateur invalide"
         )
+    # Révocation : un refresh émis avant le dernier logout-all porte un `tv`
+    # périmé — il est refusé même si sa signature et son expiration sont
+    # valides. Seule défense possible contre un JWT stateless volé.
+    if payload.get("tv", 0) != user.token_version:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="Refresh token révoqué"
+        )
     return Token(access_token=create_access_token(user.id, role=user.role.value))
 
 
@@ -112,6 +123,23 @@ async def logout(response: Response) -> None:
     refresh restait valable 7 jours sur la machine. Volontairement sans auth —
     il doit fonctionner même avec un access token déjà expiré.
     """
+    response.delete_cookie(REFRESH_COOKIE, path="/api/auth")
+
+
+@router.post("/logout-all", status_code=status.HTTP_204_NO_CONTENT)
+async def logout_all(
+    response: Response,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> None:
+    """Révoque TOUS les refresh tokens du compte (« déconnexion partout »).
+
+    /logout ne supprime que le cookie du navigateur courant : un refresh copié
+    avant (machine compromise) resterait valable 7 jours. Incrémenter
+    token_version périme le claim `tv` de tous les refresh émis.
+    """
+    current_user.token_version += 1
+    await db.commit()
     response.delete_cookie(REFRESH_COOKIE, path="/api/auth")
 
 

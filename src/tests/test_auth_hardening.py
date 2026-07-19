@@ -95,6 +95,52 @@ def test_logout_without_session_is_harmless():
     assert client.post("/api/auth/logout").status_code in (200, 204)
 
 
+def test_logout_all_revokes_stolen_refresh_token():
+    # /logout ne protège que le navigateur courant : un refresh COPIÉ avant
+    # (machine compromise) restait valable 7 jours. logout-all incrémente
+    # token_version -> le claim `tv` du token volé est périmé.
+    client = TestClient(app)
+    creds = {"email": "eve-target@x.com", "password": "long-enough-pass"}
+    client.post("/api/auth/register", json=creds)
+    login = client.post("/api/auth/login", json=creds)
+    access = login.json()["access_token"]
+
+    # Le « voleur » copie le cookie refresh posé au login.
+    stolen_refresh = client.cookies.get("refresh_token", path="/api/auth")
+    assert stolen_refresh
+
+    r = client.post(
+        "/api/auth/logout-all", headers={"Authorization": f"Bearer {access}"}
+    )
+    assert r.status_code in (200, 204)
+
+    # Le token volé est refusé, signature pourtant valide.
+    thief = TestClient(app)
+    thief.cookies.set("refresh_token", stolen_refresh, path="/api/auth")
+    assert thief.post("/api/auth/refresh").status_code == 401
+
+
+def test_logout_all_requires_auth():
+    client = TestClient(app)
+    assert client.post("/api/auth/logout-all").status_code == 401
+
+
+def test_relogin_after_logout_all_works():
+    # La révocation ne bannit pas le compte : un nouveau login émet un refresh
+    # avec le tv courant, qui fonctionne.
+    client = TestClient(app)
+    creds = {"email": "phoenix@x.com", "password": "long-enough-pass"}
+    client.post("/api/auth/register", json=creds)
+    login = client.post("/api/auth/login", json=creds)
+    client.post(
+        "/api/auth/logout-all",
+        headers={"Authorization": f"Bearer {login.json()['access_token']}"},
+    )
+
+    assert client.post("/api/auth/login", json=creds).status_code == 200
+    assert client.post("/api/auth/refresh").status_code == 200
+
+
 # --- Politique de mot de passe --------------------------------------------
 
 def test_register_rejects_short_password():

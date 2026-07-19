@@ -75,6 +75,7 @@ def test_core_chain_upgrade_and_downgrade():
             "hashed_password",
             "role",
             "is_active",
+            "token_version",  # 0002 : révocation des refresh tokens (Chap 7)
             "created_at",
         } <= _user_columns(db_file)
 
