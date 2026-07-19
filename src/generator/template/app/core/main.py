@@ -10,6 +10,7 @@ Reproduit le pattern de chargement conditionnel du Chap 3 / Chap 5 :
 from contextlib import asynccontextmanager
 
 from fastapi import Depends, FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -40,6 +41,19 @@ async def lifespan(_app: FastAPI):
 
 
 app = FastAPI(title=f"GitSky — {settings.project_name}", lifespan=lifespan)
+
+# CORS : le frontend vit sur une AUTRE origine que l'API (localhost:5173 -> :8000
+# en dev, domaine.com -> api.domaine.com en prod) et envoie le cookie refresh
+# (credentials: "include"). Sans ce middleware, le navigateur bloque tout le flux
+# d'auth — invisible en TestClient, fatal en réel. Origine unique et nommée :
+# "*" est incompatible avec allow_credentials.
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[settings.frontend_url],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 # --- Core : SEO (Chap 10). Présent à tous les tiers, pas de flag MODULE_*.
 # Monté à la racine : /sitemap.xml et /robots.txt doivent vivre à l'origine.
