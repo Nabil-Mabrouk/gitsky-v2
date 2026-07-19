@@ -20,7 +20,7 @@ def _forbid_stub_in_production(missing: str) -> None:
         )
 
 
-def create_checkout_session(slug: str, email: str) -> dict:
+def create_checkout_session(slug: str, email: str, user_id: int | None = None) -> dict:
     key = os.environ.get("STRIPE_SECRET_KEY", "")
     if not key:
         _forbid_stub_in_production("STRIPE_SECRET_KEY")
@@ -33,7 +33,14 @@ def create_checkout_session(slug: str, email: str) -> dict:
         mode="payment",
         customer_email=email,
         line_items=[{"price": slug, "quantity": 1}],
-        metadata={"project_name": os.environ.get("PROJECT_NAME", "")},
+        # user_id dans metadata : Stripe ne connaît pas nos identifiants et les
+        # événements webhook n'en portent AUCUN — metadata est le canal officiel,
+        # renvoyé tel quel dans chaque événement. Sans lui, le webhook ne peut
+        # pas relier un paiement/abonnement à un compte.
+        metadata={
+            "project_name": os.environ.get("PROJECT_NAME", ""),
+            "user_id": "" if user_id is None else str(user_id),
+        },
     )
     return {"id": session.id, "url": session.url}
 
