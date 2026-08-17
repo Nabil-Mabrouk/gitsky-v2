@@ -71,7 +71,10 @@ Ouvre **PuTTYgen** (installé avec PuTTY).
 +--------------------------------------------------+
 |                   PuTTYgen                       |
 |                                                  |
-|  1. Key type    : [ED25519]  <- selectionner     |
+|  1. Type of key to generate :                   |
+|     ( ) RSA  ( ) DSA  ( ) ECDSA  (o) EdDSA       |
+|     ( ) SSH-1 (RSA)                              |
+|     Curve : [Ed25519]  <- selectionner           |
 |                                                  |
 |  2. Cliquer [Generate]                           |
 |     Bouger la souris dans la zone vide           |
@@ -89,6 +92,14 @@ Ouvre **PuTTYgen** (installé avec PuTTY).
 
 **ED25519** est l'algorithme recommandé en 2024 — plus court, plus rapide et
 plus sûr que RSA 2048.
+
+> Ce mockup correspond à PuTTYgen 0.75 et versions plus récentes — EdDSA
+> (avec un sélecteur de courbe séparé) a remplacé un ancien menu "Key type"
+> plus simple dans les versions antérieures à 2020. Si EdDSA n'apparaît pas
+> du tout dans ta liste, vérifie ta version via **Help → About** et
+> réinstalle le paquet MSI le plus récent. A défaut, ECDSA (courbe
+> nistp256) ou RSA 4096 bits sont des alternatives valables pour la suite
+> de la procédure.
 
 La **passphrase** protège ta clé privée sur ton poste. Si quelqu'un vole ton
 fichier `.ppk`, il ne peut rien faire sans elle.
@@ -541,9 +552,30 @@ Cela n'est utile que si ton FAI te fournit une IP fixe.
 
 **Q : Comment connaître ma propre IP publique pour la whitelist ?**
 
+Attention : contrairement aux autres commandes de cette FAQ, celle-ci
+s'exécute **sur ta machine locale, pas dans la session SSH** —
+`curl ifconfig.me` lancé depuis le serveur renvoie l'IP du serveur
+lui-même, pas la tienne.
+
 ```bash
+# Sur TON PC (PowerShell), pas dans la session SSH :
 curl ifconfig.me
 ```
+
+Plus fiable : demande directement au serveur quelle IP source a servi à ta
+session en cours — c'est exactement celle que fail2ban voit passer.
+
+```bash
+# Sur le serveur, dans ta session SSH active :
+who
+# ou, pour l'historique récent :
+last -a | head -5
+```
+
+Si ta machine dispose à la fois d'IPv4 et d'IPv6, les deux méthodes peuvent
+renvoyer des adresses différentes selon la pile réseau empruntée par
+chaque connexion. En cas de doute, fais confiance à `who`/`last -a`, qui
+reflète la connexion SSH réelle plutôt qu'une requête HTTP séparée.
 
 ---
 

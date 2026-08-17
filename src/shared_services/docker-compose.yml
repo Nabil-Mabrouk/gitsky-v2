@@ -2,21 +2,29 @@
 # Bootstrap unique du VPS : Traefik (seul exposé), et les services internes sur
 # shared-services-net (jamais joignables depuis Internet). Config d'infra —
 # renseigner les secrets via un .env hors VCS (.secrets/ ignoré par git).
+#
+# ACME en HTTP-01 (Chap 22), pas DNS-01/Cloudflare (Chap 18) : premier domaine
+# du studio géré directement via les NS IONOS, sans délégation à Cloudflare.
+# A reconsidérer pour le DNS-01 wildcard quand la flotte grossit.
 services:
   traefik:
     image: traefik:v3.1
     command:
       - --providers.docker=true
+      - --providers.docker.exposedbydefault=false
       - --providers.docker.network=proxy-net
       - --entrypoints.web.address=:80
       - --entrypoints.websecure.address=:443
-      - --certificatesresolvers.letsencrypt.acme.dnsChallenge=true
-      - --certificatesresolvers.letsencrypt.acme.dnsChallenge.provider=cloudflare
+      - --entrypoints.web.http.redirections.entrypoint.to=websecure
+      - --entrypoints.web.http.redirections.entrypoint.scheme=https
+      - --entrypoints.web.http.redirections.entrypoint.permanent=true
+      - --certificatesresolvers.letsencrypt.acme.httpchallenge=true
+      - --certificatesresolvers.letsencrypt.acme.httpchallenge.entrypoint=web
+      - --certificatesresolvers.letsencrypt.acme.email=${ACME_EMAIL}
+      - --certificatesresolvers.letsencrypt.acme.storage=/acme/acme.json
     ports:
       - "80:80"
       - "443:443"
-    environment:
-      - CF_DNS_API_TOKEN=${CF_DNS_API_TOKEN}
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - traefik_acme:/acme
