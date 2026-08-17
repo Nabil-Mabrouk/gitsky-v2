@@ -622,6 +622,60 @@ docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
 Traefik détecte automatiquement les nouveaux conteneurs et configure le
 routing — aucune intervention sur Traefik lui-même.
 
+Si le dépôt est **privé**, le `git clone` en HTTPS ci-dessus demande un
+mot de passe que GitHub refuse — voir l'entrée suivante.
+
+---
+
+**Q : Le dépôt est privé — `git clone` me demande un mot de passe. Comment faire ?**
+
+GitHub n'accepte plus l'authentification par mot de passe en HTTPS depuis
+2021. Deux options : un token d'accès personnel, ou une clé de déploiement
+SSH. Pour un serveur qui va cloner puis régulièrement `git pull` /
+`copier update` (Chap 25 §3.4), la clé de déploiement est préférable —
+scopée à un seul dépôt, en lecture seule, sans identifiant stocké sur le
+serveur.
+
+Génère une paire de clés dédiée sur le serveur :
+
+```bash
+ssh-keygen -t ed25519 -C "nom-serveur-deploy" -f ~/.ssh/gitsky_deploy_key -N ""
+cat ~/.ssh/gitsky_deploy_key.pub
+```
+
+Ajoute la clé publique affichée dans **GitHub → ton dépôt → Settings →
+Deploy keys → Add deploy key**, sans cocher "Allow write access" — le
+serveur n'a besoin que de lire.
+
+Indique à SSH d'utiliser cette clé pour GitHub :
+
+```bash
+cat >> ~/.ssh/config <<'EOF'
+Host github.com
+  IdentityFile ~/.ssh/gitsky_deploy_key
+  IdentitiesOnly yes
+EOF
+chmod 600 ~/.ssh/config
+```
+
+Teste l'authentification **avant** de cloner :
+
+```bash
+ssh -T git@github.com
+# "Hi <compte>/<depot> ! You've successfully authenticated..."
+```
+
+Clone ensuite via l'URL SSH (`git@github.com:...`), pas l'URL HTTPS :
+
+```bash
+git clone git@github.com:toi/mon-depot-prive.git
+```
+
+> Erreur fréquente : `no such identity: /root/.ssh/gitsky_deploy_key: No
+> such file or directory` — la clé n'a pas été générée avant que
+> `~/.ssh/config` ne la référence. Vérifier avec `ls -la ~/.ssh` et
+> relancer `ssh-keygen` si le fichier est absent.
+
 ---
 
 **Q : Un conteneur redémarre en boucle. Comment diagnostiquer ?**
