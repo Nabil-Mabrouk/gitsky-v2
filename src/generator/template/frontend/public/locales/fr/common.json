@@ -13,5 +13,21 @@
       "submit": "Se connecter",
       "error": "Identifiants invalides"
     }
+  },
+  "fleet": {
+    "nav": "Flotte",
+    "grid": {
+      "title": "Projets de la flotte",
+      "loading": "Chargement des projets…",
+      "empty": "Aucun projet enregistré pour l'instant.",
+      "error": "Impossible de charger les projets de la flotte.",
+      "columns": {
+        "name": "Projet",
+        "tier": "Tier",
+        "domain": "Domaine",
+        "status": "Statut",
+        "publishStatus": "Statut de publication"
+      }
+    }
   }
 }

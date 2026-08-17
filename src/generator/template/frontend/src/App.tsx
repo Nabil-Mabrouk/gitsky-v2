@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import { useAuth } from "./context/AuthContext";
 import Learn from "./pages/Learn";
 import Login from "./pages/Login";
+import FleetGrid from "./pages/FleetGrid";
 
 export default function App() {
   const { t, i18n } = useTranslation();
@@ -17,6 +18,11 @@ export default function App() {
         <Link to="/learn" className="font-medium">
           {t("nav.learn")}
         </Link>
+        {user?.role === "admin" && (
+          <Link to="/fleet" className="font-medium">
+            {t("fleet.nav")}
+          </Link>
+        )}
         <button onClick={toggleLang} className="text-sm uppercase">
           {i18n.language.slice(0, 2)}
         </button>
@@ -32,6 +38,7 @@ export default function App() {
           <Route path="/" element={<Learn />} />
           <Route path="/learn" element={<Learn />} />
           <Route path="/login" element={<Login />} />
+          <Route path="/fleet" element={<FleetGrid />} />
         </Routes>
       </main>
     </div>

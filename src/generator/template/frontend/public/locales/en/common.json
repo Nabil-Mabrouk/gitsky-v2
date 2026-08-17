@@ -13,5 +13,21 @@
       "submit": "Sign in",
       "error": "Invalid credentials"
     }
+  },
+  "fleet": {
+    "nav": "Fleet",
+    "grid": {
+      "title": "Fleet projects",
+      "loading": "Loading projects…",
+      "empty": "No projects registered yet.",
+      "error": "Could not load the fleet projects.",
+      "columns": {
+        "name": "Project",
+        "tier": "Tier",
+        "domain": "Domain",
+        "status": "Status",
+        "publishStatus": "Publish status"
+      }
+    }
   }
 }
