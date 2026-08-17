@@ -9,15 +9,19 @@
 # deployment_failed. La décision est en Python (testée) ; ici, uniquement l'I/O.
 #
 # Env requis :
-#   FLEET_API    — URL du dashboard (ex. https://api.mystudio.com)
-#   FLEET_TOKEN  — jeton admin (Bearer) pour /projects/health-sweep
-#   STATE_FILE   — fichier d'état (défaut : /var/lib/gitsky/fleet-health.state)
+#   FLEET_URL             — URL du dashboard (ex. https://api.mystudio.com)
+#   FLEET_REGISTER_TOKEN  — jeton machine-à-machine (X-Fleet-Token) partagé
+#                           avec le générateur (register_fleet.py) pour
+#                           /projects/register ET /projects/health-sweep —
+#                           ce n'est PAS un JWT admin, health-sweep est un
+#                           script non-interactif, pas une session opérateur.
+#   STATE_FILE            — fichier d'état (défaut : /var/lib/gitsky/fleet-health.state)
 # =============================================================================
 
 set -euo pipefail
 
-FLEET_API="${FLEET_API:?FLEET_API requis}"
-FLEET_TOKEN="${FLEET_TOKEN:?FLEET_TOKEN requis}"
+FLEET_URL="${FLEET_URL:?FLEET_URL requis}"
+FLEET_REGISTER_TOKEN="${FLEET_REGISTER_TOKEN:?FLEET_REGISTER_TOKEN requis}"
 STATE_FILE="${STATE_FILE:-/var/lib/gitsky/fleet-health.state}"
 mkdir -p "$(dirname "$STATE_FILE")"
 touch "$STATE_FILE"
@@ -47,7 +51,7 @@ done < "$STATE_FILE"
 
 payload="{\"last_success\":{${entries}},\"now\":\"${NOW}\"}"
 
-curl -fsS -X POST "${FLEET_API}/api/fleet/projects/health-sweep" \
-    -H "Authorization: Bearer ${FLEET_TOKEN}" \
+curl -fsS -X POST "${FLEET_URL}/api/fleet/projects/health-sweep" \
+    -H "X-Fleet-Token: ${FLEET_REGISTER_TOKEN}" \
     -H "Content-Type: application/json" \
     -d "$payload"

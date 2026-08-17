@@ -14,6 +14,13 @@ SHELL=/bin/bash
 PATH=/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin
 MAILTO=""
 
+# cron ne charge aucun .env — fleet-health.sh a besoin de ces deux variables
+# pour poster vers /projects/health-sweep (même token machine-à-machine que
+# le générateur utilise pour /projects/register, Chap 19). A REMPLIR avant
+# `crontab crontab.fleet` : ne jamais committer de vraies valeurs ici.
+FLEET_URL=
+FLEET_REGISTER_TOKEN=
+
 # ── Disponibilité ────────────────────────────────────────────────────────────
 # Poll /health de toute la flotte toutes les 60 s ; le dashboard journalise
 # deployment_failed pour tout projet muet > 5 min (Chap 23 §Monitoring flotte).

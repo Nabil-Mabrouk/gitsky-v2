@@ -26,14 +26,21 @@ from sqlalchemy.ext.asyncio import (  # noqa: E402
     create_async_engine,
 )
 
-import app.core.models  # noqa: E402,F401
 import app.modules.fleet.models  # noqa: E402,F401
-from app.core.auth.security import create_access_token, hash_password  # noqa: E402
+from app.core.config import Settings  # noqa: E402
 from app.core.database import Base, get_db  # noqa: E402
-from app.core.models import User, UserRole  # noqa: E402
 from app.modules.fleet import health_monitor as hm  # noqa: E402
 from app.modules.fleet import router as fleet_router  # noqa: E402
 from app.modules.fleet.models import FleetLifecycleEvent, Project  # noqa: E402
+
+# `app.modules.fleet.__init__` does `from .router import router`, which rebinds
+# the package's `router` attribute from the submodule to the APIRouter instance
+# — so both `from app.modules.fleet import router` and even
+# `import app.modules.fleet.router as x` (which resolves via that same
+# attribute chain, not sys.modules) give the APIRouter, not the submodule.
+# sys.modules is the only reliable way to reach the actual submodule, needed
+# here to monkeypatch its `get_settings` reference.
+fleet_router_module = sys.modules["app.modules.fleet.router"]
 
 NOW = datetime(2026, 7, 17, 3, 0, 0, tzinfo=timezone.utc)
 
@@ -173,19 +180,14 @@ if _DB_FILE.exists():
 
 _engine = create_async_engine(f"sqlite+aiosqlite:///{_DB_FILE.as_posix()}")
 _factory = async_sessionmaker(_engine, class_=AsyncSession, expire_on_commit=False)
-_SEED: dict[str, int] = {}
 
 
 async def _seed_endpoint() -> None:
     async with _engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
     async with _factory() as db:
-        admin = User(email="a@x.com", hashed_password=hash_password("x"), role=UserRole.admin)
-        db.add(admin)
         db.add(Project(name="silent-one", tier="t1", status="active"))
         await db.commit()
-        await db.refresh(admin)
-        _SEED["admin_id"] = admin.id
 
 
 asyncio.run(_seed_endpoint())
@@ -211,21 +213,38 @@ def _cleanup() -> None:
         pass
 
 
-def _auth(uid: int) -> dict:
-    return {"Authorization": f"Bearer {create_access_token(uid)}"}
+# health-sweep est appelé par fleet-health.sh, un script cron non-interactif
+# (même raisonnement que register, Chap 19) — il ne peut pas fournir de JWT
+# admin. Garde par token machine-à-machine partagé (X-Fleet-Token), pas
+# require_admin. Token non-vide forcé ici pour exercer réellement la garde :
+# vide = "ouvert" en dev (philosophie stub), ce qui ne testerait rien.
+_FLEET_TOKEN = "test-fleet-token"  # noqa: S105
 
 
-def test_health_sweep_endpoint_requires_admin():
-    assert _client.post("/api/fleet/projects/health-sweep",
-                        json={"last_success": {}}).status_code == 401
+def _with_fleet_token(monkeypatch) -> None:
+    fake_settings = Settings(fleet_register_token=_FLEET_TOKEN)
+    monkeypatch.setattr(fleet_router_module, "get_settings", lambda: fake_settings)
 
 
-def test_health_sweep_endpoint_flags_silent_project():
+def test_health_sweep_endpoint_requires_fleet_token(monkeypatch):
+    _with_fleet_token(monkeypatch)
+    assert _client.post(
+        "/api/fleet/projects/health-sweep", json={"last_success": {}}
+    ).status_code == 401
+    assert _client.post(
+        "/api/fleet/projects/health-sweep",
+        json={"last_success": {}},
+        headers={"X-Fleet-Token": "wrong-token"},
+    ).status_code == 401
+
+
+def test_health_sweep_endpoint_flags_silent_project(monkeypatch):
+    _with_fleet_token(monkeypatch)
     old = (NOW - timedelta(minutes=30)).isoformat()
     r = _client.post(
         "/api/fleet/projects/health-sweep",
         json={"last_success": {"silent-one": old}, "now": NOW.isoformat()},
-        headers=_auth(_SEED["admin_id"]),
+        headers={"X-Fleet-Token": _FLEET_TOKEN},
     )
     assert r.status_code == 200
     assert r.json()["failed"] == ["silent-one"]

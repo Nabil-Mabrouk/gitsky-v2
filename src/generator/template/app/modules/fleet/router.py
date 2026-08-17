@@ -42,14 +42,16 @@ _VERDICT_ACTIONS: dict[str, tuple[str | None, str | None]] = {
 }
 
 
-async def verify_fleet_register_token(
+async def verify_fleet_service_token(
     x_fleet_token: str | None = Header(default=None),
 ) -> None:
-    """Garde du register : token partagé émis pour le générateur.
+    """Garde machine-à-machine partagée par register et health-sweep.
 
-    Register n'est PAS un endpoint utilisateur (pas de compte/JWT côté
-    générateur) : un secret machine-à-machine suffit. Sémantique alignée sur
-    les stubs du châssis : ouvert en dev sans token, fail-closed en prod.
+    Ni le générateur (register) ni le poller cron `fleet-health.sh`
+    (health-sweep) n'ont de compte/JWT — ce sont des scripts non-interactifs,
+    pas des sessions opérateur. Un secret machine-à-machine suffit pour les
+    deux. Sémantique alignée sur les stubs du châssis : ouvert en dev sans
+    token, fail-closed en prod.
     """
     settings = get_settings()
     expected = settings.fleet_register_token
@@ -69,7 +71,7 @@ async def verify_fleet_register_token(
 @router.post(
     "/projects/register",
     response_model=ProjectRead,
-    dependencies=[Depends(verify_fleet_register_token)],
+    dependencies=[Depends(verify_fleet_service_token)],
 )
 async def register_project(
     payload: ProjectRegister, db: AsyncSession = Depends(get_db)
@@ -148,14 +150,19 @@ async def run_kill_check(
     )
 
 
-@router.post("/projects/health-sweep", response_model=HealthSweepResult)
+@router.post(
+    "/projects/health-sweep",
+    response_model=HealthSweepResult,
+    dependencies=[Depends(verify_fleet_service_token)],
+)
 async def health_sweep(
     payload: HealthSweepRequest,
-    _admin: User = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ) -> HealthSweepResult:
-    # Le poller (cron 60 s) poste les derniers succès /health de la flotte ;
-    # le dashboard journalise les transitions deployment_failed/recovered.
+    # Le poller (cron 60 s, fleet-health.sh) poste les derniers succès /health
+    # de la flotte ; c'est un script non-interactif (même garde que register),
+    # pas une session opérateur — le dashboard journalise les transitions
+    # deployment_failed/recovered.
     now = payload.now or datetime.now(timezone.utc)
     changed = await health_monitor.record_health_sweep(db, payload.last_success, now)
     return HealthSweepResult(**changed)

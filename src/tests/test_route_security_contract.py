@@ -31,7 +31,7 @@ AUTH_DEPS = {
     "require_admin",
     "get_current_user",
     "get_current_user_optional",
-    "verify_fleet_register_token",
+    "verify_fleet_service_token",
 }
 
 # Routes mutantes VOLONTAIREMENT publiques : (méthode, chemin) -> justification.
