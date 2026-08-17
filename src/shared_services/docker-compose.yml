@@ -25,6 +25,11 @@ services:
     ports:
       - "80:80"
       - "443:443"
+    environment:
+      # Contourne un bug de négociation du client Docker interne de Traefik,
+      # qui retombe sur une vieille version d'API par défaut au lieu de
+      # négocier avec le démon. Valeur = celle du VPS (voir .env.example).
+      - DOCKER_API_VERSION=${DOCKER_API_VERSION}
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - traefik_acme:/acme
