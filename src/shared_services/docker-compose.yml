@@ -8,7 +8,10 @@
 # A reconsidérer pour le DNS-01 wildcard quand la flotte grossit.
 services:
   traefik:
-    image: traefik:v3.1
+    # v3.1 a un bug connu de negociation d'API Docker (toujours 1.24 en dur,
+    # rejete par Docker Engine 29.x qui exige >= 1.44). Corrige en v3.6.1+
+    # avec negociation automatique - ne pas redescendre sous v3.6.
+    image: traefik:v3.6
     command:
       - --providers.docker=true
       - --providers.docker.exposedbydefault=false
@@ -25,11 +28,6 @@ services:
     ports:
       - "80:80"
       - "443:443"
-    environment:
-      # Contourne un bug de négociation du client Docker interne de Traefik,
-      # qui retombe sur une vieille version d'API par défaut au lieu de
-      # négocier avec le démon. Valeur = celle du VPS (voir .env.example).
-      - DOCKER_API_VERSION=${DOCKER_API_VERSION}
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - traefik_acme:/acme
