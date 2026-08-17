@@ -55,6 +55,10 @@ def test_generator_t0_all_modules_off():
         assert "MODULE_AUTH=false" in lines
         assert "MODULE_AGENTIC=false" in lines
         assert "MODULE_MONETIZATION_SUBSCRIPTION=false" in lines
+        # CORS (settings.frontend_url) doit matcher l'origine prod, sinon le
+        # navigateur bloque silencieusement /api/auth/login (pas d'erreur
+        # visible côté UI, juste un fetch qui échoue).
+        assert "FRONTEND_URL=https://landing-x.mystudio.com" in lines
 
 
 def test_generator_t2_resolves_full_profile():
@@ -68,6 +72,7 @@ def test_generator_t2_resolves_full_profile():
         assert "MODULE_MONETIZATION_SUBSCRIPTION=true" in lines
         # tutorials « selon projet » -> désactivé par défaut, même en t2.
         assert "MODULE_TUTORIALS=false" in lines
+        assert "FRONTEND_URL=https://saas-y.mystudio.com" in lines
 
 
 def test_override_enables_module_on_t1():
