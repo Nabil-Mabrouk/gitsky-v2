@@ -1,5 +1,6 @@
 @import "tailwindcss";
 @import "./theme.css";
+@plugin "@tailwindcss/typography";
 
 body {
   font-family: var(--font-family-base, system-ui, sans-serif);

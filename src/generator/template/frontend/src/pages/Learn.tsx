@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { apiFetch } from "../api";
 
@@ -28,7 +29,9 @@ export default function Learn() {
       <ul className="mt-4 grid gap-2">
         {tutorials.map((tut) => (
           <li key={tut.id} className="rounded border p-3">
-            <span className="font-medium">{tut.title}</span>
+            <Link to={`/learn/${tut.slug}`} className="font-medium">
+              {tut.title}
+            </Link>
             {tut.access_role !== "anonymous" && (
               <span className="ml-2 rounded bg-black/10 px-2 py-0.5 text-xs">
                 {t("learn.premium")}
