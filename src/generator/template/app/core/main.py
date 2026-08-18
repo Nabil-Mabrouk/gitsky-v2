@@ -86,6 +86,11 @@ if settings.module_auth:
 
     app.include_router(auth_router, prefix="/api/auth", tags=["auth"])
 
+if settings.module_admin:
+    from app.modules.admin import router as admin_router
+
+    app.include_router(admin_router, prefix="/api/admin", tags=["admin"])
+
 if settings.module_analytics:
     from app.modules.analytics import TrackingMiddleware
     from app.modules.analytics import router as analytics_router
@@ -170,6 +175,7 @@ async def health(db: AsyncSession = Depends(get_db)) -> dict:
         "tier": settings.gitsky_tier,
         "modules": {
             "auth": settings.module_auth,
+            "admin": settings.module_admin,
             "analytics": settings.module_analytics,
             "security_middleware": settings.module_security_middleware,
             "agentic": settings.module_agentic,
