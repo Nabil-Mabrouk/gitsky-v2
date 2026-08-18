@@ -3,7 +3,16 @@
   "learn": {
     "title": "Catalog",
     "premium": "Premium",
-    "empty": "No courses yet."
+    "empty": "No courses yet.",
+    "detail": {
+      "back": "← Back",
+      "loading": "Loading…",
+      "notFound": "Not found."
+    },
+    "lesson": {
+      "unauthorized": "Sign in to view this lesson.",
+      "forbidden": "Your account doesn't have access to this lesson."
+    }
   },
   "auth": {
     "login": {
@@ -14,8 +23,14 @@
       "error": "Invalid credentials"
     }
   },
+  "admin": {
+    "nav": "Admin",
+    "tabs": {
+      "fleet": "Fleet",
+      "tutorials": "Tutorials"
+    }
+  },
   "fleet": {
-    "nav": "Fleet",
     "grid": {
       "title": "Fleet projects",
       "loading": "Loading projects…",

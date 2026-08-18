@@ -1,9 +1,13 @@
-import { Routes, Route, Link } from "react-router-dom";
+import { Routes, Route, Link, Navigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { useAuth } from "./context/AuthContext";
 import Learn from "./pages/Learn";
 import Login from "./pages/Login";
 import FleetGrid from "./pages/FleetGrid";
+import TutorialDetail from "./pages/TutorialDetail";
+import LessonView from "./pages/LessonView";
+import AdminRoute from "./pages/admin/AdminRoute";
+import AdminLayout from "./pages/admin/AdminLayout";
 
 export default function App() {
   const { t, i18n } = useTranslation();
@@ -19,8 +23,8 @@ export default function App() {
           {t("nav.learn")}
         </Link>
         {user?.role === "admin" && (
-          <Link to="/fleet" className="font-medium">
-            {t("fleet.nav")}
+          <Link to="/admin" className="font-medium">
+            {t("admin.nav")}
           </Link>
         )}
         <button onClick={toggleLang} className="text-sm uppercase">
@@ -37,8 +41,15 @@ export default function App() {
         <Routes>
           <Route path="/" element={<Learn />} />
           <Route path="/learn" element={<Learn />} />
+          <Route path="/learn/:slug" element={<TutorialDetail />} />
+          <Route path="/learn/:slug/lessons/:lessonId" element={<LessonView />} />
           <Route path="/login" element={<Login />} />
-          <Route path="/fleet" element={<FleetGrid />} />
+          <Route element={<AdminRoute />}>
+            <Route path="/admin" element={<AdminLayout />}>
+              <Route index element={<Navigate to="fleet" replace />} />
+              <Route path="fleet" element={<FleetGrid />} />
+            </Route>
+          </Route>
         </Routes>
       </main>
     </div>

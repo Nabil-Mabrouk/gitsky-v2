@@ -15,6 +15,7 @@ interface User {
 
 interface AuthState {
   user: User | null;
+  loading: boolean;
   login: (email: string, password: string) => Promise<boolean>;
   logout: () => void;
 }
@@ -24,12 +25,20 @@ const AuthContext = createContext<AuthState | null>(null);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
+  // Le check initial (/api/auth/me) est async : un guard basé uniquement sur
+  // `user` renverrait à tort un admin déjà connecté vers / à chaque
+  // rafraîchissement, le temps que ce fetch résolve (AdminRoute, Chap 9).
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     if (localStorage.getItem("access_token")) {
-      apiFetch("/api/auth/me").then(async (r) => {
-        if (r.ok) setUser((await r.json()) as User);
-      });
+      apiFetch("/api/auth/me")
+        .then(async (r) => {
+          if (r.ok) setUser((await r.json()) as User);
+        })
+        .finally(() => setLoading(false));
+    } else {
+      setLoading(false);
     }
   }, []);
 
@@ -60,7 +69,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   return (
-    <AuthContext.Provider value={{ user, login, logout }}>
+    <AuthContext.Provider value={{ user, loading, login, logout }}>
       {children}
     </AuthContext.Provider>
   );

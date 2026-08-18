@@ -3,7 +3,16 @@
   "learn": {
     "title": "Catalogue",
     "premium": "Premium",
-    "empty": "Aucun cours pour l'instant."
+    "empty": "Aucun cours pour l'instant.",
+    "detail": {
+      "back": "← Retour",
+      "loading": "Chargement…",
+      "notFound": "Introuvable."
+    },
+    "lesson": {
+      "unauthorized": "Connectez-vous pour voir cette leçon.",
+      "forbidden": "Votre compte n'a pas accès à cette leçon."
+    }
   },
   "auth": {
     "login": {
@@ -14,8 +23,14 @@
       "error": "Identifiants invalides"
     }
   },
+  "admin": {
+    "nav": "Admin",
+    "tabs": {
+      "fleet": "Flotte",
+      "tutorials": "Tutoriels"
+    }
+  },
   "fleet": {
-    "nav": "Flotte",
     "grid": {
       "title": "Projets de la flotte",
       "loading": "Chargement des projets…",
