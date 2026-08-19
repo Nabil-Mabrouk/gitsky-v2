@@ -31,7 +31,11 @@ pytestmark = pytest.mark.skipif(not DOCKER, reason="docker requis")
 
 _CONTAINER = "gitsky-test-migrations-pg"
 _PORT = 15432
-_URL = f"postgresql+asyncpg://postgres:test@localhost:{_PORT}/testdb"
+# ssl=disable : le conteneur postgres:16.3-alpine jetable n'a pas de TLS
+# configuré. En "prefer" (défaut asyncpg), une négociation SSL avortée a
+# provoqué un ConnectionError intermittent en CI (Docker-in-Docker) plutôt
+# qu'un repli propre en clair — la désactiver évite la négociation entière.
+_URL = f"postgresql+asyncpg://postgres:test@localhost:{_PORT}/testdb?ssl=disable"
 
 
 @pytest.fixture(scope="module")

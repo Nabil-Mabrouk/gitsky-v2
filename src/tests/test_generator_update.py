@@ -54,12 +54,17 @@ def _make_versioned_template(dst: Path) -> None:
     # jamais dans un template versionné. Les embarquer rendait le `git add -A`
     # ci-dessous flaky sous Windows (~40 000 fichiers : antivirus, chemins
     # longs) et n'apportait rien au scénario testé.
+    # ".git" exclu aussi : GENERATOR est un submodule depuis la scission qui a
+    # rendu `copier update` fonctionnel — sans ce filtre, son fichier .git
+    # (gitlink vers le gitdir du monorepo parent) se retrouve copié tel quel
+    # dans dst, et le `git init` ci-dessous échoue (exit 128) en tombant sur
+    # une référence cassée plutôt qu'un dossier vierge.
     shutil.copytree(
         GENERATOR,
         dst,
         ignore=shutil.ignore_patterns(
             "node_modules", "__pycache__", ".pytest_cache", ".ruff_cache",
-            "dist", "*.pyc", "*.db",
+            "dist", "*.pyc", "*.db", ".git",
         ),
     )
     _git(dst, "init", "-q")
