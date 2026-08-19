@@ -76,6 +76,34 @@ def test_fleet_backup_dumps_every_project_container(tmp_path):
         assert b"CREATE TABLE" in gzip.decompress(f.read_bytes())
 
 
+def test_fleet_backup_uses_project_db_user_not_postgres(tmp_path):
+    # Regression : le rôle "postgres" n'existe QUE si POSTGRES_USER vaut
+    # littéralement "postgres" (image officielle) — chaque projet GitSky
+    # définit POSTGRES_USER = POSTGRES_DB = db_name (.env.jinja), jamais
+    # "postgres". `-U postgres` en dur échouait ("role does not exist")
+    # contre un vrai conteneur ; invisible ici tant que le mock docker ne
+    # loggue/valide aucun credential — d'où ce test qui capture les args réels.
+    fakebin = tmp_path / "bin"; fakebin.mkdir()
+    backups = tmp_path / "backups"
+    log = tmp_path / "docker_calls.log"
+    _fake_docker(fakebin, rf"""
+        echo "$@" >> "{log.as_posix()}"
+        case "$1" in
+          ps)   echo "pain-scraper_db" ;;
+          exec) echo "-- dump" ;;
+        esac
+    """)
+
+    r = _run("backup-fleet.sh", fakebin, tmp_path, BACKUP_DIR=backups.as_posix())
+    assert r.returncode == 0, r.stderr
+
+    exec_calls = [line for line in log.read_text().splitlines() if line.startswith("exec ")]
+    assert exec_calls, "aucun appel docker exec observé"
+    for call in exec_calls:
+        assert "-U pain_scraper" in call, call
+        assert "-U postgres" not in call, call
+
+
 def test_fleet_backup_handles_empty_fleet(tmp_path):
     fakebin = tmp_path / "bin"; fakebin.mkdir()
     backups = tmp_path / "backups"

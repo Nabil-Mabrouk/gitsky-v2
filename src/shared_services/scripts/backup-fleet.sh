@@ -37,7 +37,12 @@ for container in $CONTAINERS; do
     outfile="${BACKUP_DIR}/${dbname}_${DATE}.dump.gz"
 
     echo "Sauvegarde de $project (conteneur $container)..."
-    if docker exec "$container" pg_dump -U postgres -Fc "$dbname" | gzip > "$outfile"; then
+    # -U "$dbname" et non -U postgres : POSTGRES_USER == POSTGRES_DB == db_name
+    # pour chaque projet (.env.jinja) — l'image officielle postgres ne crée le
+    # rôle "postgres" QUE si POSTGRES_USER vaut "postgres" ; ici jamais le cas,
+    # le rôle "postgres" n'existe simplement pas. Trouvé en testant contre un
+    # vrai conteneur (le mock docker des tests ne valide aucun credential).
+    if docker exec "$container" pg_dump -U "$dbname" -Fc "$dbname" | gzip > "$outfile"; then
         if [[ -n "$S3_BUCKET" ]]; then
             aws s3 cp "$outfile" "s3://${S3_BUCKET}/${project}/" || \
                 echo "  ⚠ upload S3 échoué pour $project (dump local conservé)."
