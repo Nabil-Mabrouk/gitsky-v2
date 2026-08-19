@@ -1,0 +1,3 @@
+[submodule "src/generator"]
+	path = src/generator
+	url = git@github.com:Nabil-Mabrouk/gitsky-template.git

@@ -15,10 +15,21 @@ Un **générateur** ([Copier](https://copier.readthedocs.io/)) qui produit, à p
 
 ```
 src/
-├── generator/          Le générateur Copier (copier.yml, template/, tasks/, extensions/)
+├── generator/          Le générateur Copier — SUBMODULE git (voir plus bas)
 │   └── template/       L'arborescence d'un projet généré (app/, frontend/, Docker…)
 ├── shared_services/    Services mutualisés de la flotte (collector, studio, crontab…)
 └── tests/              Suite de tests Python (pytest) du générateur et du châssis
+```
+
+`src/generator/` est un **submodule git**, dans son propre dépôt
+(`gitsky-template`) — nécessaire pour que `copier.yml` vive à la racine d'un
+dépôt git et que `copier update` puisse suivre les versions (Chap 17/25). Un
+clone simple laisse ce dossier **vide** :
+
+```bash
+git clone --recurse-submodules <url-de-ce-depot>
+# ou, après un clone déjà fait sans l'option :
+git submodule update --init
 ```
 
 ## Prérequis
