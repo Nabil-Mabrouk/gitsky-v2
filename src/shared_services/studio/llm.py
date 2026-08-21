@@ -34,4 +34,15 @@ def generate(model: str, prompt: str, stub: Callable[[], dict]) -> dict:
         # sortie est de toute façon validée par les guardrails (chap 24), la
         # créativité n'a pas besoin d'être bridée côté client.
     )
-    return json.loads(response.choices[0].message.content or "{}")
+    raw = response.choices[0].message.content or "{}"
+    try:
+        return json.loads(raw)
+    except json.JSONDecodeError as exc:
+        # Anthropic n'a pas de mode JSON natif comme OpenAI : litellm traduit
+        # response_format=json_object du mieux qu'il peut, mais le modèle
+        # peut encore répondre avec du texte autour (ex. bloc markdown
+        # ```json ... ```). On expose le contenu brut au lieu d'un
+        # JSONDecodeError opaque, pour diagnostiquer sans deviner.
+        raise RuntimeError(
+            f"Réponse LLM non-JSON pour le modèle {model} : {raw!r}"
+        ) from exc
