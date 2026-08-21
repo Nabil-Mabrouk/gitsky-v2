@@ -29,6 +29,9 @@ def generate(model: str, prompt: str, stub: Callable[[], dict]) -> dict:
         model=model,
         messages=[{"role": "user", "content": prompt}],
         response_format={"type": "json_object"},
-        temperature=0.4,
+        # Pas de temperature fixe : claude-opus-5 (routé via llm-proxy) ne
+        # supporte que temperature=1, contrairement à d'autres modèles — la
+        # sortie est de toute façon validée par les guardrails (chap 24), la
+        # créativité n'a pas besoin d'être bridée côté client.
     )
     return json.loads(response.choices[0].message.content or "{}")
