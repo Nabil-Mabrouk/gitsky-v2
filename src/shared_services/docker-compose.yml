@@ -55,9 +55,15 @@ services:
 
   llm-proxy:
     image: ghcr.io/berriai/litellm:main-stable
+    # Sans --config, /v1/models renvoie une liste vide et TOUT appel échoue
+    # ("Invalid model name") — déployé un temps sans ce fichier, jamais
+    # remarqué car jamais réellement appelé avant le premier run Studio.
+    command: ["--config", "/app/config.yaml"]
     environment:
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
       - LITELLM_MASTER_KEY=${LITELLM_MASTER_KEY}
+    volumes:
+      - ./litellm-config.yaml:/app/config.yaml:ro
     networks:
       - shared-services-net
     depends_on:
