@@ -54,6 +54,25 @@ def test_check_flags_block_type_outside_landing_template_catalog():
     assert any("pain_points" in f for f in failures)
 
 
+def test_check_flags_field_names_the_template_does_not_render():
+    # Bug réel (premier run LLM non-stub, projet politique-ia) : un bloc "faq"
+    # avec le bon type mais des champs d'item "q"/"a" au lieu de "question"/
+    # "answer" passait le guardrail de catalogue mais rendait une section FAQ
+    # avec des questions sans réponses (item.answer silencieusement absent,
+    # Jinja ne lève pas d'erreur). Ce guardrail doit l'attraper avant déploi.
+    m = _manifest("proj", "clean", "#4F46E5")
+    m.blocks.append(Block(type="faq", headline="FAQ", items=[{"q": "?", "a": "!"}]))
+    failures = check(m)
+    assert any("faq" in f and "question" in f for f in failures)
+    assert any("faq" in f and "answer" in f for f in failures)
+
+
+def test_check_passes_faq_with_correct_item_fields():
+    m = _manifest("proj", "clean", "#4F46E5")
+    m.blocks.append(Block(type="faq", headline="FAQ", items=[{"question": "?", "answer": "!"}]))
+    assert check(m) == []
+
+
 def test_run_persisted_immutably_and_reloadable():
     result = run(HarvestPacket(project="x", idea_oneliner="Collecte tes signaux"))
     with tempfile.TemporaryDirectory() as tmp:

@@ -54,14 +54,42 @@ def _generate_landing(landing: dict) -> str:
         _rmtree_robuste(root)
 
 
+# Champs alignés sur le contrat réellement documenté au prompt de l'assembleur
+# (studio/prompts/assembler.md) et lu par landing.html.jinja — PAS sur une
+# convention inventée pour le test. Le premier run réel (LLM non-stub, projet
+# politique-ia) a produit exactement ces noms (headline/description/
+# attribution/question/answer), différents de ce que ce fixture affirmait
+# avant correction (title/body/author/q/a) : le test validait un contrat que
+# ni le prompt ni le template ne respectaient, la section "features"/"faq"
+# de la vitrine réelle rendait vide malgré un test vert.
 FULL_LANDING = {
     "blocks": [
-        {"type": "hero", "headline": "Titre Hero", "subhead": "Sous-titre"},
-        {"type": "features", "title": "Fonctions", "items": [{"title": "Rapide", "body": "Très rapide"}]},
-        {"type": "testimonial", "quote": "Produit génial", "author": "Alice"},
-        {"type": "faq", "title": "FAQ", "items": [{"q": "Comment ?", "a": "Comme ça"}]},
-        {"type": "pricing", "title": "Tarifs", "plans": [{"name": "Pro", "price": "29€", "features": ["X", "Y"]}]},
-        {"type": "email_capture", "headline": "Rejoignez", "cta": "S'inscrire"},
+        {
+            "type": "hero",
+            "headline": "Titre Hero",
+            "subhead": "Sous-titre",
+            "badge": "Nouveau",
+            "cta_primary": {"label": "Voir plus", "target": "#features"},
+        },
+        {
+            "type": "features",
+            "headline": "Fonctions",
+            "items": [{"title": "Rapide", "description": "Très rapide"}],
+        },
+        {"type": "testimonial", "quote": "Produit génial", "attribution": "Alice"},
+        {
+            "type": "faq",
+            "headline": "FAQ",
+            "items": [{"question": "Comment ?", "answer": "Comme ça"}],
+        },
+        {"type": "pricing", "headline": "Tarifs", "plans": [{"name": "Pro", "price": "29€", "features": ["X", "Y"]}]},
+        {
+            "type": "email_capture",
+            "headline": "Rejoignez",
+            "subhead": "Un email, rien d'autre",
+            "cta": "S'inscrire",
+            "legal_note": "Désinscription en un clic",
+        },
     ]
 }
 
@@ -70,12 +98,12 @@ def test_full_block_catalog_renders_valid_html():
     html = _generate_landing(FULL_LANDING)
     HTMLParser().feed(html)  # parseable sans exception
     for token in [
-        "Titre Hero", "Sous-titre",
+        "Titre Hero", "Sous-titre", "Nouveau", "Voir plus",
         "Fonctions", "Rapide", "Très rapide",
         "Produit génial", "Alice",
         "FAQ", "Comment ?", "Comme ça",
         "Tarifs", "Pro", "29€",
-        "Rejoignez", "S'inscrire",
+        "Rejoignez", "Un email, rien d'autre", "S'inscrire", "Désinscription en un clic",
     ]:
         assert token in html, token
     # email_capture branché au collector partagé (same-origin).

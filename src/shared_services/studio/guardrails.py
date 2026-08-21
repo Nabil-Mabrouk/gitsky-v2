@@ -15,6 +15,30 @@ import re
 # pas seulement suggérée.
 _KNOWN_BLOCK_TYPES = {"hero", "features", "email_capture", "testimonial", "faq", "pricing"}
 
+# Champs requis par type, exactement ceux que vitrine/landing.html.jinja lit
+# (template/vitrine/landing.html.jinja). Trouvé en prod : le premier manifest
+# généré par un vrai LLM (pas le stub) utilisait des noms de champs plausibles
+# mais différents (item.description au lieu de item.body, block.attribution
+# au lieu de block.author, ...) — passait `_KNOWN_BLOCK_TYPES` (bon type) mais
+# rendait une section vide (mauvais champs, silencieusement ignorés par
+# Jinja). Le prompt de l'assembleur documente maintenant ce contrat, mais rien
+# ne garantit qu'un futur appel LLM le respecte — ce guardrail le vérifie.
+# Uniquement les champs rendus SANS garde {% if %} dans le template — leur
+# absence laisse une section visiblement vide/cassée, pas juste moins riche.
+# (headline est optionnel partout sauf hero : `{% if block.headline %}`.)
+_REQUIRED_FIELDS = {
+    "hero": ["headline", "subhead"],
+    "features": ["items"],
+    "email_capture": ["cta"],
+    "testimonial": ["quote", "attribution"],
+    "faq": ["items"],
+    "pricing": ["plans"],
+}
+_REQUIRED_ITEM_FIELDS = {
+    "features": ("items", ["title", "description"]),
+    "faq": ("items", ["question", "answer"]),
+}
+
 # Allégations absolues à risque (floor déterministe ; le nuancé = juge LLM).
 _BANNED_CLAIM_RES = [
     re.compile(r"\bn[°o]\s*1\b", re.IGNORECASE),
@@ -91,6 +115,25 @@ def check(manifest, siblings=None) -> list[str]:
                 f"(rendu silencieusement omis par le template) — "
                 f"catalogue : {sorted(_KNOWN_BLOCK_TYPES)}"
             )
+            continue
+
+        data = b.model_dump()
+        for field in _REQUIRED_FIELDS.get(b.type, []):
+            if not data.get(field):
+                failures.append(
+                    f"structure: bloc « {b.type} » sans champ « {field} » "
+                    f"requis par le template (section rendue vide/incomplète)"
+                )
+
+        if b.type in _REQUIRED_ITEM_FIELDS:
+            items_key, item_fields = _REQUIRED_ITEM_FIELDS[b.type]
+            for i, item in enumerate(data.get(items_key, [])):
+                for field in item_fields:
+                    if not item.get(field):
+                        failures.append(
+                            f"structure: bloc « {b.type} » item {i} sans champ "
+                            f"« {field} » requis par le template"
+                        )
 
     failures += check_claims(manifest.blocks)
     if siblings:
