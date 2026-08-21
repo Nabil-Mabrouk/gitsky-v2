@@ -6,6 +6,15 @@ CALCULÉS (fiables), pas jugés par une IA. Le juge de marque LLM viendra en plu
 
 import re
 
+# Catalogue de blocs que vitrine/landing.html.jinja sait effectivement rendre
+# (template/vitrine/landing.html.jinja) — tout type hors de cette liste est
+# silencieusement OMIS par le template (pas d'erreur, la section disparaît).
+# Le prompt de l'assembleur demande déjà ce catalogue, mais une réponse LLM
+# non-stub peut dévier (l'exemple de manifest du Chap 24 utilise lui-même
+# `pain_points`, hors catalogue) — ce guardrail rend la contrainte réelle,
+# pas seulement suggérée.
+_KNOWN_BLOCK_TYPES = {"hero", "features", "email_capture", "testimonial", "faq", "pricing"}
+
 # Allégations absolues à risque (floor déterministe ; le nuancé = juge LLM).
 _BANNED_CLAIM_RES = [
     re.compile(r"\bn[°o]\s*1\b", re.IGNORECASE),
@@ -74,6 +83,14 @@ def check(manifest, siblings=None) -> list[str]:
         failures.append("structure: aucun bloc hero")
     if not any(b.type == "email_capture" for b in manifest.blocks):
         failures.append("structure: aucun bloc de capture d'email (T0)")
+
+    for b in manifest.blocks:
+        if b.type not in _KNOWN_BLOCK_TYPES:
+            failures.append(
+                f"structure: type de bloc « {b.type} » hors catalogue "
+                f"(rendu silencieusement omis par le template) — "
+                f"catalogue : {sorted(_KNOWN_BLOCK_TYPES)}"
+            )
 
     failures += check_claims(manifest.blocks)
     if siblings:

@@ -43,6 +43,17 @@ def test_check_passes_for_clean_manifest():
     assert check(_manifest("proj", "clean", "#4F46E5")) == []
 
 
+def test_check_flags_block_type_outside_landing_template_catalog():
+    # vitrine/landing.html.jinja ne connaît que 6 types — un type hors
+    # catalogue (ex. "pain_points", utilisé par l'exemple du Chap 24
+    # lui-même) est silencieusement omis par le template, pas une erreur de
+    # rendu visible. Le guardrail doit le détecter AVANT le déploiement.
+    m = _manifest("proj", "clean", "#4F46E5")
+    m.blocks.append(Block(type="pain_points", items=["x"]))
+    failures = check(m)
+    assert any("pain_points" in f for f in failures)
+
+
 def test_run_persisted_immutably_and_reloadable():
     result = run(HarvestPacket(project="x", idea_oneliner="Collecte tes signaux"))
     with tempfile.TemporaryDirectory() as tmp:
