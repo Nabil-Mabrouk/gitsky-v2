@@ -41,12 +41,26 @@ def generate_image(prompt: str, model: str = "dalle-3") -> str:
     # policy) ne doit pas faire échouer le pipeline entier ; c'est à
     # l'appelant (agents.py::media()) de décider de dégrader silencieusement.
     try:
-        response = client.images.generate(
-            model=model, prompt=prompt, n=1, size="1024x1024", response_format="b64_json"
-        )
+        # Pas de response_format : trouvé en prod (premier vrai appel) —
+        # l'API DALL-E 3 réelle derrière le proxy rejette ce paramètre
+        # ("Unknown parameter"), contrairement à ce que documentait
+        # l'ancienne doc OpenAI. On accepte la réponse telle qu'elle vient
+        # (b64_json OU url selon ce que l'API décide) plutôt que de forcer
+        # un format qu'elle n'accepte plus.
+        response = client.images.generate(model=model, prompt=prompt, n=1, size="1024x1024")
     except Exception as exc:
         raise RuntimeError(f"Génération d'image échouée pour le modèle {model} : {exc}") from exc
-    b64 = response.data[0].b64_json
-    if not b64:
-        raise RuntimeError(f"Réponse image vide pour le modèle {model}")
-    return f"data:image/png;base64,{b64}"
+    item = response.data[0]
+    if item.b64_json:
+        return f"data:image/png;base64,{item.b64_json}"
+    if item.url:
+        import base64
+
+        import httpx  # déjà une dépendance transitive d'openai, pas de nouvel ajout
+
+        try:
+            image_bytes = httpx.get(item.url, timeout=30).content
+        except Exception as exc:
+            raise RuntimeError(f"Téléchargement de l'image échoué pour le modèle {model} : {exc}") from exc
+        return f"data:image/png;base64,{base64.b64encode(image_bytes).decode('ascii')}"
+    raise RuntimeError(f"Réponse image vide pour le modèle {model}")
