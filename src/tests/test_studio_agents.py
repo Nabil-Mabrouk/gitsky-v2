@@ -46,3 +46,37 @@ def test_fallback_layout_does_not_override_explicit_choice(monkeypatch):
 
     hero = next(b for b in blocks if b["type"] == "hero")
     assert hero["layout"] == "split"
+
+
+def test_media_populates_hero_asset_ref_via_stub(monkeypatch):
+    # Chemin nominal dev/test (LLM_PROXY_URL absent) : image.generate_image
+    # retombe sur son propre stub PNG plutôt que de laisser asset_ref vide —
+    # exerce tout le pipeline comme le ferait un vrai appel.
+    monkeypatch.delenv("LLM_PROXY_URL", raising=False)
+    packet = HarvestPacket(project="proj-x", idea_oneliner="Une idée")
+    brief = Brief(skin="clean", palette={"primary": "#4F46E5", "primary_foreground": "#FFFFFF"})
+
+    media_assets = agents.media(packet, brief)
+
+    hero = next(m for m in media_assets if m["id"] == "hero")
+    assert hero["asset_ref"].startswith("data:image/png;base64,")
+
+
+def test_media_degrades_silently_when_image_generation_fails(monkeypatch):
+    # Une panne DALL-E transitoire (rate-limit, content policy) ne doit PAS
+    # faire échouer tout le pipeline — dégradation en absence d'asset_ref,
+    # la vitrine reste fonctionnelle sans image (panneau dégradé côté
+    # template). Le fail-closed du stub reste testé séparément dans
+    # test_failclosed_contract.py — ceci teste la tolérance à une panne
+    # RÉSEAU/API, pas l'absence de configuration.
+    def _boom(prompt, model="dalle-3"):
+        raise RuntimeError("panne DALL-E simulée")
+
+    monkeypatch.setattr(agents.image, "generate_image", _boom)
+    packet = HarvestPacket(project="proj-x", idea_oneliner="Une idée")
+    brief = Brief(skin="clean", palette={"primary": "#4F46E5", "primary_foreground": "#FFFFFF"})
+
+    media_assets = agents.media(packet, brief)
+
+    hero = next(m for m in media_assets if m["id"] == "hero")
+    assert "asset_ref" not in hero

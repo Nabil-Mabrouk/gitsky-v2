@@ -8,7 +8,7 @@ import hashlib
 import json
 from pathlib import Path
 
-from studio import llm
+from studio import image, llm
 from studio.inputs import HarvestPacket
 from studio.manifest import Brief
 
@@ -122,7 +122,24 @@ def media(packet: HarvestPacket, brief: Brief) -> list[dict]:
         }
 
     data = llm.generate("claude-sonnet-5", _prompt("media", brief=brief.model_dump()), stub)
-    return data["media"]
+    media_assets = data["media"]
+    # Round B : une seule image générée pour de vrai (le hero) — garde le
+    # coût et le scope bornés pour cette première intégration réelle (pas
+    # un appel par item de features). Un échec DALL-E (rate-limit, content
+    # policy, timeout) ne doit PAS faire échouer tout le pipeline —
+    # dégradation silencieuse (pas d'asset_ref), la vitrine reste
+    # fonctionnelle sans image (panneau dégradé en repli côté template).
+    # Le fail-closed reste entier dans image.py lui-même (jamais de stub
+    # silencieux en prod) : c'est une fiabilité TRANSITOIRE de l'API tierce
+    # qui est tolérée ici, pas un risque de sécurité comme la fraude
+    # webhook Stripe — ne pas généraliser ce pattern sans y repenser.
+    for asset in media_assets:
+        if asset.get("id") == "hero" and asset.get("kind", "image") == "image":
+            try:
+                asset["asset_ref"] = image.generate_image(asset["prompt"])
+            except RuntimeError:
+                pass
+    return media_assets
 
 
 def assembler(packet: HarvestPacket, brief: Brief, copy_blocks: list[dict], media_assets: list[dict]) -> list[dict]:

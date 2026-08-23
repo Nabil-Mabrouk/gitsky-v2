@@ -54,6 +54,10 @@ def to_copier_data(manifest: CreativeManifest) -> dict:
     """Projette le manifest en données copier (branding + landing)."""
     palette = manifest.brief.palette
     typo = manifest.brief.type_pairing
+    # Image hero réelle (Round B) : pas de système générique de liaison
+    # bloc<->média (le scope est volontairement limité à UNE image, le hero)
+    # — passée directement, nommée, plutôt que via manifest.media en entier.
+    hero_media = next((m for m in manifest.media if m.id == "hero" and m.asset_ref), None)
     return {
         "branding": {
             "primary_color": palette.get("primary", "#4F46E5"),
@@ -64,6 +68,7 @@ def to_copier_data(manifest: CreativeManifest) -> dict:
         "landing": {
             "skin": manifest.brief.skin,
             "blocks": [b.model_dump() for b in manifest.blocks],
+            "hero_image": hero_media.asset_ref if hero_media else "",
         },
     }
 

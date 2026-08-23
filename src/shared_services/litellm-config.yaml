@@ -11,3 +11,9 @@ model_list:
     litellm_params:
       model: anthropic/claude-sonnet-5
       api_key: os.environ/ANTHROPIC_API_KEY
+  # Image hero réelle (Round B, Chap 24) — même proxy, même mécanisme que les
+  # chat completions ci-dessus, litellm route aussi /v1/images/generations.
+  - model_name: dalle-3
+    litellm_params:
+      model: openai/dall-e-3
+      api_key: os.environ/OPENAI_API_KEY

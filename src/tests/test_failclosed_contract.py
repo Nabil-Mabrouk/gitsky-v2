@@ -33,6 +33,7 @@ from app.modules.monetization.stripe_client import (  # noqa: E402
     create_checkout_session,
     verify_webhook,
 )
+from studio.image import generate_image as studio_generate_image  # noqa: E402
 from studio.llm import generate as studio_generate  # noqa: E402
 
 _MESSAGES = [{"role": "user", "content": "ping"}]
@@ -58,6 +59,14 @@ INTEGRATIONS = [
     (
         "studio_llm",
         lambda: studio_generate("m", "prompt", stub=lambda: {"ok": True}),
+        ["LLM_PROXY_URL"],
+    ),
+    (
+        "studio_image",
+        lambda: studio_generate_image("prompt"),
+        # Réutilise LLM_PROXY_URL plutôt qu'une variable dédiée : même
+        # llm-proxy que studio_llm, juste un modèle différent (dalle-3) dans
+        # le même litellm-config.yaml — un seul point de config à gérer.
         ["LLM_PROXY_URL"],
     ),
 ]

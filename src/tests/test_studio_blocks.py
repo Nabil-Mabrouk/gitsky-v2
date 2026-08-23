@@ -187,6 +187,50 @@ def test_faq_accordion_layout_renders_details():
     assert "<summary>Q?</summary>" in html
 
 
+def test_hero_image_renders_as_img_in_split_layout():
+    html = _generate_landing(
+        {
+            "hero_image": "data:image/png;base64,AAAA",
+            "blocks": [
+                {"type": "hero", "layout": "split", "headline": "H", "subhead": "S"},
+                {"type": "email_capture", "cta": "Go"},
+            ],
+        }
+    )
+    HTMLParser().feed(html)
+    assert '<img class="hero-panel" src="data:image/png;base64,AAAA"' in html
+    # Le panneau dégradé (repli) ne doit plus apparaître quand une image réelle existe.
+    assert '<div class="hero-panel" aria-hidden="true"></div>' not in html
+
+
+def test_hero_image_renders_as_banner_in_centered_layout():
+    html = _generate_landing(
+        {
+            "hero_image": "data:image/png;base64,AAAA",
+            "blocks": [
+                {"type": "hero", "headline": "H", "subhead": "S"},
+                {"type": "email_capture", "cta": "Go"},
+            ],
+        }
+    )
+    HTMLParser().feed(html)
+    assert '<img class="hero-image" src="data:image/png;base64,AAAA"' in html
+
+
+def test_no_hero_image_keeps_gradient_fallback():
+    # Rétrocompatibilité : sans hero_image (comme tout manifest antérieur au
+    # Round B), le panneau dégradé existant reste inchangé.
+    html = _generate_landing(
+        {"blocks": [{"type": "hero", "layout": "split", "headline": "H", "subhead": "S"}]}
+    )
+    HTMLParser().feed(html)
+    assert '<div class="hero-panel" aria-hidden="true"></div>' in html
+    # Cherche un <img> RENDU (dans <body>), pas une mention dans un
+    # commentaire CSS ("donc <div> ET <img> partagent...") — d'où le split.
+    body = html.split("</style>", 1)[1]
+    assert "<img" not in body
+
+
 def test_unknown_block_is_skipped_gracefully():
     html = _generate_landing(
         {"blocks": [
