@@ -39,6 +39,16 @@ _REQUIRED_ITEM_FIELDS = {
     "faq": ("items", ["question", "answer"]),
 }
 
+# Variantes de layout par type (Phase 1 — retour utilisateur : la vitrine
+# n'a qu'une seule structure HTML par type de bloc, tout projet du même skin
+# se ressemble). `layout` absent = comportement par défaut, rétrocompatible.
+_KNOWN_LAYOUTS = {
+    "hero": {"centered", "split"},
+    "features": {"list", "grid", "alternating"},
+    "testimonial": {"quote-block", "card"},
+    "faq": {"list", "accordion"},
+}
+
 # Allégations absolues à risque (floor déterministe ; le nuancé = juge LLM).
 _BANNED_CLAIM_RES = [
     re.compile(r"\bn[°o]\s*1\b", re.IGNORECASE),
@@ -134,6 +144,20 @@ def check(manifest, siblings=None) -> list[str]:
                             f"structure: bloc « {b.type} » item {i} sans champ "
                             f"« {field} » requis par le template"
                         )
+
+        layout = data.get("layout")
+        if layout:
+            if b.type in _KNOWN_LAYOUTS:
+                if layout not in _KNOWN_LAYOUTS[b.type]:
+                    failures.append(
+                        f"structure: bloc « {b.type} » layout « {layout} » inconnu "
+                        f"(catalogue : {sorted(_KNOWN_LAYOUTS[b.type])})"
+                    )
+            else:
+                failures.append(
+                    f"structure: bloc « {b.type} » a un champ « layout » mais ce "
+                    f"type n'a pas de variante — champ ignoré par le template"
+                )
 
     failures += check_claims(manifest.blocks)
     if siblings:

@@ -73,6 +73,38 @@ def test_check_passes_faq_with_correct_item_fields():
     assert check(m) == []
 
 
+def test_check_passes_when_layout_absent():
+    # Rétrocompatibilité : un manifest sans "layout" (comme tous ceux générés
+    # avant l'introduction des variantes) ne doit jamais échouer sur ce champ.
+    m = _manifest("proj", "clean", "#4F46E5")
+    assert check(m) == []
+
+
+def test_check_flags_unknown_layout_value():
+    m = _manifest("proj", "clean", "#4F46E5")
+    m.blocks.append(Block(type="faq", headline="FAQ", items=[{"question": "?", "answer": "!"}], layout="tabs"))
+    failures = check(m)
+    assert any("faq" in f and "tabs" in f for f in failures)
+
+
+def test_check_passes_known_layout_value():
+    m = _manifest("proj", "clean", "#4F46E5")
+    m.blocks.append(
+        Block(type="faq", headline="FAQ", items=[{"question": "?", "answer": "!"}], layout="accordion")
+    )
+    assert check(m) == []
+
+
+def test_check_flags_layout_on_type_without_variants():
+    # pricing/email_capture n'ont pas de catalogue de layouts — un champ
+    # "layout" dessus serait juste ignoré par le template, pas une erreur
+    # visible, mais un signal que le contrat prompt<->template a dérivé.
+    m = _manifest("proj", "clean", "#4F46E5")
+    m.blocks[1] = Block(type="email_capture", cta="Go", layout="fancy")
+    failures = check(m)
+    assert any("email_capture" in f and "layout" in f for f in failures)
+
+
 def test_run_persisted_immutably_and_reloadable():
     result = run(HarvestPacket(project="x", idea_oneliner="Collecte tes signaux"))
     with tempfile.TemporaryDirectory() as tmp:

@@ -31,6 +31,21 @@ _TYPE_BY_SKIN = {
     "bold": {"display": "Archivo", "body": "Inter"},
 }
 
+# Variantes de layout par type de bloc (Phase 1 design). Doit rester en
+# phase avec _KNOWN_LAYOUTS dans guardrails.py.
+_LAYOUT_OPTIONS = {
+    "hero": ["centered", "split"],
+    "features": ["list", "grid", "alternating"],
+    "testimonial": ["quote-block", "card"],
+    "faq": ["list", "accordion"],
+}
+
+
+def _fallback_layout(project: str, block_type: str) -> str:
+    options = _LAYOUT_OPTIONS[block_type]
+    idx = int(hashlib.sha256(f"{project}:{block_type}".encode()).hexdigest(), 16) % len(options)
+    return options[idx]
+
 
 def _prompt(name: str, **ctx) -> str:
     tmpl = (_PROMPT_DIR / f"{name}.md").read_text(encoding="utf-8")
@@ -110,4 +125,12 @@ def assembler(packet: HarvestPacket, brief: Brief, copy_blocks: list[dict], medi
         _prompt("assembler", brief=brief.model_dump(), copy=copy_blocks, media=media_assets),
         stub,
     )
-    return data["blocks"]
+    blocks = data["blocks"]
+    # Filet déterministe (même pattern que _pick_palette) : si le LLM n'émet
+    # jamais "layout" (la sortie JSON "la plus sûre" à produire), la variété
+    # de layout ne doit pas dépendre uniquement de sa bonne volonté — sinon
+    # cette fonctionnalité entière peut ship sans aucun effet visible.
+    for b in blocks:
+        if b.get("type") in _LAYOUT_OPTIONS and not b.get("layout"):
+            b["layout"] = _fallback_layout(packet.project, b["type"])
+    return blocks
