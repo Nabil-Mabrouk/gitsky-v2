@@ -110,6 +110,29 @@ def test_malicious_request_logged_but_not_blocked():
     assert any(e["event_type"] == "injection_attempt" for e in events.json())
 
 
+def test_ip_address_uses_last_x_forwarded_for_entry_not_first():
+    # Bug réel trouvé en prod (premier vrai déploiement de l'onglet
+    # Sécurité) : ip_address venait de request.client.host, l'IP de Traefik
+    # lui-même (le backend n'est jamais joignable directement, internal-net).
+    # Traefik AJOUTE son IP à LA FIN de X-Forwarded-For — c'est ce dernier
+    # maillon qui est fiable, jamais le premier (sinon un client spoofe
+    # trivialement son IP journalisée en l'envoyant lui-même).
+    database.SessionLocal = factory
+
+    r = client.get(
+        "/",
+        params={"q": "' OR 1=1--"},
+        headers={"X-Forwarded-For": "1.2.3.4, 9.9.9.9"},
+    )
+    assert r.status_code == 200
+
+    events = client.get(
+        "/api/admin/security/events", headers=_auth(SEED["admin_id"])
+    ).json()
+    assert any(e["ip_address"] == "9.9.9.9" for e in events), events
+    assert not any(e["ip_address"] == "1.2.3.4" for e in events), events
+
+
 def test_admin_endpoints_require_admin_role():
     # Sans jeton -> 401.
     assert client.get("/api/admin/security/summary").status_code == 401

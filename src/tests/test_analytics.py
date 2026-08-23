@@ -152,6 +152,27 @@ def test_tracking_stores_hashed_visit_not_blocked():
     assert "testclient" not in (latest.ip_hash or "")
 
 
+def test_visit_hashes_last_x_forwarded_for_entry_not_client_host():
+    # Bug réel trouvé en prod (premier vrai déploiement de l'onglet
+    # Analytics) : l'IP hashée venait de request.client.host, l'IP de
+    # Traefik lui-même (le backend n'est jamais joignable directement,
+    # internal-net). Traefik AJOUTE son IP à LA FIN de X-Forwarded-For —
+    # même contrat que le fix équivalent dans security/middleware.py
+    # (test_security_runtime.py), via le même helper app.core.http.
+    from app.core.config import get_settings
+
+    database.SessionLocal = factory
+    before = len(asyncio.run(_all_visits()))
+
+    r = client.get("/", headers={"X-Forwarded-For": "1.2.3.4, 9.9.9.9"})
+    assert r.status_code == 200
+
+    visits = asyncio.run(_all_visits())
+    assert len(visits) == before + 1
+    latest = visits[-1]
+    assert latest.ip_hash == hash_ip("9.9.9.9", get_settings().secret_key)
+
+
 def test_world_aggregation_admin_only():
     # Protection.
     assert client.get("/api/admin/analytics/world").status_code == 401
