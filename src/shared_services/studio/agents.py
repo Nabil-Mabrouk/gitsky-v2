@@ -18,12 +18,22 @@ _PROMPT_DIR = Path(__file__).resolve().parent / "prompts"
 _EDITORIAL = ("editorial", "media", "content", "press", "magazine", "news")
 _BOLD = ("consumer", "creative", "fashion", "gaming", "bold", "lifestyle")
 
-# Palettes curées (toutes sombre-sur-blanc -> contraste a11y garanti).
+# Palettes curées (toutes sombre-sur-blanc -> contraste a11y garanti par
+# guardrails.py::contrast_ratio, >= 4.5 WCAG AA). Élargi de 4 à 10 (retour
+# utilisateur : avec seulement 3 skins x 4 primaires = 12 combinaisons, le
+# guardrail check_diversity se déclenchait de plus en plus souvent à mesure
+# que la flotte grandit — plus de variété réduit directement ce risque).
 _PALETTES = [
-    {"primary": "#4F46E5", "primary_foreground": "#FFFFFF"},
-    {"primary": "#0F766E", "primary_foreground": "#FFFFFF"},
-    {"primary": "#C8452D", "primary_foreground": "#FFFFFF"},
-    {"primary": "#1A1A1A", "primary_foreground": "#FFFFFF"},
+    {"primary": "#4F46E5", "primary_foreground": "#FFFFFF"},  # indigo
+    {"primary": "#0F766E", "primary_foreground": "#FFFFFF"},  # teal
+    {"primary": "#C8452D", "primary_foreground": "#FFFFFF"},  # terracotta
+    {"primary": "#1A1A1A", "primary_foreground": "#FFFFFF"},  # noir quasi-pur
+    {"primary": "#1D4ED8", "primary_foreground": "#FFFFFF"},  # bleu
+    {"primary": "#166534", "primary_foreground": "#FFFFFF"},  # vert forêt
+    {"primary": "#6D28D9", "primary_foreground": "#FFFFFF"},  # violet
+    {"primary": "#9D174D", "primary_foreground": "#FFFFFF"},  # magenta profond
+    {"primary": "#78350F", "primary_foreground": "#FFFFFF"},  # ambre/brun
+    {"primary": "#334155", "primary_foreground": "#FFFFFF"},  # ardoise
 ]
 _TYPE_BY_SKIN = {
     "clean": {"display": "Inter", "body": "Inter"},

@@ -59,6 +59,7 @@ def to_copier_data(manifest: CreativeManifest) -> dict:
             "primary_color": palette.get("primary", "#4F46E5"),
             "primary_foreground": palette.get("primary_foreground", "#FFFFFF"),
             "font_family": typo.get("body", "Inter"),
+            "display_font_family": typo.get("display", typo.get("body", "Inter")),
         },
         "landing": {
             "skin": manifest.brief.skin,
