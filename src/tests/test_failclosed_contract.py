@@ -65,8 +65,8 @@ INTEGRATIONS = [
         "studio_image",
         lambda: studio_generate_image("prompt"),
         # Réutilise LLM_PROXY_URL plutôt qu'une variable dédiée : même
-        # llm-proxy que studio_llm, juste un modèle différent (dalle-3) dans
-        # le même litellm-config.yaml — un seul point de config à gérer.
+        # llm-proxy que studio_llm, juste un modèle différent (gpt-image-2)
+        # dans le même litellm-config.yaml — un seul point de config à gérer.
         ["LLM_PROXY_URL"],
     ),
 ]

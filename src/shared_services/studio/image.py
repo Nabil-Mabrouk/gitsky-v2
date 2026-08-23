@@ -3,7 +3,8 @@
 Même contrat fail-closed que `llm.py` (LLM_PROXY_URL absent -> stub ; absent
 ET ENVIRONMENT=production -> RuntimeError, jamais de stub silencieux en prod)
 et mêmes variables d'env — le llm-proxy partagé route aussi les images
-(DALL-E 3 via litellm, cf. shared_services/litellm-config.yaml).
+(gpt-image-2 via litellm, cf. shared_services/litellm-config.yaml — DALL-E 3
+retiré de l'API OpenAI le 12 mai 2026, trouvé en prod au premier vrai appel).
 
 Fichier séparé de llm.py : forme de réponse différente (b64_json, pas un
 message JSON à parser), pas de retrait de fence markdown à faire — même
@@ -21,7 +22,7 @@ _STUB_PNG_B64 = (
 )
 
 
-def generate_image(prompt: str, model: str = "dalle-3") -> str:
+def generate_image(prompt: str, model: str = "gpt-image-2") -> str:
     base_url = os.environ.get("LLM_PROXY_URL", "")
     if not base_url:
         if os.environ.get("ENVIRONMENT", "").lower() == "production":
@@ -37,16 +38,16 @@ def generate_image(prompt: str, model: str = "dalle-3") -> str:
     # Contrairement à llm.py : capture et relève TOUJOURS en RuntimeError,
     # indépendamment de ENVIRONMENT — une image hero est un enrichissement,
     # pas un risque de sécurité (le fail-closed sur le stub, lui, reste
-    # entier ci-dessus). Une panne DALL-E transitoire (rate-limit, content
-    # policy) ne doit pas faire échouer le pipeline entier ; c'est à
+    # entier ci-dessus). Une panne transitoire de l'API image (rate-limit,
+    # content policy) ne doit pas faire échouer le pipeline entier ; c'est à
     # l'appelant (agents.py::media()) de décider de dégrader silencieusement.
     try:
         # Pas de response_format : trouvé en prod (premier vrai appel) —
-        # l'API DALL-E 3 réelle derrière le proxy rejette ce paramètre
-        # ("Unknown parameter"), contrairement à ce que documentait
-        # l'ancienne doc OpenAI. On accepte la réponse telle qu'elle vient
-        # (b64_json OU url selon ce que l'API décide) plutôt que de forcer
-        # un format qu'elle n'accepte plus.
+        # gpt-image-2 rejette ce paramètre ("Unknown parameter"), contrairement
+        # à l'ancien DALL-E 3 (retiré de l'API OpenAI le 12 mai 2026, d'où le
+        # nom de fonction générique — le modèle réel change, pas le contrat).
+        # On accepte la réponse telle qu'elle vient (b64_json OU url) plutôt
+        # que de forcer un format que l'API n'accepte plus.
         response = client.images.generate(model=model, prompt=prompt, n=1, size="1024x1024")
     except Exception as exc:
         raise RuntimeError(f"Génération d'image échouée pour le modèle {model} : {exc}") from exc

@@ -13,7 +13,10 @@ model_list:
       api_key: os.environ/ANTHROPIC_API_KEY
   # Image hero réelle (Round B, Chap 24) — même proxy, même mécanisme que les
   # chat completions ci-dessus, litellm route aussi /v1/images/generations.
-  - model_name: dalle-3
+  # DALL-E 3 retiré de l'API OpenAI le 12 mai 2026 (trouvé en prod, premier
+  # vrai appel : "The model 'dall-e-3' does not exist") — gpt-image-2 est le
+  # remplaçant recommandé par OpenAI (lancé le 21 avril 2026).
+  - model_name: gpt-image-2
     litellm_params:
-      model: openai/dall-e-3
+      model: openai/gpt-image-2
       api_key: os.environ/OPENAI_API_KEY

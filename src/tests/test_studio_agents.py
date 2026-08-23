@@ -63,14 +63,14 @@ def test_media_populates_hero_asset_ref_via_stub(monkeypatch):
 
 
 def test_media_degrades_silently_when_image_generation_fails(monkeypatch):
-    # Une panne DALL-E transitoire (rate-limit, content policy) ne doit PAS
-    # faire échouer tout le pipeline — dégradation en absence d'asset_ref,
-    # la vitrine reste fonctionnelle sans image (panneau dégradé côté
-    # template). Le fail-closed du stub reste testé séparément dans
+    # Une panne transitoire de l'API image (rate-limit, content policy) ne
+    # doit PAS faire échouer tout le pipeline — dégradation en absence
+    # d'asset_ref, la vitrine reste fonctionnelle sans image (panneau dégradé
+    # côté template). Le fail-closed du stub reste testé séparément dans
     # test_failclosed_contract.py — ceci teste la tolérance à une panne
     # RÉSEAU/API, pas l'absence de configuration.
-    def _boom(prompt, model="dalle-3"):
-        raise RuntimeError("panne DALL-E simulée")
+    def _boom(prompt, model="gpt-image-2"):
+        raise RuntimeError("panne API image simulée")
 
     monkeypatch.setattr(agents.image, "generate_image", _boom)
     packet = HarvestPacket(project="proj-x", idea_oneliner="Une idée")

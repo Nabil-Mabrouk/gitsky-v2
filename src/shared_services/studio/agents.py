@@ -125,8 +125,8 @@ def media(packet: HarvestPacket, brief: Brief) -> list[dict]:
     media_assets = data["media"]
     # Round B : une seule image générée pour de vrai (le hero) — garde le
     # coût et le scope bornés pour cette première intégration réelle (pas
-    # un appel par item de features). Un échec DALL-E (rate-limit, content
-    # policy, timeout) ne doit PAS faire échouer tout le pipeline —
+    # un appel par item de features). Un échec de l'API image (rate-limit,
+    # content policy, timeout) ne doit PAS faire échouer tout le pipeline —
     # dégradation silencieuse (pas d'asset_ref), la vitrine reste
     # fonctionnelle sans image (panneau dégradé en repli côté template).
     # Le fail-closed reste entier dans image.py lui-même (jamais de stub
