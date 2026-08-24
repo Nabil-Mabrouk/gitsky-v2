@@ -37,6 +37,7 @@ AUTH_DEPS = {
 # Routes mutantes VOLONTAIREMENT publiques : (méthode, chemin) -> justification.
 PUBLIC_MUTATING_ALLOWLIST = {
     ("POST", "/api/auth/register"): "création de compte : pas encore de session",
+    ("POST", "/api/auth/accept-invite"): "activation d'un compte waitlist : pas encore de session, sécurisé par le jeton d'invitation lui-même",
     ("POST", "/api/auth/login"): "ouverture de session : pas encore de token",
     ("POST", "/api/auth/refresh"): "auth par cookie HttpOnly, pas par Bearer",
     ("POST", "/api/auth/logout"): "doit fonctionner même avec un token expiré",
