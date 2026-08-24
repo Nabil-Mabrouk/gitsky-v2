@@ -124,6 +124,50 @@ def test_patch_user_rejects_non_admin():
     assert r.status_code == 403
 
 
+def test_patch_user_rejects_admin_self_demotion_or_self_deactivation():
+    # Bug réel rencontré en prod : un admin qui se retire son propre rôle ou
+    # se désactive se verrouille hors du seul dashboard permettant de revenir
+    # en arrière — a nécessité une correction manuelle en base.
+    r = client.patch(
+        f"/api/admin/users/{SEED['admin_id']}",
+        json={"role": "waitlist"},
+        headers=_auth(SEED["admin_id"]),
+    )
+    assert r.status_code == 400
+
+    r = client.patch(
+        f"/api/admin/users/{SEED['admin_id']}",
+        json={"is_active": False},
+        headers=_auth(SEED["admin_id"]),
+    )
+    assert r.status_code == 400
+
+    # Un AUTRE admin peut en revanche modifier ce compte-là sans restriction.
+    async def _make_second_admin() -> int:
+        async with factory() as db:
+            u = User(
+                email="admin2@x.com", hashed_password=hash_password("x"), role=UserRole.admin
+            )
+            db.add(u)
+            await db.commit()
+            await db.refresh(u)
+            return u.id
+
+    second_admin_id = asyncio.run(_make_second_admin())
+    r = client.patch(
+        f"/api/admin/users/{SEED['admin_id']}",
+        json={"role": "waitlist"},
+        headers=_auth(second_admin_id),
+    )
+    assert r.status_code == 200
+    # Remet dans l'état attendu par les tests suivants.
+    client.patch(
+        f"/api/admin/users/{SEED['admin_id']}",
+        json={"role": "admin"},
+        headers=_auth(second_admin_id),
+    )
+
+
 def test_patch_user_updates_role_and_status():
     r = client.patch(
         f"/api/admin/users/{SEED['user_id']}",
