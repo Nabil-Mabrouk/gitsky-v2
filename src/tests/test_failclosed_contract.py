@@ -26,6 +26,7 @@ sys.path.insert(0, str(SRC / "shared_services"))
 from fastapi import FastAPI  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
 
+from app.core import mailer  # noqa: E402
 from app.modules.agentic.llm_client import call_llm  # noqa: E402
 from app.modules.agentic.tools.suno import suno_generate  # noqa: E402
 from app.modules.monetization.router import shop_router  # noqa: E402
@@ -68,6 +69,11 @@ INTEGRATIONS = [
         # llm-proxy que studio_llm, juste un modèle différent (gpt-image-2)
         # dans le même litellm-config.yaml — un seul point de config à gérer.
         ["LLM_PROXY_URL"],
+    ),
+    (
+        "mailer",
+        lambda: mailer.send_email("a@b.com", "s", "b"),
+        ["SMTP_HOST"],
     ),
 ]
 
