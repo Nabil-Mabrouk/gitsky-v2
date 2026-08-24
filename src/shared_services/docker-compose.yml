@@ -51,6 +51,10 @@ services:
       context: ./landing_collector
     environment:
       - LANDING_DB_URL=postgresql+asyncpg://landing:${LANDING_DB_PASSWORD}@postgres/landing
+      # Garde de lecture /leads/{project}/stats et /leads/{project} (Chap 19,
+      # onglet Leads du fleet dashboard) — même valeur que le
+      # COLLECTOR_STATS_TOKEN de fleet-dashboard/.env.
+      - COLLECTOR_STATS_TOKEN=${COLLECTOR_STATS_TOKEN}
     networks:
       - shared-services-net
     depends_on:
