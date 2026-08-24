@@ -107,6 +107,12 @@ Aucune métrique du fleet dashboard n'est calculée sur des données stockées l
 
 Aucun réseau publicitaire (Google Ads, Meta Ads, Reddit Ads…) n'expose de facturation aisément programmable par projet. L'opérateur saisit les dépenses hebdomadaires par projet dans un formulaire léger. Automatiser cela demanderait des intégrations fragiles pour un gain marginal — c'est un choix d'architecture délibéré.
 
+### Consulter les Leads Captés
+
+Au-delà du compte agrégé « Signups T0 (14 j) », un onglet **Leads** du dashboard permet à l'opérateur de choisir un projet T0 et de consulter la liste brute des emails captés sur sa landing (`GET /leads/{project}` sur le landing collector, triée par date décroissante). Toujours pas de duplication : le fleet dashboard ne stocke rien, il interroge le landing collector à la demande.
+
+La lecture se fait exclusivement via le réseau Docker interne (`shared-services-net`), jamais via une route Traefik/Internet — le landing collector reste strictement injoignable depuis l'extérieur, capture y compris. Seul le module `fleet` (donc uniquement le dashboard lui-même, jamais un projet T0/T1/T2 ordinaire) rejoint ce réseau et porte le jeton `COLLECTOR_STATS_TOKEN` partagé avec le landing collector.
+
 ## Les Alertes Automatiques
 
 Le module `fleet` exécute plusieurs crons qui alimentent une file d'alertes :

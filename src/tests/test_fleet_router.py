@@ -28,6 +28,7 @@ import app.modules.fleet.models  # noqa: E402,F401
 from app.core.auth.security import create_access_token, hash_password  # noqa: E402
 from app.core.database import Base, get_db  # noqa: E402
 from app.core.models import User, UserRole  # noqa: E402
+from app.modules.fleet import landing_collector_client  # noqa: E402
 from app.modules.fleet import router as fleet_router  # noqa: E402
 from app.modules.fleet.models import Project  # noqa: E402
 
@@ -163,3 +164,43 @@ def test_publish_promotion_flow():
         headers=_auth(SEED["admin_id"]),
     )
     assert r2.json()["publish_status"] == "live"
+
+
+def test_project_leads_requires_admin_and_proxies_landing_collector(monkeypatch):
+    assert client.get("/api/fleet/projects/pain-scraper/leads").status_code == 401
+    assert (
+        client.get(
+            "/api/fleet/projects/pain-scraper/leads", headers=_auth(SEED["user_id"])
+        ).status_code
+        == 403
+    )
+
+    async def fake_fetch_leads(project: str) -> list[dict]:
+        assert project == "pain-scraper"
+        return [
+            {
+                "id": 1,
+                "project": "pain-scraper",
+                "email": "a@b.com",
+                "source": "reddit",
+                "utm_campaign": "",
+                "created_at": "2026-08-01T00:00:00Z",
+            }
+        ]
+
+    monkeypatch.setattr(landing_collector_client, "fetch_leads", fake_fetch_leads)
+
+    r = client.get(
+        "/api/fleet/projects/pain-scraper/leads", headers=_auth(SEED["admin_id"])
+    )
+    assert r.status_code == 200
+    assert r.json() == [
+        {
+            "id": 1,
+            "project": "pain-scraper",
+            "email": "a@b.com",
+            "source": "reddit",
+            "utm_campaign": "",
+            "created_at": "2026-08-01T00:00:00Z",
+        }
+    ]

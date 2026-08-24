@@ -59,3 +59,24 @@ def test_collect_leads_and_read_project_stats():
 def test_invalid_email_rejected():
     r = client.post("/leads", json={"project": "x", "email": "pas-un-email"})
     assert r.status_code == 422
+
+
+def test_list_leads_sorted_desc_and_isolated_by_project():
+    client.post("/leads", json={"project": "list-a", "email": "1@a.com"})
+    client.post(
+        "/leads", json={"project": "list-a", "email": "2@a.com", "source": "reddit"}
+    )
+    client.post("/leads", json={"project": "list-b", "email": "3@b.com"})
+
+    r = client.get("/leads/list-a")
+    assert r.status_code == 200
+    body = r.json()
+    assert [lead["email"] for lead in body] == ["2@a.com", "1@a.com"]
+    assert body[0]["source"] == "reddit"
+
+    # Isolation par projet : list-b n'apparaît pas dans list-a.
+    assert all(lead["project"] == "list-a" for lead in body)
+
+
+def test_list_leads_empty_project_returns_empty_list():
+    assert client.get("/leads/inconnu-list").json() == []

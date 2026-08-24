@@ -74,3 +74,30 @@ def test_lead_capture_stays_public(monkeypatch):
     r = client.post("/leads", json={"project": "p", "email": "a@b.com"})
     assert r.status_code == 200
     assert r.json() == {"ok": True}
+
+
+# GET /leads/{project} (liste) réutilise la même garde verify_stats_token que
+# /leads/{project}/stats — même triple garantie attendue.
+
+
+def test_list_requires_token_when_configured(monkeypatch):
+    monkeypatch.setenv("COLLECTOR_STATS_TOKEN", "s3cret-list")
+
+    assert client.get("/leads/p").status_code == 401
+    assert (
+        client.get("/leads/p", headers={"X-Collector-Token": "faux"}).status_code == 401
+    )
+    r = client.get("/leads/p", headers={"X-Collector-Token": "s3cret-list"})
+    assert r.status_code == 200
+
+
+def test_list_fail_closed_in_production_without_token(monkeypatch):
+    monkeypatch.delenv("COLLECTOR_STATS_TOKEN", raising=False)
+    monkeypatch.setenv("ENVIRONMENT", "production")
+    assert client.get("/leads/p").status_code == 503
+
+
+def test_list_open_in_dev_without_token(monkeypatch):
+    monkeypatch.delenv("COLLECTOR_STATS_TOKEN", raising=False)
+    monkeypatch.delenv("ENVIRONMENT", raising=False)
+    assert client.get("/leads/p").status_code == 200

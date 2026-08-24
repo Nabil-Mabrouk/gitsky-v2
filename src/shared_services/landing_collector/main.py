@@ -16,7 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from landing_collector.database import create_tables, get_session
 from landing_collector.models import Lead
-from landing_collector.schemas import LeadIn, LeadStats
+from landing_collector.schemas import LeadIn, LeadOut, LeadStats
 
 
 @asynccontextmanager
@@ -81,3 +81,24 @@ async def project_stats(
         )
     ).scalar_one()
     return LeadStats(project=project, signups=signups)
+
+
+@app.get(
+    "/leads/{project}",
+    response_model=list[LeadOut],
+    dependencies=[Depends(verify_stats_token)],
+)
+async def list_leads(
+    project: str, limit: int = 200, db: AsyncSession = Depends(get_session)
+) -> list[Lead]:
+    # Pas d'offset/curseur : volume attendu faible (produits en phase T0), un
+    # `limit` fixe suffit comme garde-fou sans complexité de pagination.
+    # Tri secondaire sur id : deux leads captés dans la même seconde (rafale
+    # de trafic) auraient sinon un ordre indéfini malgré le tri sur created_at.
+    result = await db.execute(
+        select(Lead)
+        .where(Lead.project == project)
+        .order_by(Lead.created_at.desc(), Lead.id.desc())
+        .limit(limit)
+    )
+    return list(result.scalars().all())

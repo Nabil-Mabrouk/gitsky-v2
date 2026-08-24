@@ -193,3 +193,23 @@ def test_t0_env_has_no_postgres_credentials():
         # T0 n'a pas de base : pas de credentials Postgres à porter.
         assert "POSTGRES_PASSWORD" not in env
         assert "SECRET_KEY" in env  # mais garde une clé JWT (SEO/health, futur auth)
+
+
+# --- shared-services-net : réservé au module fleet (Chap 19, onglet Leads) --
+
+
+def test_fleet_backend_joins_shared_services_net():
+    with projet_genere("fleet-dashboard", "t2", modules={"fleet": True}) as dst:
+        compose = yaml.safe_load((dst / "docker-compose.yml").read_text(encoding="utf-8"))
+    assert "shared-services-net" in compose["services"]["backend"]["networks"]
+    net = compose["networks"]["shared-services-net"]
+    assert net["external"] is True
+
+
+def test_ordinary_t2_project_never_touches_shared_services_net():
+    # Un projet T2 sans module fleet (le cas normal) ne doit pas se retrouver
+    # à dépendre d'un réseau externe dont il n'a jamais besoin.
+    with projet_genere("pain-scraper", "t2") as dst:
+        compose = yaml.safe_load((dst / "docker-compose.yml").read_text(encoding="utf-8"))
+    assert "shared-services-net" not in compose["services"]["backend"]["networks"]
+    assert "shared-services-net" not in compose["networks"]
