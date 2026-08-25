@@ -40,6 +40,19 @@ def _fake_docker(fakebin: Path, body: str) -> None:
     d.chmod(0o755)
 
 
+def _fake_curl(fakebin: Path, log: Path, *, fail: bool = False) -> None:
+    # Capture les args réels (dont le payload -d) pour vérifier ce qui est
+    # posté à /api/fleet/maintenance/report, sans jamais toucher au réseau.
+    c = fakebin / "curl"
+    _write_lf(
+        c,
+        "#!/usr/bin/env bash\n"
+        f'echo "$@" >> "{log.as_posix()}"\n'
+        + ("exit 1\n" if fail else "exit 0\n"),
+    )
+    c.chmod(0o755)
+
+
 def _run(script_name: str, fakebin: Path, cwd: Path, **env_over) -> subprocess.CompletedProcess:
     env = dict(os.environ)
     env["PATH"] = str(fakebin) + os.pathsep + env["PATH"]
@@ -151,6 +164,58 @@ def test_fleet_backup_reports_failed_project(tmp_path):
     assert list(backups.glob("*.dump.gz")) == []
 
 
+def test_fleet_backup_reports_success_to_maintenance_endpoint(tmp_path):
+    fakebin = tmp_path / "bin"; fakebin.mkdir()
+    backups = tmp_path / "backups"
+    log = tmp_path / "curl_calls.log"
+    _fake_docker_two_projects(fakebin)
+    _fake_curl(fakebin, log)
+
+    r = _run("backup-fleet.sh", fakebin, tmp_path, BACKUP_DIR=backups.as_posix(),
+              FLEET_URL="https://api.example.com", FLEET_REGISTER_TOKEN="tok")
+
+    assert r.returncode == 0, r.stderr
+    call = log.read_text()
+    assert "https://api.example.com/api/fleet/maintenance/report" in call
+    assert "X-Fleet-Token: tok" in call
+    assert '"job":"backup-fleet"' in call
+    assert '"status":"success"' in call
+
+
+def test_fleet_backup_reports_failure_to_maintenance_endpoint(tmp_path):
+    fakebin = tmp_path / "bin"; fakebin.mkdir()
+    backups = tmp_path / "backups"
+    log = tmp_path / "curl_calls.log"
+    _fake_docker(fakebin, r"""
+        case "$1" in
+          ps)   echo "broken_db" ;;
+          exec) exit 1 ;;
+        esac
+    """)
+    _fake_curl(fakebin, log)
+
+    r = _run("backup-fleet.sh", fakebin, tmp_path, BACKUP_DIR=backups.as_posix(),
+              FLEET_URL="https://api.example.com", FLEET_REGISTER_TOKEN="tok")
+
+    assert r.returncode == 1
+    assert '"status":"failure"' in log.read_text()
+
+
+def test_fleet_backup_skips_reporting_without_fleet_url(tmp_path):
+    # Hors cron (lancement manuel sans FLEET_URL) : aucun appel curl tenté,
+    # et surtout pas d'échec du script à cause de ça.
+    fakebin = tmp_path / "bin"; fakebin.mkdir()
+    backups = tmp_path / "backups"
+    log = tmp_path / "curl_calls.log"
+    _fake_docker_two_projects(fakebin)
+    _fake_curl(fakebin, log)
+
+    r = _run("backup-fleet.sh", fakebin, tmp_path, BACKUP_DIR=backups.as_posix(), FLEET_URL="")
+
+    assert r.returncode == 0, r.stderr
+    assert not log.exists()
+
+
 def test_fleet_backup_loops_containers_not_pg_database(tmp_path):
     # Écart au livre acté : on énumère via `docker ps` (conteneurs), jamais via
     # `SELECT datname FROM pg_database` d'une instance partagée.
@@ -260,6 +325,109 @@ def test_fleet_restore_cleans_up_container_on_exit(tmp_path):
     assert r.returncode == 0, r.stderr
     calls = log.read_text()
     assert "rm -f gitsky_restore_test_" in calls
+
+
+def test_fleet_restore_reports_success_to_maintenance_endpoint(tmp_path):
+    fakebin = tmp_path / "bin"; fakebin.mkdir()
+    backups = tmp_path / "backups"; backups.mkdir()
+    (backups / "pain_scraper_20260101_020000.dump.gz").write_bytes(b"\x1f\x8b\x00")
+    curl_log = tmp_path / "curl_calls.log"
+    _fake_docker_restore(fakebin)
+    _fake_curl(fakebin, curl_log)
+
+    r = _run("test-restore-fleet.sh", fakebin, tmp_path, BACKUP_DIR=backups.as_posix(),
+              PROJECT="pain-scraper", FLEET_URL="https://api.example.com",
+              FLEET_REGISTER_TOKEN="tok")
+
+    assert r.returncode == 0, r.stderr
+    call = curl_log.read_text()
+    assert '"job":"restore-test"' in call
+    assert '"status":"success"' in call
+    assert '"project":"pain_scraper"' in call
+
+
+def test_fleet_restore_reports_failure_when_no_backups_found(tmp_path):
+    fakebin = tmp_path / "bin"; fakebin.mkdir()
+    backups = tmp_path / "backups"; backups.mkdir()
+    curl_log = tmp_path / "curl_calls.log"
+    _fake_docker_restore(fakebin)
+    _fake_curl(fakebin, curl_log)
+
+    r = _run("test-restore-fleet.sh", fakebin, tmp_path, BACKUP_DIR=backups.as_posix(),
+              FLEET_URL="https://api.example.com", FLEET_REGISTER_TOKEN="tok")
+
+    assert r.returncode == 1
+    call = curl_log.read_text()
+    assert '"job":"restore-test"' in call
+    assert '"status":"failure"' in call
+    assert '"project":null' in call  # aucun projet n'a encore été tiré au sort
+
+
+def test_fleet_restore_reports_failure_when_table_count_is_zero(tmp_path):
+    fakebin = tmp_path / "bin"; fakebin.mkdir()
+    backups = tmp_path / "backups"; backups.mkdir()
+    (backups / "pain_scraper_20260101_020000.dump.gz").write_bytes(b"\x1f\x8b\x00")
+    curl_log = tmp_path / "curl_calls.log"
+    _fake_docker_restore(fakebin, table_count="0")
+    _fake_curl(fakebin, curl_log)
+
+    r = _run("test-restore-fleet.sh", fakebin, tmp_path, BACKUP_DIR=backups.as_posix(),
+              FLEET_URL="https://api.example.com", FLEET_REGISTER_TOKEN="tok")
+
+    assert r.returncode == 1
+    call = curl_log.read_text()
+    assert '"status":"failure"' in call
+    assert '"project":"pain_scraper"' in call
+
+
+def test_fleet_restore_skips_reporting_without_fleet_url(tmp_path):
+    fakebin = tmp_path / "bin"; fakebin.mkdir()
+    backups = tmp_path / "backups"; backups.mkdir()
+    (backups / "pain_scraper_20260101_020000.dump.gz").write_bytes(b"\x1f\x8b\x00")
+    curl_log = tmp_path / "curl_calls.log"
+    _fake_docker_restore(fakebin)
+    _fake_curl(fakebin, curl_log)
+
+    r = _run("test-restore-fleet.sh", fakebin, tmp_path,
+              BACKUP_DIR=backups.as_posix(), FLEET_URL="")
+
+    assert r.returncode == 0, r.stderr
+    assert not curl_log.exists()
+
+
+# --- fleet-disk.sh -----------------------------------------------------------
+
+
+def _fake_docker_system_df(fakebin: Path) -> None:
+    _fake_docker(fakebin, 'case "$1" in system) exit 0 ;; esac')
+
+
+def test_fleet_disk_reports_to_maintenance_endpoint(tmp_path):
+    fakebin = tmp_path / "bin"; fakebin.mkdir()
+    log = tmp_path / "curl_calls.log"
+    _fake_docker_system_df(fakebin)
+    _fake_curl(fakebin, log)
+
+    r = _run("fleet-disk.sh", fakebin, tmp_path,
+              FLEET_URL="https://api.example.com", FLEET_REGISTER_TOKEN="tok")
+
+    assert r.returncode == 0, r.stderr
+    call = log.read_text()
+    assert '"job":"disk-check"' in call
+    assert '"status":"success"' in call
+    assert "Disque / :" in call
+
+
+def test_fleet_disk_skips_reporting_without_fleet_url(tmp_path):
+    fakebin = tmp_path / "bin"; fakebin.mkdir()
+    log = tmp_path / "curl_calls.log"
+    _fake_docker_system_df(fakebin)
+    _fake_curl(fakebin, log)
+
+    r = _run("fleet-disk.sh", fakebin, tmp_path, FLEET_URL="")
+
+    assert r.returncode == 0, r.stderr
+    assert not log.exists()
 
 
 # --- Qualité des scripts livrés --------------------------------------------

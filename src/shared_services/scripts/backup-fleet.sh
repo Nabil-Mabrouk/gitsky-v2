@@ -57,8 +57,29 @@ done
 # Rotation : garder BACKUP_RETENTION jours de dumps locaux.
 find "$BACKUP_DIR" -name "*.dump.gz" -mtime "+${BACKUP_RETENTION}" -delete
 
+TOTAL=$(echo "$CONTAINERS" | wc -w)
 if [[ $FAILED -gt 0 ]]; then
+    STATUS="failure"
+    SUMMARY="$FAILED échec(s) sur $TOTAL projet(s)."
     echo "=== Sauvegarde flotte terminée avec $FAILED échec(s). ==="
-    exit 1
+else
+    STATUS="success"
+    SUMMARY="$TOTAL projet(s) sauvegardé(s)."
+    echo "=== Sauvegarde flotte terminée. ==="
 fi
-echo "=== Sauvegarde flotte terminée. ==="
+
+# Reporting vers l'onglet Maintenance (Chap 23) — FLEET_URL/FLEET_REGISTER_TOKEN
+# déjà exportés globalement par crontab.fleet (déclarés pour fleet-health.sh,
+# cron les applique à tous les jobs suivants). Absents hors cron (lancement
+# manuel) : on saute silencieusement, jamais d'échec sur ça (`|| true`) — un
+# reporting raté ne doit jamais transformer une sauvegarde réussie en échec.
+if [[ -n "${FLEET_URL:-}" ]]; then
+    curl -fsS -X POST "${FLEET_URL}/api/fleet/maintenance/report" \
+        -H "X-Fleet-Token: ${FLEET_REGISTER_TOKEN}" \
+        -H "Content-Type: application/json" \
+        -d "{\"job\":\"backup-fleet\",\"status\":\"${STATUS}\",\"summary\":\"${SUMMARY}\"}" \
+        >/dev/null || true
+fi
+
+[[ "$STATUS" == "failure" ]] && exit 1
+exit 0

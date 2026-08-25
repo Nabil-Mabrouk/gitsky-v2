@@ -28,6 +28,23 @@ TEST_CONTAINER="gitsky_restore_test_$$"
 cleanup() { docker rm -f "$TEST_CONTAINER" >/dev/null 2>&1 || true; }
 trap cleanup EXIT
 
+# Reporting vers l'onglet Maintenance (Chap 23) — FLEET_URL/FLEET_REGISTER_TOKEN
+# déjà exportés globalement par crontab.fleet. Absents hors cron : on saute
+# silencieusement (`|| true`) — un reporting raté ne doit jamais transformer
+# un test réussi en échec.
+report() {
+    local status="$1" summary="$2" project="${3:-}"
+    if [[ -n "${FLEET_URL:-}" ]]; then
+        local project_json="null"
+        [[ -n "$project" ]] && project_json="\"${project}\""
+        curl -fsS -X POST "${FLEET_URL}/api/fleet/maintenance/report" \
+            -H "X-Fleet-Token: ${FLEET_REGISTER_TOKEN}" \
+            -H "Content-Type: application/json" \
+            -d "{\"job\":\"restore-test\",\"status\":\"${status}\",\"summary\":\"${summary}\",\"project\":${project_json}}" \
+            >/dev/null || true
+    fi
+}
+
 # Un dump par projet : {dbname}_{YYYYMMDD_HHMMSS}.dump.gz (backup-fleet.sh).
 # Le nom de projet lui-même peut contenir des underscores (tirets convertis à
 # la sauvegarde) : on ne retire que le suffixe daté, jamais fixe en longueur.
@@ -39,6 +56,7 @@ mapfile -t DBNAMES < <(
 
 if [[ ${#DBNAMES[@]} -eq 0 ]]; then
     echo "ERREUR : aucune sauvegarde trouvée dans $BACKUP_DIR"
+    report "failure" "Aucune sauvegarde trouvée dans $BACKUP_DIR"
     exit 1
 fi
 
@@ -51,6 +69,7 @@ fi
 LATEST=$(find "$BACKUP_DIR" -maxdepth 1 -name "${DBNAME}_*.dump.gz" | sort | tail -1)
 if [[ -z "$LATEST" ]]; then
     echo "ERREUR : aucune sauvegarde pour '$DBNAME' dans $BACKUP_DIR"
+    report "failure" "Aucune sauvegarde pour '$DBNAME'" "$DBNAME"
     exit 1
 fi
 
@@ -83,7 +102,9 @@ RESULT=$(docker exec "$TEST_CONTAINER" psql -U postgres "${DBNAME}_test" -t -c \
 echo "Tables restaurées : $RESULT"
 if [[ "${RESULT:-0}" -gt 0 ]]; then
     echo "✓ Test de restauration réussi ($DBNAME)."
+    report "success" "$RESULT tables restaurées." "$DBNAME"
 else
     echo "✗ ERREUR : aucune table après restauration de $DBNAME."
+    report "failure" "Aucune table après restauration." "$DBNAME"
     exit 1
 fi

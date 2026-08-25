@@ -23,3 +23,16 @@ echo "=== Volumes par projet (les plus gros d'abord) ==="
 docker system df -v --format '{{ json .Volumes }}' 2>/dev/null \
     | tr ',' '\n' | grep -iE 'db_data|_db' || \
     docker system df -v
+
+# Reporting vers l'onglet Maintenance (Chap 23) — purement informatif, ce
+# script n'a pas de seuil d'échec, toujours "success". FLEET_URL/
+# FLEET_REGISTER_TOKEN déjà exportés globalement par crontab.fleet ; absents
+# hors cron, on saute silencieusement (`|| true`).
+DISK_PCT=$(df -h / | awk 'NR==2{print $5}')
+if [[ -n "${FLEET_URL:-}" ]]; then
+    curl -fsS -X POST "${FLEET_URL}/api/fleet/maintenance/report" \
+        -H "X-Fleet-Token: ${FLEET_REGISTER_TOKEN}" \
+        -H "Content-Type: application/json" \
+        -d "{\"job\":\"disk-check\",\"status\":\"success\",\"summary\":\"Disque / : ${DISK_PCT}\"}" \
+        >/dev/null || true
+fi

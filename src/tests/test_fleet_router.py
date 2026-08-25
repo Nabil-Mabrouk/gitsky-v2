@@ -25,6 +25,7 @@ from sqlalchemy.ext.asyncio import (  # noqa: E402
 
 import app.core.models  # noqa: E402,F401
 import app.modules.fleet.models  # noqa: E402,F401
+from app.core import mailer  # noqa: E402
 from app.core.auth.security import create_access_token, hash_password  # noqa: E402
 from app.core.database import Base, get_db  # noqa: E402
 from app.core.models import User, UserRole  # noqa: E402
@@ -206,3 +207,100 @@ def test_project_leads_requires_admin_and_proxies_landing_collector(monkeypatch)
             "verified": False,
         }
     ]
+
+
+def test_maintenance_report_persists_run_and_is_listable():
+    r = client.post(
+        "/api/fleet/maintenance/report",
+        json={"job": "disk-check", "status": "success", "summary": "Disque / : 42%"},
+    )
+    assert r.status_code == 204
+
+    runs = client.get(
+        "/api/fleet/maintenance/runs", headers=_auth(SEED["admin_id"])
+    ).json()
+    assert any(
+        r["job"] == "disk-check" and r["status"] == "success" and r["summary"] == "Disque / : 42%"
+        for r in runs
+    )
+
+
+def test_maintenance_report_failure_sends_alert_but_never_blocks(monkeypatch):
+    monkeypatch.setenv("SMTP_FROM", "ops@example.com")
+    sent: dict = {}
+
+    def fake_send_email(to: str, subject: str, body: str) -> None:
+        sent["to"] = to
+        sent["subject"] = subject
+        sent["body"] = body
+
+    monkeypatch.setattr(mailer, "send_email", fake_send_email)
+
+    r = client.post(
+        "/api/fleet/maintenance/report",
+        json={
+            "job": "restore-test",
+            "status": "failure",
+            "summary": "Aucune table après restauration.",
+            "project": "pain_scraper",
+        },
+    )
+    assert r.status_code == 204
+    assert sent["to"] == "ops@example.com"
+    assert "restore-test" in sent["subject"]
+    assert sent["body"] == "Aucune table après restauration."
+
+
+def test_maintenance_report_success_does_not_send_alert(monkeypatch):
+    monkeypatch.setenv("SMTP_FROM", "ops@example.com")
+    calls = []
+    monkeypatch.setattr(mailer, "send_email", lambda **kw: calls.append(kw))
+
+    r = client.post(
+        "/api/fleet/maintenance/report",
+        json={"job": "backup-fleet", "status": "success", "summary": "2 projets sauvegardés."},
+    )
+    assert r.status_code == 204
+    assert calls == []
+
+
+def test_maintenance_report_alert_failure_does_not_break_the_endpoint(monkeypatch):
+    # L'alerte est un enrichissement : un mailer qui lève ne doit jamais faire
+    # échouer le reporting lui-même (la ligne est déjà persistée avant l'email).
+    monkeypatch.setenv("SMTP_FROM", "ops@example.com")
+
+    def broken_send_email(**kw):
+        raise RuntimeError("SMTP down")
+
+    monkeypatch.setattr(mailer, "send_email", broken_send_email)
+
+    r = client.post(
+        "/api/fleet/maintenance/report",
+        json={"job": "backup-fleet", "status": "failure", "summary": "1 échec."},
+    )
+    assert r.status_code == 204
+
+
+def test_maintenance_runs_sorted_most_recent_first_and_requires_admin():
+    assert client.get("/api/fleet/maintenance/runs").status_code == 401
+    assert (
+        client.get(
+            "/api/fleet/maintenance/runs", headers=_auth(SEED["user_id"])
+        ).status_code
+        == 403
+    )
+
+    client.post(
+        "/api/fleet/maintenance/report",
+        json={"job": "order-check-a", "status": "success"},
+    )
+    client.post(
+        "/api/fleet/maintenance/report",
+        json={"job": "order-check-b", "status": "success"},
+    )
+
+    runs = client.get(
+        "/api/fleet/maintenance/runs", headers=_auth(SEED["admin_id"])
+    ).json()
+    jobs = [r["job"] for r in runs if r["job"].startswith("order-check")]
+    assert jobs == ["order-check-b", "order-check-a"]
