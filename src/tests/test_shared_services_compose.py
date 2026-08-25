@@ -1,14 +1,23 @@
 """shared_services/docker-compose.yml (Chap 18) — routage Traefik du landing collector.
 
-Bug réel (constaté en prod, pas par un test) : POST /leads sur le domaine
-d'une landing T0 (politique-ia) atterrissait sur le frontend statique du
-projet (serve -s, fallback SPA) au lieu du landing collector — aucune route
-Traefik n'existait jamais réellement vers lui, malgré le commentaire
-"same-origin, Traefik route" dans landing.html.jinja. Corrigé en joignant
-landing-collector à proxy-net avec un routeur SANS Host() (matche tous les
-domaines de la flotte) mais avec un Path() EXACT + Method(POST) — pour ne
-JAMAIS exposer /leads/{project} ni /leads/{project}/stats (protégés par
-COLLECTOR_STATS_TOKEN) au-delà de shared-services-net.
+Deux bugs réels (constatés en prod, pas par un test) :
+
+1. POST /leads sur le domaine d'une landing T0 (politique-ia) atterrissait
+   sur le frontend statique du projet (serve -s, fallback SPA) au lieu du
+   landing collector — aucune route Traefik n'existait jamais réellement
+   vers lui, malgré le commentaire "same-origin, Traefik route" dans
+   landing.html.jinja. Corrigé en joignant landing-collector à proxy-net
+   avec un routeur SANS Host() (matche tous les domaines de la flotte) mais
+   avec un Path() EXACT + Method(POST) — pour ne JAMAIS exposer
+   /leads/{project} ni /leads/{project}/stats (protégés par
+   COLLECTOR_STATS_TOKEN) au-delà de shared-services-net.
+2. Une fois le double opt-in ajouté, le lien de confirmation
+   (/leads/verify/{token}) redirigeait ENCORE vers la vitrine du projet
+   plutôt que vers le landing collector — sans priority explicite, Traefik
+   départage par défaut sur la longueur de la chaîne de règle, et le
+   routeur frontend (Host(`<domaine>`)) s'est révélé plus long que
+   PathPrefix(`/leads/verify`). Corrigé avec priority=100 explicite sur les
+   deux routeurs du landing collector.
 """
 
 from pathlib import Path
@@ -66,3 +75,16 @@ def test_postgres_has_no_traefik_exposure():
     postgres = _compose()["services"]["postgres"]
     assert "proxy-net" not in postgres.get("networks", [])
     assert "labels" not in postgres
+
+
+def test_leads_routers_have_explicit_priority():
+    # Bug réel (constaté en prod) : sans priority explicite, Traefik
+    # départage par défaut sur la LONGUEUR de la chaîne de règle — le
+    # routeur frontend d'un projet (Host(`<domaine>`), pas de Host() ici)
+    # s'est révélé plus long que PathPrefix(`/leads/verify`) et gagnait le
+    # match, renvoyant le lien de confirmation vers la vitrine au lieu du
+    # landing collector. Même valeur (100) que authlimit-{{ project_name }}
+    # dans docker-compose.yml.jinja.
+    labels = _compose()["services"]["landing-collector"]["labels"]
+    assert "traefik.http.routers.landing-collector-leads.priority=100" in labels
+    assert "traefik.http.routers.landing-collector-verify.priority=100" in labels

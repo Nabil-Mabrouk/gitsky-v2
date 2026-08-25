@@ -73,10 +73,18 @@ services:
       # injoignables depuis Internet, cohérent avec shared-services-net: internal.
       # Rules sans Host() : matchent sur TOUS les domaines de la flotte (chaque
       # landing T0 poste/renvoie en same-origin vers son propre domaine).
+      # priority=100 EXPLICITE sur les deux routeurs (même valeur que
+      # authlimit-{{ project_name }} dans docker-compose.yml.jinja) : bug réel
+      # constaté en prod — sans priority, Traefik départage par défaut sur la
+      # LONGUEUR de la chaîne de règle, et Host(`politique-ia.0-hitl.com`) (le
+      # routeur frontend du projet, aucun Host() ici) s'est révélé plus long
+      # que PathPrefix(`/leads/verify`) et gagnait le match, renvoyant le lien
+      # de confirmation vers la vitrine au lieu du landing collector.
       - "traefik.enable=true"
       - "traefik.http.routers.landing-collector-leads.rule=Path(`/leads`) && Method(`POST`)"
       - "traefik.http.routers.landing-collector-leads.entrypoints=websecure"
       - "traefik.http.routers.landing-collector-leads.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.landing-collector-leads.priority=100"
       - "traefik.http.services.landing-collector-leads.loadbalancer.server.port=8000"
       # Un flood de POST /leads déclenche maintenant un vrai envoi d'email
       # (double opt-in) — sans limite, le formulaire public devient un
@@ -89,6 +97,7 @@ services:
       - "traefik.http.routers.landing-collector-verify.rule=PathPrefix(`/leads/verify`)"
       - "traefik.http.routers.landing-collector-verify.entrypoints=websecure"
       - "traefik.http.routers.landing-collector-verify.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.landing-collector-verify.priority=100"
       - "traefik.http.routers.landing-collector-verify.service=landing-collector-leads"
     networks:
       - shared-services-net
