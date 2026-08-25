@@ -109,6 +109,9 @@ def test_full_block_catalog_renders_valid_html():
     # email_capture branché au collector partagé (same-origin).
     assert "/leads" in html
     assert '"acme"' in html  # projet injecté dans le POST JS
+    # Bug réel (constaté en prod) : "Merci !" s'affichait même quand la
+    # capture échouait côté serveur, faute de vérifier response.ok.
+    assert "res.ok" in html
 
 
 def test_no_layout_field_keeps_default_markup():
