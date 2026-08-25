@@ -12,6 +12,7 @@ on:
       - "src/generator/requirements.txt"
       - "src/generator/template/requirements.txt"
       - "src/generator/template/frontend/package.json"
+      - "src/generator/template/frontend/package-lock.json"
       - "src/shared_services/landing_collector/requirements.txt"
       - "src/shared_services/studio/requirements.txt"
   workflow_dispatch:
