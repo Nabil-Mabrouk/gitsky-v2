@@ -2,7 +2,9 @@
 # Bootstrap unique du VPS : Traefik (seul exposé), et les services internes sur
 # shared-services-net (jamais joignables DEPUIS Internet). llm-proxy est aussi
 # branché sur egress-net pour pouvoir appeler VERS Internet (api.anthropic.com) ;
-# les autres (postgres, landing-collector) restent isolés dans les deux sens.
+# postgres reste isolé dans les deux sens. landing-collector est aussi sur
+# proxy-net, mais SEULE sa route POST /leads (capture, publique par
+# conception) est exposée via Traefik — voir ses labels ci-dessous.
 # Config d'infra — renseigner les secrets via un .env hors VCS (.secrets/
 # ignoré par git).
 #
@@ -55,8 +57,21 @@ services:
       # onglet Leads du fleet dashboard) — même valeur que le
       # COLLECTOR_STATS_TOKEN de fleet-dashboard/.env.
       - COLLECTOR_STATS_TOKEN=${COLLECTOR_STATS_TOKEN}
+    labels:
+      # Seule POST /leads (capture, publique par conception) est exposée via
+      # Traefik — Path() est un match EXACT (pas PathPrefix), donc /leads/{project}
+      # et /leads/{project}/stats (protégés par COLLECTOR_STATS_TOKEN) restent
+      # injoignables depuis Internet, cohérent avec shared-services-net: internal.
+      # Rule sans Host() : matche sur TOUS les domaines de la flotte (chaque
+      # landing T0 poste en same-origin vers son propre domaine).
+      - "traefik.enable=true"
+      - "traefik.http.routers.landing-collector-leads.rule=Path(`/leads`) && Method(`POST`)"
+      - "traefik.http.routers.landing-collector-leads.entrypoints=websecure"
+      - "traefik.http.routers.landing-collector-leads.tls.certresolver=letsencrypt"
+      - "traefik.http.services.landing-collector-leads.loadbalancer.server.port=8000"
     networks:
       - shared-services-net
+      - proxy-net
     depends_on:
       - postgres
 

@@ -29,7 +29,7 @@ Ce chapitre décrit chacun de ces services : rôle, implémentation recommandée
 +--------------------------------------------------+
 ```
 
-Tous les services partagés vivent sur le réseau interne `shared-services-net` du VPS, jamais exposé à Internet. Seul Traefik est joignable depuis l'extérieur.
+Tous les services partagés vivent sur le réseau interne `shared-services-net` du VPS, jamais exposé à Internet — à une exception délibérée près : la capture du landing collector (§3), qui doit être joignable depuis chaque landing T0. Le principe reste le même : seule cette route précise passe par Traefik, jamais le service dans son ensemble.
 
 ## 1. Traefik : Routage HTTPS Mutualisé
 
@@ -125,16 +125,18 @@ async def collect_lead(lead: LeadIn):
     return {"ok": True}
 ```
 
-Une T0 poste sur cet endpoint :
+Une T0 poste **en same-origin**, sur son propre domaine — pas sur un domaine dédié au collecteur (un hostname interne comme `landing-collector.mystudio.internal` ne résoudrait de toute façon nulle part publiquement, et forcerait une configuration CORS pour rien) :
 
 ```tsx
-await fetch("https://landing-collector.mystudio.internal/leads", {
+await fetch("/leads", {
     method: "POST",
     body: JSON.stringify({ project: "pain-scraper", email }),
 });
 ```
 
-Le fleet dashboard (Chap 19) lit cette table pour afficher le funnel de chaque projet T0. La **capture** (`POST /leads`) reste publique — les landings postent sans secret — mais la **lecture** des stats (`GET /leads/{project}/stats`) est réservée au dashboard : elle exige un en-tête `X-Collector-Token` comparé à `COLLECTOR_STATS_TOKEN`. Sinon, le funnel (nombre d'inscrits) de n'importe quel projet fuiterait à quiconque joint le collecteur. Comme partout dans le châssis : ouvert en développement sans token, `503` fail-closed en production non configurée.
+Ce `/leads` same-origin atterrit sur Traefik comme n'importe quelle requête vers le domaine de la landing — mais Traefik le route vers le landing collector, pas vers le frontend du projet, grâce à un routeur **sans contrainte `Host()`** : `Path(\`/leads\`) && Method(\`POST\`)`. Cette règle matche sur tous les domaines de la flotte à la fois, ce qui évite de déclarer une route par projet. `Path()` est un match exact (pas `PathPrefix()`) : seule cette unique route est exposée, jamais `/leads/{project}` ni `/leads/{project}/stats` (§ci-dessous) — le collecteur reste pour le reste sur `shared-services-net`, injoignable depuis Internet.
+
+Le fleet dashboard (Chap 19) lit cette table pour afficher le funnel de chaque projet T0, et un onglet Leads (Chap 19) permet de consulter la liste brute des emails captés. La **capture** (`POST /leads`) reste publique — les landings postent sans secret — mais la **lecture**, que ce soit les stats agrégées (`GET /leads/{project}/stats`) ou la liste (`GET /leads/{project}`), est réservée au dashboard : elle exige un en-tête `X-Collector-Token` comparé à `COLLECTOR_STATS_TOKEN`, et n'est de toute façon joignable QUE depuis `shared-services-net` (jamais via Traefik). Sinon, le funnel ou les emails de n'importe quel projet fuiteraient à quiconque joint le collecteur. Comme partout dans le châssis : ouvert en développement sans token, `503` fail-closed en production non configurée.
 
 ## 4. LLM Proxy Partagé
 
