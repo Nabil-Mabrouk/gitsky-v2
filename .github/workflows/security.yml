@@ -1,0 +1,57 @@
+# Scan CVE des dépendances (Chap 23 §2.4) — jamais matérialisé avant ce
+# round malgré le script/workflow déjà écrits dans le livre : aucun fichier
+# réel n'existait dans le repo, seulement la checklist manuelle de
+# MAINTENANCE.md ("pip-audit, npm audit", sans outillage).
+name: Security Audit
+
+on:
+  schedule:
+    - cron: "0 8 * * 1" # Chaque lundi matin
+  push:
+    paths:
+      - "src/generator/requirements.txt"
+      - "src/generator/template/requirements.txt"
+      - "src/generator/template/frontend/package.json"
+      - "src/shared_services/landing_collector/requirements.txt"
+      - "src/shared_services/studio/requirements.txt"
+  workflow_dispatch:
+
+jobs:
+  python-audit:
+    name: pip-audit (${{ matrix.requirements }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        requirements:
+          - src/generator/requirements.txt
+          - src/generator/template/requirements.txt
+          - src/shared_services/landing_collector/requirements.txt
+          - src/shared_services/studio/requirements.txt
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Auditer les dépendances Python
+        run: |
+          pip install pip-audit
+          pip-audit -r ${{ matrix.requirements }}
+
+  frontend-audit:
+    name: npm audit (frontend du template)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: src/generator/template/frontend
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+      - name: Auditer les dépendances Node.js
+        run: npm audit --audit-level=high
