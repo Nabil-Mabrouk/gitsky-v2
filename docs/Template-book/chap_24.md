@@ -21,6 +21,8 @@ Le Studio n'a de sens que si l'on scinde d'abord chaque projet en deux couches �
 
 C'est cette frontière qui réconcilie industrialisation et différenciation : on industrialise le moteur, on libère la carrosserie. Le diff à trois voies de Copier (Chap 17) respecte cette frontière dès lors qu'elle est **déclarée explicitement** — la vitrine est une zone `project-owned`, exclue de la propagation.
 
+> **Écart assumé** — la frontière s'est redessinée en cours de route : la vitrine T0 est aujourd'hui rendue par les mêmes composants React que T1/T2 (`frontend/src/pages/Landing.tsx` et `frontend/src/components/blocks/**`), plutôt que par un gabarit HTML Jinja dédié. Ce code de rendu est donc redevenu **châssis** (`copier update` le propage normalement) — seule la *donnée* produite par le Studio (`landing-manifest.json`, skin/blocks/hero_image) reste `project-owned` et gelée par `_skip_if_exists`. La frontière entre les deux couches n'a pas disparu ; elle est descendue d'un cran, du fichier entier jusqu'à son seul contenu. Décision produit (Chap 25) : cohérence du stack et réutilisation du code à la promotion de tier, au prix du rendu 100 % client-side (pas de prerendering) — un compromis SEO/vitesse assumé par rapport au HTML statique d'origine.
+
 ## Le Pipeline d'Agents
 
 Le Studio est un **service agentic pré-configuré**, déclaré dans `agent_services.yaml` (Chap 15) au même titre que les services vendus aux projets. Son métier : concevoir des landings GitSky. Un brief de marque circule entre agents spécialisés, chacun produisant un artefact contractuel :

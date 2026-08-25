@@ -1,7 +1,9 @@
 """Creative Manifest (Phase 5, incrément 3).
 
 Validation + mapping vers données copier + stockage versionné + déterminisme :
-deux générations depuis le même manifest produisent une vitrine identique.
+deux générations depuis le même manifest produisent une vitrine identique
+(donnée `landing-manifest.json` + thème `theme.css` — le rendu HTML lui-même
+est React, Chap 24, donc hors scope de ce module Studio pur-Python).
 """
 
 import os
@@ -93,15 +95,18 @@ def test_generation_from_manifest_is_deterministic():
     data = {**to_copier_data(m), "project": {"name": "pain-scraper", "tier": "t0"}}
     root = Path(tempfile.mkdtemp())
     try:
-        pages = []
+        manifests, themes = [], []
         for i in range(2):
             dst = root / f"proj{i}"
             run_copy(str(GENERATOR), str(dst), data=data, defaults=True, quiet=True, unsafe=True)
-            pages.append((dst / "vitrine" / "landing.html").read_text("utf-8"))
-        # Vitrine identique aux deux générations (reproductibilité).
-        assert pages[0] == pages[1]
-        # Le brief a bien piloté le rendu.
-        assert "#C8452D" in pages[0]
-        assert "Marre du scraping ?" in pages[0]
+            manifests.append((dst / "frontend" / "src" / "landing-manifest.json").read_text("utf-8"))
+            themes.append((dst / "frontend" / "src" / "theme.css").read_text("utf-8"))
+        # Donnée de landing + thème identiques aux deux générations (reproductibilité).
+        assert manifests[0] == manifests[1]
+        assert themes[0] == themes[1]
+        # Le brief a bien piloté le rendu : contenu dans la donnée de landing,
+        # couleur dans le thème (les deux fichiers, plus jamais un seul HTML).
+        assert "Marre du scraping ?" in manifests[0]
+        assert "#C8452D" in themes[0]
     finally:
         _rmtree_robuste(root)

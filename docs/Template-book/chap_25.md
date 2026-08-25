@@ -81,8 +81,9 @@ quelques minutes (Chap 17 §Bootstrapping d'une Flotte).
 Un projet généré est **auto-suffisant** : son `docker-compose.yml` de production
 décrit tout ce dont il a besoin. Selon le tier (Chap 21) :
 
-- **T0** — frontend (landing statique art-dirigée, Chap 24) + backend minimal.
-  Pas de base propre : les leads vont au landing collector partagé (Chap 18 §3).
+- **T0** — frontend (landing art-dirigée par le Studio, rendue en React/
+  client-side comme T1/T2, Chap 24) + backend minimal. Pas de base propre :
+  les leads vont au landing collector partagé (Chap 18 §3).
 - **T1 / T2** — frontend + backend + **son propre conteneur PostgreSQL** +
   service `migrate` éphémère. Le conteneur DB reste sur le réseau interne, jamais
   exposé (Chap 23 §2.3).

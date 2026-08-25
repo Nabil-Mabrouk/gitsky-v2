@@ -97,6 +97,11 @@ L'empreinte disque de l'image reste identique quel que soit le tier — **~320 M
 | T1 | Auth + security + analytics | ~180 Mo | ~250 Mo |
 | T2 | Tous les modules + agentic | ~700 Mo | ~900 Mo à 1 Go |
 
+> La ligne T0 a été mesurée quand le frontend de ce tier servait du HTML
+> statique (`Dockerfile.t0` dédié). Depuis que T0 partage le même build React/
+> `serve -s dist` que T1/T2 (Chap 24 — écart assumé), ce chiffre reste à
+> re-mesurer sur un déploiement réel avant de le considérer à jour.
+
 Un T2 avec agentic actif consomme davantage que la somme des modules — le framework agentic charge des modèles et des tool registries qui ont leur propre empreinte.
 
 ---

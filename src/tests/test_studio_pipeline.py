@@ -11,7 +11,10 @@ from pathlib import Path
 from jinja2 import Environment, FileSystemLoader
 
 SRC = Path(__file__).resolve().parents[1]
-VITRINE = SRC / "generator" / "template" / "vitrine"
+# Depuis Chap 24, la donnée de landing (contenu) et le thème (couleur/police)
+# sont deux templates distincts (React consomme les deux séparément) — plus
+# un seul landing.html.jinja qui les mélangeait dans une même page rendue.
+FRONTEND_SRC = SRC / "generator" / "template" / "frontend" / "src"
 sys.path.insert(0, str(SRC / "shared_services"))
 
 from studio.guardrails import contrast_ratio  # noqa: E402
@@ -68,9 +71,14 @@ def test_contrast_ratio_wcag():
 def test_manifest_renders_to_vitrine_end_to_end():
     m = run(_packet(idea_oneliner="Marre du scraping ?")).manifest
     data = to_copier_data(m)
-    env = Environment(loader=FileSystemLoader(str(VITRINE)))
-    html = env.get_template("landing.html.jinja").render(
-        project_name=m.project, branding=data["branding"], landing=data["landing"]
+    env = Environment(loader=FileSystemLoader(str(FRONTEND_SRC)))
+
+    manifest_json = env.get_template("landing-manifest.json.jinja").render(
+        project_name=m.project, project_domain=f"{m.project}.mystudio.com", landing=data["landing"]
     )
-    assert "Marre du scraping ?" in html  # le copy du pipeline pilote la vitrine
-    assert data["branding"]["primary_color"] in html  # le brief pilote la palette
+    assert "Marre du scraping ?" in manifest_json  # le copy du pipeline pilote la vitrine
+
+    theme_css = env.get_template("theme.css.jinja").render(
+        project_name=m.project, branding=data["branding"]
+    )
+    assert data["branding"]["primary_color"] in theme_css  # le brief pilote la palette

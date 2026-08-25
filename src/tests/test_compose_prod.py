@@ -56,16 +56,17 @@ def test_t0_has_no_database():
     assert "migrate" not in services
 
 
-def test_t0_frontend_serves_vitrine_not_react():
-    # Bug réel (premier déploiement T0 réel, projet politique-ia) : le
-    # frontend buildait/servait le SPA React (context: ./frontend), qui n'a
-    # RIEN à afficher en T0 (aucun MODULE_* actif) — la vitrine Studio
-    # (HTML statique, Chap 24) n'était jamais servie. context: . donne accès
-    # à vitrine/ au Dockerfile.t0 dédié, qui la sert directement sans build
-    # Vite/npm.
+def test_t0_frontend_serves_react_landing_not_static_vitrine():
+    # Inversion DÉLIBÉRÉE de ce test (Chap 24, pas un bug corrigé en douce) :
+    # la vitrine T0 est désormais une route de l'app React partagée avec
+    # T1/T2 (Landing.tsx + landing-manifest.json.jinja), plutôt qu'un HTML
+    # statique servi par un Dockerfile.t0 dédié (supprimé) via `context: .` +
+    # `vitrine/`. Décision produit : cohérence du stack et réutilisation du
+    # code React à la promotion de tier, au prix du SEO/vitesse de la page
+    # statique (accepté sciemment — rendu 100% client-side).
     frontend = _compose("t0")["services"]["frontend"]
-    assert frontend["build"]["context"] == "."
-    assert frontend["build"]["dockerfile"] == "frontend/Dockerfile.t0"
+    assert frontend["build"]["context"] == "./frontend"
+    assert "dockerfile" not in frontend["build"]
 
 
 def test_t0_backend_uses_sqlite_not_a_missing_db():

@@ -6,26 +6,27 @@ CALCULÉS (fiables), pas jugés par une IA. Le juge de marque LLM viendra en plu
 
 import re
 
-# Catalogue de blocs que vitrine/landing.html.jinja sait effectivement rendre
-# (template/vitrine/landing.html.jinja) — tout type hors de cette liste est
-# silencieusement OMIS par le template (pas d'erreur, la section disparaît).
+# Catalogue de blocs que Landing.tsx sait effectivement rendre (Chap 24 —
+# generator/template/frontend/src/pages/Landing.tsx dispatch vers
+# components/blocks/*.tsx) — tout type hors de cette liste est
+# silencieusement OMIS (pas d'erreur, la section n'apparaît juste pas).
 # Le prompt de l'assembleur demande déjà ce catalogue, mais une réponse LLM
 # non-stub peut dévier (l'exemple de manifest du Chap 24 utilise lui-même
 # `pain_points`, hors catalogue) — ce guardrail rend la contrainte réelle,
 # pas seulement suggérée.
 _KNOWN_BLOCK_TYPES = {"hero", "features", "email_capture", "testimonial", "faq", "pricing"}
 
-# Champs requis par type, exactement ceux que vitrine/landing.html.jinja lit
-# (template/vitrine/landing.html.jinja). Trouvé en prod : le premier manifest
+# Champs requis par type, exactement ceux que les composants de
+# components/blocks/*.tsx lisent. Trouvé en prod : le premier manifest
 # généré par un vrai LLM (pas le stub) utilisait des noms de champs plausibles
 # mais différents (item.description au lieu de item.body, block.attribution
 # au lieu de block.author, ...) — passait `_KNOWN_BLOCK_TYPES` (bon type) mais
-# rendait une section vide (mauvais champs, silencieusement ignorés par
-# Jinja). Le prompt de l'assembleur documente maintenant ce contrat, mais rien
-# ne garantit qu'un futur appel LLM le respecte — ce guardrail le vérifie.
-# Uniquement les champs rendus SANS garde {% if %} dans le template — leur
-# absence laisse une section visiblement vide/cassée, pas juste moins riche.
-# (headline est optionnel partout sauf hero : `{% if block.headline %}`.)
+# rendait une section vide (mauvais champs, silencieusement absents du JSX).
+# Le prompt de l'assembleur documente maintenant ce contrat, mais rien ne
+# garantit qu'un futur appel LLM le respecte — ce guardrail le vérifie.
+# Uniquement les champs rendus SANS garde conditionnelle dans le composant —
+# leur absence laisse une section visiblement vide/cassée, pas juste moins
+# riche. (headline est optionnel partout sauf hero.)
 _REQUIRED_FIELDS = {
     "hero": ["headline", "subhead"],
     "features": ["items"],

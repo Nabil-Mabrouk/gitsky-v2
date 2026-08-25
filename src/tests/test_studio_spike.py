@@ -1,17 +1,18 @@
 """Spike GitSky Studio (Phase 5) — frontière châssis/vitrine + landing data-driven.
 
-S2 : une landing pilotée par un schéma de blocs se rend en HTML valide.
-S1 : `copier update` NE réécrit PAS la vitrine éditée à la main (_skip_if_exists).
+S2 : une landing pilotée par un schéma de blocs se sérialise en JSON valide
+(landing-manifest.json.jinja — le rendu HTML lui-même est React, Chap 24).
+S1 : `copier update` NE réécrit PAS la donnée de landing figée à la génération
+(_skip_if_exists) — seule la donnée est protégée, pas le code React qui la lit.
 """
 
+import json
 import os
 import shutil
 import stat
 import subprocess
-import sys
 import tempfile
 import time
-from html.parser import HTMLParser
 from pathlib import Path
 
 from copier import run_copy, run_update
@@ -73,9 +74,9 @@ def _make_versioned_template(dst: Path) -> None:
     _git(dst, "tag", "v0.9.0")
 
 
-# --- S2 : landing data-driven -> HTML valide ------------------------------
+# --- S2 : landing data-driven -> JSON valide, consommé par React ---------
 
-def test_landing_renders_blocks_to_valid_html():
+def test_landing_manifest_serializes_blocks_to_valid_json():
     root = Path(tempfile.mkdtemp())
     try:
         dst = root / "proj"
@@ -95,18 +96,19 @@ def test_landing_renders_blocks_to_valid_html():
             quiet=True,
             unsafe=True,
         )
-        html = (dst / "vitrine" / "landing.html").read_text("utf-8")
-        assert html.lstrip().startswith("<!doctype html>")
-        assert "Marre du scraping ?" in html  # bloc hero
-        assert "Je m'inscris" in html  # bloc email_capture
-        HTMLParser().feed(html)  # parseable sans exception
+        manifest = json.loads(
+            (dst / "frontend" / "src" / "landing-manifest.json").read_text("utf-8")
+        )
+        assert manifest["project"] == "pain-scraper"
+        assert manifest["blocks"][0]["headline"] == "Marre du scraping ?"
+        assert manifest["blocks"][1]["cta"] == "Je m'inscris"
     finally:
         _rmtree_robuste(root)
 
 
-# --- S1 : la vitrine survit à copier update -------------------------------
+# --- S1 : la donnée de landing survit à copier update ---------------------
 
-def test_vitrine_preserved_on_copier_update():
+def test_landing_manifest_preserved_on_copier_update():
     root = Path(tempfile.mkdtemp())
     try:
         template = root / "template"
@@ -121,20 +123,20 @@ def test_vitrine_preserved_on_copier_update():
             quiet=True,
             unsafe=True,
         )
-        landing = project / "vitrine" / "landing.html"
-        assert landing.exists()
+        manifest_path = project / "frontend" / "src" / "landing-manifest.json"
+        assert manifest_path.exists()
 
-        # Édition humaine de la vitrine, committée (arbre propre pour l'update).
-        landing.write_text("<!doctype html><h1>EDITION HUMAINE</h1>", encoding="utf-8")
+        # Édition humaine de la donnée figée, committée (arbre propre pour l'update).
+        manifest_path.write_text('{"note": "EDITION HUMAINE"}', encoding="utf-8")
         _git(project, "config", "core.autocrlf", "false")
         _git(project, "config", "user.email", "t@t")
         _git(project, "config", "user.name", "t")
         _git(project, "add", "-A")
-        _git(project, "commit", "-q", "-m", "edit vitrine")
+        _git(project, "commit", "-q", "-m", "edit landing-manifest")
 
-        # Nouvelle version du template qui MODIFIE la vitrine.
-        (template / "template" / "vitrine" / "landing.html.jinja").write_text(
-            "<!doctype html><h1>NOUVELLE VERSION TEMPLATE</h1>", encoding="utf-8"
+        # Nouvelle version du template qui MODIFIE le rendu de la donnée.
+        (template / "template" / "frontend" / "src" / "landing-manifest.json.jinja").write_text(
+            '{"note": "NOUVELLE VERSION TEMPLATE"}', encoding="utf-8"
         )
         _git(template, "add", "-A")
         _git(template, "commit", "-q", "-m", "v1.0.0")
@@ -145,7 +147,7 @@ def test_vitrine_preserved_on_copier_update():
         )
 
         # _skip_if_exists -> l'édition humaine survit, la version template n'écrase pas.
-        content = landing.read_text("utf-8")
+        content = manifest_path.read_text("utf-8")
         assert "EDITION HUMAINE" in content
         assert "NOUVELLE VERSION TEMPLATE" not in content
     finally:
