@@ -14,6 +14,7 @@ faire depuis le fleet dashboard.
 | Quotidien 03:00 | Kill check (déclenché par le dashboard, Chap 20) | — |
 | Horaire | Jauge disque consolidée | `fleet-disk.sh` |
 | Hebdo (dim 05:00) | Purge des images Docker orphelines | `docker image prune` |
+| Mensuel (1er, 04:00) | Test de restauration d'un projet tiré au hasard | `test-restore-fleet.sh` |
 | Mensuel | Rotation des logs de maintenance (> 30 j) | `find … -delete` |
 
 La sauvegarde de 02:00 précède **volontairement** le kill_check de 03:00 : un
@@ -26,7 +27,6 @@ projet sur le point d'être tué a ainsi une sauvegarde fraîche.
 | Hebdo | Revue des logs d'erreurs (5xx Traefik) | `check_errors.sh` (par projet) |
 | Hebdo | Revue des `security_events` suspects | dashboard / module security |
 | Hebdo | Vérifier que la dernière sauvegarde de flotte existe | colonne « dernière sauvegarde OK » |
-| Mensuel | Test de restauration d'un projet au hasard | `test_restore.sh` |
 | Mensuel | Analyse santé DB (lignes mortes, tailles) | `db_health.sql` par projet |
 | Mensuel | Scan CVE des dépendances | `pip-audit`, `npm audit` |
 | Semestriel | Rotation `SECRET_KEY` + mots de passe DB | automatisée par le dashboard (Chap 23) |
@@ -39,4 +39,10 @@ Les scripts par projet (`backup_db.sh`, `test_restore.sh`, `emergency_restore.sh
 `check_*.sh` — livrés dans chaque projet généré) servent à une intervention
 ciblée sur **un** projet ou à un déploiement autonome. Sur la flotte, la
 sauvegarde quotidienne passe par `backup-fleet.sh` : **ne pas** programmer en
-plus les `backup_db.sh` par projet (doublon de sauvegardes).
+plus les `backup_db.sh` par projet (doublon de sauvegardes). Même logique pour
+la restauration : `test_restore.sh` attend le format de `backup_db.sh`
+(`.sql.gz`, restauré via `psql`) — il ne peut PAS valider les sauvegardes de
+`backup-fleet.sh` (`.dump.gz`, format `pg_dump -Fc`, restauré via
+`pg_restore`). Le test mensuel de la flotte passe par `test-restore-fleet.sh`,
+qui tire un projet au hasard parmi les sauvegardes réellement produites par
+`backup-fleet.sh`.

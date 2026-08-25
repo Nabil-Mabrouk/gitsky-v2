@@ -30,6 +30,7 @@ DIRECTLY_INVOKED_SCRIPTS = [
     "src/shared_services/scripts/backup-fleet.sh",
     "src/shared_services/scripts/fleet-disk.sh",
     "src/shared_services/scripts/fleet-health.sh",
+    "src/shared_services/scripts/test-restore-fleet.sh",
     "src/generator/template/scripts/backup_db.sh",
     "src/generator/template/scripts/check_disk.sh",
     "src/generator/template/scripts/check_errors.sh",

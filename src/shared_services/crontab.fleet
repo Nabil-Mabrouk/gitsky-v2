@@ -40,6 +40,14 @@ FLEET_REGISTER_TOKEN=
 # Jauge disque consolidée toutes les heures.
 0 * * * * /opt/gitsky/shared_services/scripts/fleet-disk.sh >> /var/log/gitsky_monitor.log 2>&1
 
+# ── Vérification des sauvegardes ────────────────────────────────────────────
+# « Une sauvegarde non testée n'est pas une sauvegarde. » Test de restauration
+# d'un projet tiré au hasard, le 1er du mois à 04:00 — après le kill_check de
+# 03:00, bien avant la rotation de logs de 06:00. scripts/test_restore.sh (par
+# projet) ne peut pas servir ici : format de backup_db.sh (.sql.gz, psql), pas
+# celui de backup-fleet.sh (.dump.gz, pg_restore) réellement en production.
+0 4 1 * * BACKUP_DIR=/backups/postgres /opt/gitsky/shared_services/scripts/test-restore-fleet.sh >> /var/log/gitsky_restore_test.log 2>&1
+
 # ── Nettoyage ────────────────────────────────────────────────────────────────
 # Images Docker orphelines, chaque dimanche à 05:00.
 0 5 * * 0 docker image prune -f >> /var/log/gitsky_cleanup.log 2>&1

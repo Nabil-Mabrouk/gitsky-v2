@@ -19,7 +19,12 @@ import pytest
 SHARED_SCRIPTS = (
     Path(__file__).resolve().parents[1] / "shared_services" / "scripts"
 )
-FLEET_SCRIPTS = ["backup-fleet.sh", "fleet-disk.sh", "fleet-health.sh"]
+FLEET_SCRIPTS = [
+    "backup-fleet.sh",
+    "fleet-disk.sh",
+    "fleet-health.sh",
+    "test-restore-fleet.sh",
+]
 
 BASH = shutil.which("bash") or ""
 pytestmark = pytest.mark.skipif(not BASH, reason="bash requis (Git Bash)")
@@ -153,6 +158,108 @@ def test_fleet_backup_loops_containers_not_pg_database(tmp_path):
     code = "\n".join(l for l in body.splitlines() if not l.lstrip().startswith("#"))
     assert "docker ps" in code
     assert "pg_database" not in code
+
+
+# --- test-restore-fleet.sh --------------------------------------------------
+
+
+def _fake_docker_restore(fakebin: Path, *, table_count: str = "3") -> None:
+    # run/rm : succès silencieux. exec : dispatche sur la sous-commande réelle
+    # (pg_isready/pg_restore/psql), peu importe où "-i" tombe dans les args.
+    _fake_docker(fakebin, rf"""
+        case "$1" in
+          run) exit 0 ;;
+          rm)  exit 0 ;;
+          exec)
+            case "$*" in
+              *pg_isready*) exit 0 ;;
+              *pg_restore*) cat >/dev/null; exit 0 ;;
+              *psql*) echo "{table_count}" ;;
+            esac
+            ;;
+        esac
+    """)
+
+
+def test_fleet_restore_picks_a_project_and_succeeds(tmp_path):
+    fakebin = tmp_path / "bin"; fakebin.mkdir()
+    backups = tmp_path / "backups"; backups.mkdir()
+    (backups / "pain_scraper_20260101_020000.dump.gz").write_bytes(b"\x1f\x8b\x00")
+    (backups / "launch_me_20260101_020000.dump.gz").write_bytes(b"\x1f\x8b\x00")
+    _fake_docker_restore(fakebin)
+
+    r = _run("test-restore-fleet.sh", fakebin, tmp_path, BACKUP_DIR=backups.as_posix())
+
+    assert r.returncode == 0, r.stderr
+    assert "Test de restauration réussi" in r.stdout
+    assert any(name in r.stdout for name in ("pain_scraper", "launch_me"))
+
+
+def test_fleet_restore_respects_project_override(tmp_path):
+    fakebin = tmp_path / "bin"; fakebin.mkdir()
+    backups = tmp_path / "backups"; backups.mkdir()
+    (backups / "pain_scraper_20260101_020000.dump.gz").write_bytes(b"\x1f\x8b\x00")
+    (backups / "launch_me_20260101_020000.dump.gz").write_bytes(b"\x1f\x8b\x00")
+    _fake_docker_restore(fakebin)
+
+    # PROJECT force le choix plutôt que le tirage au sort — tiret converti en
+    # underscore, même convention que backup-fleet.sh.
+    r = _run("test-restore-fleet.sh", fakebin, tmp_path,
+             BACKUP_DIR=backups.as_posix(), PROJECT="launch-me")
+
+    assert r.returncode == 0, r.stderr
+    assert "launch_me" in r.stdout
+    assert "pain_scraper" not in r.stdout
+
+
+def test_fleet_restore_fails_when_no_backups_found(tmp_path):
+    fakebin = tmp_path / "bin"; fakebin.mkdir()
+    backups = tmp_path / "backups"; backups.mkdir()
+    _fake_docker_restore(fakebin)
+
+    r = _run("test-restore-fleet.sh", fakebin, tmp_path, BACKUP_DIR=backups.as_posix())
+
+    assert r.returncode == 1
+    assert "aucune sauvegarde trouvée" in r.stdout
+
+
+def test_fleet_restore_fails_when_restored_table_count_is_zero(tmp_path):
+    fakebin = tmp_path / "bin"; fakebin.mkdir()
+    backups = tmp_path / "backups"; backups.mkdir()
+    (backups / "pain_scraper_20260101_020000.dump.gz").write_bytes(b"\x1f\x8b\x00")
+    _fake_docker_restore(fakebin, table_count="0")
+
+    r = _run("test-restore-fleet.sh", fakebin, tmp_path, BACKUP_DIR=backups.as_posix())
+
+    assert r.returncode == 1
+    assert "aucune table après restauration" in r.stdout
+
+
+def test_fleet_restore_cleans_up_container_on_exit(tmp_path):
+    fakebin = tmp_path / "bin"; fakebin.mkdir()
+    backups = tmp_path / "backups"; backups.mkdir()
+    (backups / "pain_scraper_20260101_020000.dump.gz").write_bytes(b"\x1f\x8b\x00")
+    log = tmp_path / "docker_calls.log"
+    _fake_docker(fakebin, rf"""
+        echo "$@" >> "{log.as_posix()}"
+        case "$1" in
+          run) exit 0 ;;
+          rm)  exit 0 ;;
+          exec)
+            case "$*" in
+              *pg_isready*) exit 0 ;;
+              *pg_restore*) cat >/dev/null; exit 0 ;;
+              *psql*) echo "3" ;;
+            esac
+            ;;
+        esac
+    """)
+
+    r = _run("test-restore-fleet.sh", fakebin, tmp_path, BACKUP_DIR=backups.as_posix())
+
+    assert r.returncode == 0, r.stderr
+    calls = log.read_text()
+    assert "rm -f gitsky_restore_test_" in calls
 
 
 # --- Qualité des scripts livrés --------------------------------------------
