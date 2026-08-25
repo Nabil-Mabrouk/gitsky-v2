@@ -10,6 +10,10 @@ class LeadIn(BaseModel):
     email: EmailStr
     source: str = ""
     utm_campaign: str = ""
+    # Transitoire : sert uniquement à construire le lien de vérification
+    # (landing-collector ne connaît pas le domaine des projets, contrairement
+    # à fleet-dashboard) — jamais persisté, pas de colonne dédiée sur Lead.
+    domain: str = ""
 
 
 class LeadStats(BaseModel):
@@ -26,3 +30,4 @@ class LeadOut(BaseModel):
     source: str | None
     utm_campaign: str | None
     created_at: datetime | None
+    verified: bool

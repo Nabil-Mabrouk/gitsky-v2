@@ -185,6 +185,7 @@ def test_project_leads_requires_admin_and_proxies_landing_collector(monkeypatch)
                 "source": "reddit",
                 "utm_campaign": "",
                 "created_at": "2026-08-01T00:00:00Z",
+                "verified": False,
             }
         ]
 
@@ -202,5 +203,6 @@ def test_project_leads_requires_admin_and_proxies_landing_collector(monkeypatch)
             "source": "reddit",
             "utm_campaign": "",
             "created_at": "2026-08-01T00:00:00Z",
+            "verified": False,
         }
     ]

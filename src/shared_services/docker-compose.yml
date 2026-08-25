@@ -57,18 +57,39 @@ services:
       # onglet Leads du fleet dashboard) — même valeur que le
       # COLLECTOR_STATS_TOKEN de fleet-dashboard/.env.
       - COLLECTOR_STATS_TOKEN=${COLLECTOR_STATS_TOKEN}
+      # Double opt-in (Chap 18) — même compte Gmail que Waitlist, mêmes noms
+      # de variable que app/core/mailer.py, namespace de fichier différent
+      # (shared_services/.env) donc pas de collision.
+      - SMTP_HOST=${SMTP_HOST}
+      - SMTP_PORT=${SMTP_PORT}
+      - SMTP_USER=${SMTP_USER}
+      - SMTP_PASSWORD=${SMTP_PASSWORD}
+      - SMTP_FROM=${SMTP_FROM}
     labels:
-      # Seule POST /leads (capture, publique par conception) est exposée via
-      # Traefik — Path() est un match EXACT (pas PathPrefix), donc /leads/{project}
-      # et /leads/{project}/stats (protégés par COLLECTOR_STATS_TOKEN) restent
+      # Seule POST /leads (capture, publique par conception) et GET
+      # /leads/verify/{token} (confirmation double opt-in) sont exposées via
+      # Traefik — Path()/PathPrefix() ciblés, donc /leads/{project} et
+      # /leads/{project}/stats (protégés par COLLECTOR_STATS_TOKEN) restent
       # injoignables depuis Internet, cohérent avec shared-services-net: internal.
-      # Rule sans Host() : matche sur TOUS les domaines de la flotte (chaque
-      # landing T0 poste en same-origin vers son propre domaine).
+      # Rules sans Host() : matchent sur TOUS les domaines de la flotte (chaque
+      # landing T0 poste/renvoie en same-origin vers son propre domaine).
       - "traefik.enable=true"
       - "traefik.http.routers.landing-collector-leads.rule=Path(`/leads`) && Method(`POST`)"
       - "traefik.http.routers.landing-collector-leads.entrypoints=websecure"
       - "traefik.http.routers.landing-collector-leads.tls.certresolver=letsencrypt"
       - "traefik.http.services.landing-collector-leads.loadbalancer.server.port=8000"
+      # Un flood de POST /leads déclenche maintenant un vrai envoi d'email
+      # (double opt-in) — sans limite, le formulaire public devient un
+      # vecteur de spam vers n'importe quelle adresse tierce, pas seulement
+      # du bruit en base. Même mécanisme que /api/auth/login (docker-compose.yml.jinja).
+      - "traefik.http.middlewares.leadslimit.ratelimit.average=3"
+      - "traefik.http.middlewares.leadslimit.ratelimit.period=1m"
+      - "traefik.http.middlewares.leadslimit.ratelimit.burst=5"
+      - "traefik.http.routers.landing-collector-leads.middlewares=leadslimit"
+      - "traefik.http.routers.landing-collector-verify.rule=PathPrefix(`/leads/verify`)"
+      - "traefik.http.routers.landing-collector-verify.entrypoints=websecure"
+      - "traefik.http.routers.landing-collector-verify.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.landing-collector-verify.service=landing-collector-leads"
     networks:
       - shared-services-net
       - proxy-net

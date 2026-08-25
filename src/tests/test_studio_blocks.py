@@ -112,6 +112,10 @@ def test_full_block_catalog_renders_valid_html():
     # Bug réel (constaté en prod) : "Merci !" s'affichait même quand la
     # capture échouait côté serveur, faute de vérifier response.ok.
     assert "res.ok" in html
+    # Double opt-in (Chap 18) : le domaine du projet est injecté pour que
+    # landing-collector puisse construire le lien de confirmation — défaut
+    # {name}.mystudio.com quand aucun domaine explicite n'est fourni.
+    assert "acme.mystudio.com" in html
 
 
 def test_no_layout_field_keeps_default_markup():

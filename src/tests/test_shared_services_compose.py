@@ -31,7 +31,7 @@ def test_landing_collector_joins_both_networks():
 
 def test_landing_collector_traefik_rule_is_exact_path_not_prefix():
     labels = _compose()["services"]["landing-collector"]["labels"]
-    rule = next(lab for lab in labels if ".rule=" in lab)
+    rule = next(lab for lab in labels if "landing-collector-leads.rule=" in lab)
     # Path() exact (pas PathPrefix()) : /leads/{project} et
     # /leads/{project}/stats ne doivent JAMAIS matcher cette règle.
     assert "Path(`/leads`)" in rule
@@ -40,6 +40,26 @@ def test_landing_collector_traefik_rule_is_exact_path_not_prefix():
     # Rule sans Host() : doit s'appliquer à tous les domaines de la flotte,
     # pas seulement à un domaine dédié au collecteur.
     assert "Host(" not in rule
+
+
+def test_landing_collector_verify_router_reuses_leads_service():
+    labels = _compose()["services"]["landing-collector"]["labels"]
+    rule = next(lab for lab in labels if "landing-collector-verify.rule=" in lab)
+    assert "PathPrefix(`/leads/verify`)" in rule
+    assert "Host(" not in rule
+    service_ref = next(
+        lab for lab in labels if "landing-collector-verify.service=" in lab
+    )
+    assert service_ref.endswith("=landing-collector-leads")
+
+
+def test_landing_collector_leads_router_is_rate_limited():
+    labels = _compose()["services"]["landing-collector"]["labels"]
+    assert any("leadslimit.ratelimit.average=" in lab for lab in labels)
+    middlewares = next(
+        lab for lab in labels if "landing-collector-leads.middlewares=" in lab
+    )
+    assert "leadslimit" in middlewares
 
 
 def test_postgres_has_no_traefik_exposure():

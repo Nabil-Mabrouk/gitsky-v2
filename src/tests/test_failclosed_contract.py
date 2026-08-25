@@ -31,6 +31,7 @@ from app.modules.agentic.llm_client import call_llm  # noqa: E402
 from app.modules.agentic.tools.suno import suno_generate  # noqa: E402
 from app.modules.fleet.landing_collector_client import fetch_leads  # noqa: E402
 from app.modules.monetization.router import shop_router  # noqa: E402
+from landing_collector import mailer as landing_collector_mailer  # noqa: E402
 from app.modules.monetization.stripe_client import (  # noqa: E402
     create_checkout_session,
     verify_webhook,
@@ -80,6 +81,11 @@ INTEGRATIONS = [
         "fleet_leads",
         lambda: asyncio.run(fetch_leads("p")),
         ["LANDING_COLLECTOR_URL"],
+    ),
+    (
+        "landing_collector_mailer",
+        lambda: landing_collector_mailer.send_email("a@b.com", "s", "b"),
+        ["SMTP_HOST"],
     ),
 ]
 
