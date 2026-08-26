@@ -7,20 +7,20 @@ chapitre à garder ouvert le jour où l'on passe à l'action.
 
 Trois temps, dans cet ordre :
 
-1. **Utiliser** — générer un projet à partir d'une idée.
-2. **Déployer** — le mettre en ligne sur le VPS partagé.
+1. **Utiliser** — créer un projet à partir d'un besoin.
+2. **Déployer** — le mettre en ligne sur le VPS partagé, puis le laisser se redéployer tout seul à chaque évolution.
 3. **Maintenir** — le garder (et toute la flotte) en bonne santé.
 
 ---
 
-## 1. Utiliser : de l'idée au projet
+## 1. Utiliser : du besoin au projet
 
 ### 1.1 Préparer le VPS (une seule fois)
 
 Avant le premier projet, le serveur partagé est provisionné **une fois** (Chap 22) :
 durcissement SSH par clé, pare-feu UFW, Fail2ban, installation de Docker, puis
 démarrage des services partagés — Traefik (seul exposé), l'instance PostgreSQL
-des services, le landing collector, le LLM proxy, le GeoIP (Chap 18).
+des services, le landing collector optionnel, le LLM proxy, le GeoIP (Chap 18).
 
 ```bash
 # Sur le VPS, une fois : bootstrap des services partagés (Chap 18/22).
@@ -28,96 +28,102 @@ cd /opt/gitsky/shared_services
 docker compose up -d
 ```
 
-### 1.2 Décrire l'idée dans un `config.yaml`
+### 1.2 Créer un projet via l'assistant du dashboard
 
-Chaque projet naît d'un fichier de configuration déclaratif (Chap 17). Le tier de
-départ est **toujours T0** — un projet gagne ses tiers par signal mesurable, il ne
-démarre jamais au niveau final (Chap 2) :
+Le chemin recommandé passe par l'**assistant de création** (Chap 27), accessible
+depuis le fleet dashboard : nom du projet, sélection des modules dans le
+catalogue (Chap 2), domaine, et informations GitHub (créer un nouveau dépôt ou
+lier un dépôt existant — Chap 26). Un clic sur « Créer & Déployer » déclenche la
+génération, la création du dépôt, le premier déploiement, et l'enregistrement au
+fleet dashboard.
+
+### 1.3 Alternative : décrire le projet dans un `config.yaml`
+
+Pour scripter la création de plusieurs projets, ou en dehors du dashboard, le
+générateur reste utilisable directement en ligne de commande (Chap 17) :
 
 ```yaml
-# projects/pain-scraper.yaml
+# projects/mon-projet.yaml
 project:
-  name: pain-scraper
-  tier: t0
-  domain: pain-scraper.mystudio.com
+  name: mon-projet
+  domain: mon-projet.mystudio.com
+modules:
+  admin: true
+  analytics: true
 branding:
   primary_color: "#4F46E5"
-landing:
-  skin: clean
-  blocks:
-    - type: hero
-      headline: "Trouvez la douleur avant d'écrire le code"
-    - type: email_capture
-      cta: "Rejoindre la liste"
 ```
-
-### 1.3 Générer le projet
-
-Une commande produit un projet démarrable (Chap 17) :
 
 ```bash
 copier copy \
-    --data-file projects/pain-scraper.yaml \
+    --data-file projects/mon-projet.yaml \
     https://github.com/mystudio/gitsky-template \
-    ~/projects/pain-scraper
+    ~/projects/mon-projet
 ```
 
-Le générateur résout le tier en flags de modules, scaffolde `app/domain/`, génère
-les migrations, applique le branding, produit le `docker-compose.yml` et le
-`.env` (avec des **secrets aléatoires par projet** — `SECRET_KEY`, mot de passe
+Le générateur résout les flags de modules, scaffolde `app/domain/`, génère les
+migrations, applique le branding, produit le `docker-compose.yml` et le `.env`
+(avec des **secrets aléatoires par projet** — `SECRET_KEY`, mot de passe
 PostgreSQL), enregistre le projet au fleet dashboard, et crée le commit initial.
 Le `.env.backup.example` est pré-rempli avec les noms réels du projet pour la
 maintenance (Chap 23).
 
-Pour tester dix idées, on écrit dix YAML et on boucle — *zero-to-N* projets en
-quelques minutes (Chap 17 §Bootstrapping d'une Flotte).
+Pour créer plusieurs projets d'un coup, on écrit plusieurs YAML et on boucle
+(Chap 17 §Bootstrapping d'une Flotte) — mais l'assistant (§1.2) reste le chemin
+le plus rapide pour un usage courant, un projet à la fois.
 
 ---
 
-## 2. Déployer : du projet à la mise en ligne
+## 2. Déployer : du projet à la mise en ligne continue
 
 ### 2.1 Le modèle de déploiement
 
 Un projet généré est **auto-suffisant** : son `docker-compose.yml` de production
-décrit tout ce dont il a besoin. Selon le tier (Chap 21) :
+décrit tout ce dont il a besoin — frontend, backend, **son propre conteneur
+PostgreSQL**, et un service `migrate` éphémère, sans exception. Le conteneur DB
+reste sur le réseau interne, jamais exposé (Chap 23 §2.3).
 
-- **T0** — frontend (landing art-dirigée par le Studio, rendue en React/
-  client-side comme T1/T2, Chap 24) + backend minimal. Pas de base propre :
-  les leads vont au landing collector partagé (Chap 18 §3).
-- **T1 / T2** — frontend + backend + **son propre conteneur PostgreSQL** +
-  service `migrate` éphémère. Le conteneur DB reste sur le réseau interne, jamais
-  exposé (Chap 23 §2.3).
+Une seule image de production par service, identique quels que soient les
+modules activés : ce sont les flags `MODULE_*` du `.env` qui décident, au
+démarrage, quels routers et migrations se chargent. Le nombre de workers
+Gunicorn vient de `WEB_CONCURRENCY`, une simple valeur de configuration par
+projet — l'ajuster ne demande qu'un redéploiement, **sans rebuild** (Chap 21).
 
-Une seule image de production par service, identique pour les trois tiers : ce
-sont les flags `MODULE_*` du `.env` qui décident, au démarrage, quels routers et
-migrations se chargent. Le nombre de workers Gunicorn vient de `WEB_CONCURRENCY`
-(1/2/4 selon le tier) — promouvoir T1 → T2 = changer cette valeur et redéployer,
-**sans rebuild** (Chap 21).
+### 2.2 Premier déploiement
 
-### 2.2 Déployer un projet
+Que le projet vienne de l'assistant (§1.2) ou du générateur en ligne de
+commande (§1.3), le premier déploiement suit la même mécanique :
 
 ```bash
 # Sur le VPS, dans le dossier du projet.
-cd /opt/gitsky/projects/pain-scraper
-# .env généré à la création : contient tier, secrets, WEB_CONCURRENCY.
+cd /opt/gitsky/projects/mon-projet
 docker compose up -d --build
 ```
 
-Compose builde les images, crée la base du projet (T1/T2), applique les
-migrations via le service `migrate`, puis démarre backend et frontend. Traefik
-détecte les labels du projet et route `pain-scraper.mystudio.com` (frontend) et
-`api.pain-scraper.mystudio.com` (backend) avec un certificat SSL wildcard
+Compose builde les images, crée la base du projet, applique les migrations via
+le service `migrate`, puis démarre backend et frontend. Traefik détecte les
+labels du projet et route `mon-projet.mystudio.com` (frontend) et
+`api.mon-projet.mystudio.com` (backend) avec un certificat SSL wildcard
 automatique (Chap 22).
 
-### 2.3 Vérifier le déploiement
+### 2.3 Déploiement continu via GitHub
+
+Une fois le premier déploiement effectué, chaque `git push` sur la branche par
+défaut du dépôt du projet redéploie automatiquement (Chap 26) : le webhook du
+fleet dashboard reçoit la notification, tire les dernières modifications,
+reconstruit et redémarre les conteneurs, applique les migrations, et vérifie la
+santé du projet. Pour un dépôt existant sans webhook configuré, un bouton
+« Redéployer » dans le fleet dashboard rejoue la même séquence à la demande.
+
+### 2.4 Vérifier le déploiement
 
 L'endpoint `/health` sonde la base (`SELECT 1`) et renvoie `503` si elle est
 injoignable — le `HEALTHCHECK` Docker s'en sert, et Traefik n'envoie du trafic
 qu'à un conteneur sain (Chap 21/23) :
 
 ```bash
-curl https://api.pain-scraper.mystudio.com/api/health
-# {"status":"ok","database":"ok","tier":"t0",...}
+curl https://api.mon-projet.mystudio.com/api/health
+# {"status":"ok","database":"ok","modules":["auth","admin","analytics"]}
 ```
 
 Le projet apparaît alors dans le fleet dashboard, où l'opérateur suit son statut
@@ -146,13 +152,10 @@ la flotte :
 |---|---|---|
 | 60 s | Poll `/health` de la flotte → alerte `deployment_failed` | `fleet-health.sh` |
 | 02:00 | Sauvegarde 3-2-1 de toutes les bases projet | `backup-fleet.sh` |
-| 03:00 | Kill check (déclenché par le dashboard, Chap 20) | — |
 | Horaire | Jauge disque consolidée | `fleet-disk.sh` |
 
-La sauvegarde de 02:00 précède **volontairement** le kill check de 03:00 : un
-projet sur le point d'être tué garde une sauvegarde fraîche. Chaque conteneur DB
-étant isolé (Chap 18 §2), `backup-fleet.sh` boucle sur les conteneurs `*_db` et
-en dump un par un.
+Chaque conteneur DB étant isolé (Chap 18 §2), `backup-fleet.sh` boucle sur les
+conteneurs `*_db` et en dump un par un — aucune exception, tout projet en a un.
 
 ### 3.3 Le manuel : la routine
 
@@ -160,7 +163,8 @@ Les tâches qui demandent un œil humain sont regroupées dans le calendrier de
 maintenance (`shared_services/MAINTENANCE.md`, Chap 23 §6) :
 
 - **Hebdo** — revue des erreurs 5xx et des `security_events` suspects ; vérifier
-  que la dernière sauvegarde de flotte existe.
+  que la dernière sauvegarde de flotte existe ; passer en revue les projets
+  candidats à l'archivage sur le fleet dashboard (Chap 19/20).
 - **Mensuel** — **tester une restauration** au hasard (une sauvegarde jamais
   restaurée est inutile), analyse santé DB (`db_health.sql`), scan CVE des
   dépendances.
@@ -173,7 +177,7 @@ ses migrations et reçoit les évolutions du châssis, sans perdre sa vitrine
 art-dirigée (Chap 17 §Mise à Jour, Chap 24) :
 
 ```bash
-cd /opt/gitsky/projects/pain-scraper
+cd /opt/gitsky/projects/mon-projet
 copier update           # applique les nouveautés du template
 docker compose up -d --build
 ```
@@ -188,27 +192,33 @@ Un runbook incident (Chap 23 §7) couvre la restauration d'urgence
 checklist post-incident (isoler, rotater tous les secrets, analyser les logs,
 notifier sous 72 h si données personnelles — RGPD).
 
+### 3.6 Archiver un projet
+
+Quand un projet n'a plus vocation à tourner, l'opérateur l'archive manuellement
+depuis le fleet dashboard (Chap 19/20) — jamais par un `docker compose down`
+ad hoc, sinon la sauvegarde froide et la journalisation ne se font pas.
+
 ---
 
 ## Le cycle complet, en une image
 
 ```text
-   IDÉE
-    │  config.yaml (tier T0)
+   BESOIN
+    │  config.yaml ou assistant (Chap 27)
     ▼
-  UTILISER ── create-gitsky-project ──► projet démarrable + enregistré au dashboard
-    │                                        (Chap 17)
+  UTILISER ── création + dépôt GitHub ──► projet démarrable, enregistré au dashboard
+    │                                        (Chap 17/26/27)
     ▼
-  DÉPLOYER ── docker compose up -d ──► en ligne derrière Traefik, /health vert
-    │                                        (Chap 21/22)
+  DÉPLOYER ── premier déploiement, puis push GitHub ──► en ligne derrière Traefik, /health vert
+    │                                        (Chap 21/22/26)
     ▼
-  MAINTENIR ── crontab.fleet ──► sauvegardes, monitoring, kill check, updates
+  MAINTENIR ── crontab.fleet ──► sauvegardes, monitoring, mises à jour
     │                                        (Chap 23)
     ▼
-  SIGNAL ? ──► promotion T1/T2 (WEB_CONCURRENCY + .env)   ou   kill (archivé)
+  DÉCISION OPÉRATEUR ──► ajuster les modules, changer de domaine, ou archiver
                                              (Chap 2/19/20)
 ```
 
-C'est cette boucle — répétée sur des dizaines d'idées, avec discipline de
-portefeuille — qui transforme GitSky d'un template en une **usine à hypothèses
-de startup**.
+C'est cette boucle — répétée sur des dizaines de projets, avec la même
+discipline de maintenance pour tous — qui transforme GitSky d'un template en un
+véritable **framework d'hébergement de flotte**.

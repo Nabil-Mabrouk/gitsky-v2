@@ -665,7 +665,7 @@ Vous devez être informé avant vos utilisateurs en cas de panne. Configurez un 
 L'endpoint `/health` est déjà présent dans le template GitSky (dans
 `app/core/main.py`, servi sous `/api/health` derrière Traefik). Le stack étant
 **asynchrone** (SQLAlchemy async), la vérification base l'est aussi — et
-l'endpoint conserve sa charge utile existante (tier, modules activés) en plus du
+l'endpoint conserve sa charge utile existante (modules activés) en plus du
 statut base :
 
 ```python
@@ -676,7 +676,7 @@ async def health(db: AsyncSession = Depends(get_db)) -> dict:
         await db.execute(text("SELECT 1"))
     except Exception:
         raise HTTPException(status_code=503, detail="Database unavailable")
-    return {"status": "ok", "database": "ok", "tier": settings.gitsky_tier, ...}
+    return {"status": "ok", "database": "ok", "modules": settings.enabled_modules, ...}
 ```
 
 Sans ce `SELECT 1`, `/health` répondrait `200` avec une base morte — l'incident

@@ -4,7 +4,7 @@
 
 Le dashboard admin de GitSky suit le même principe modulaire que le backend : le **core** fournit un **shell** — l'authentification admin, la mise en page, la navigation, le squelette d'onglets — que **chaque module activé** contribue à peupler par ses propres composants et endpoints.
 
-Le shell est disponible dès `MODULE_ADMIN=true` (soit à partir du tier T2 par défaut). En T0 et T1, il n'existe simplement pas — pas de route `/admin`, pas de rôle `admin` à attribuer.
+Le shell est disponible dès que `MODULE_ADMIN=true` est activé pour le projet, indépendamment des autres modules choisis (Chap 2) — un projet peut très bien n'avoir qu'une landing et un admin shell, sans analytics ni monétisation. Tant que ce module reste désactivé, il n'existe simplement pas — pas de route `/admin`, pas de rôle `admin` à attribuer.
 
 ## Architecture du Shell
 

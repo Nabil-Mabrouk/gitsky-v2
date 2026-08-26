@@ -60,13 +60,13 @@ gunicorn app.core.main:app -k uvicorn_worker.UvicornWorker --bind 0.0.0.0:8000
 intégré à Uvicorn : ce dernier est **déprécié depuis Uvicorn 0.30** et émet un
 avertissement au démarrage.
 
-**Le nombre de workers ne figure pas dans le `CMD`.** Le calibrage est par tier —
-1 pour un T0, 2 pour un T1, 4 pour un T2 sous charge normale — mais le figer au
-build produirait *une image par tier*, en contradiction avec la règle « un seul
-Dockerfile » ci-dessous. On passe donc le nombre par la variable
+**Le nombre de workers ne figure pas dans le `CMD`.** Le figer au build
+produirait *une image par configuration*, en contradiction avec la règle « un
+seul Dockerfile » ci-dessous. On passe donc le nombre par la variable
 `WEB_CONCURRENCY`, que Gunicorn lit nativement, injectée depuis le `.env` du
-projet. Promouvoir un T1 en T2 se résume alors à changer cette valeur et
-redéployer — sans rebuild.
+projet — une simple valeur de configuration par projet, réglée à la création
+(défaut raisonnable : 2) et ajustable à tout moment sans rebuild, par exemple
+si la charge d'un projet augmente.
 
 ## Surveillance de l'État (Healthchecks)
 
@@ -77,33 +77,28 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
     CMD ["python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8000/health', timeout=4).status == 200 else 1)"]
 ```
 
-## Un Seul Dockerfile pour Trois Tiers
+## Un Seul Dockerfile pour Tous les Projets
 
-Le template GitSky n'a pas de Dockerfile par tier — **un seul Dockerfile production** est utilisé quel que soit le tier du projet. Ce sont les flags `MODULE_*` du `.env` qui décident, à l'exécution, quels routers, modèles et migrations sont chargés.
+Le template GitSky n'a pas de Dockerfile par configuration — **un seul Dockerfile production** est utilisé quels que soient les modules activés par le projet. Ce sont les flags `MODULE_*` du `.env` qui décident, à l'exécution, quels routers, modèles et migrations sont chargés.
 
 Trois avantages :
 
 - **Un seul artefact à builder** et à stocker dans le registre — pas de multiplication d'images.
-- **Passer de T1 à T2** se fait via un simple redéploiement avec un `.env` mis à jour, sans rebuild.
-- **La revue de sécurité** se fait sur une seule image, pas trois.
+- **Activer un module supplémentaire** se fait via un simple redéploiement avec un `.env` mis à jour, sans rebuild.
+- **La revue de sécurité** se fait sur une seule image, pas plusieurs.
 
-L'empreinte disque de l'image reste identique quel que soit le tier — **~320 Mo pour le backend, ~260 Mo pour le frontend** (tailles mesurées). Le backend part de `python:3.12-slim` (~180 Mo) plus les dépendances installées ; le frontend de `node:24-alpine` (~230 Mo) plus `serve` et le `dist/` (le bundle statique lui-même ne pèse que quelques centaines de Ko, mais l'image qui le sert porte la base Node). L'empreinte **mémoire** au runtime, en revanche, varie fortement selon les modules activés — c'est cette variation qui permet de porter 100 T0 sur le même VPS.
+L'empreinte disque de l'image reste identique quels que soient les modules activés — **~320 Mo pour le backend, ~260 Mo pour le frontend** (tailles mesurées). Le backend part de `python:3.12-slim` (~180 Mo) plus les dépendances installées ; le frontend de `node:24-alpine` (~230 Mo) plus `serve` et le `dist/` (le bundle statique lui-même ne pèse que quelques centaines de Ko, mais l'image qui le sert porte la base Node). L'empreinte **mémoire** au runtime, en revanche, varie fortement selon les modules activés — c'est cette variation qui permet de porter des dizaines de projets légers sur le même VPS aux côtés de quelques projets complets (Chap 2).
 
-## Empreinte Mémoire par Tier (Mesurée)
+## Empreinte Mémoire par Combinaison de Modules (Mesurée)
 
-| Tier | Modules activés | RAM initiale | RAM sous charge légère |
+| Combinaison | Modules activés | RAM initiale | RAM sous charge légère |
 |---|---|---|---|
-| T0 | landing-collector uniquement | ~50 Mo | ~60 Mo |
-| T1 | Auth + security + analytics | ~180 Mo | ~250 Mo |
-| T2 | Tous les modules + agentic | ~700 Mo | ~900 Mo à 1 Go |
+| Landing seule | Core (auth + SEO) uniquement | ~50 Mo | ~60 Mo |
+| App avec compte utilisateur | Core + admin + security + analytics | ~180 Mo | ~250 Mo |
+| SaaS complet | Tous les modules + agentic | ~700 Mo | ~900 Mo à 1 Go |
 
-> La ligne T0 a été mesurée quand le frontend de ce tier servait du HTML
-> statique (`Dockerfile.t0` dédié). Depuis que T0 partage le même build React/
-> `serve -s dist` que T1/T2 (Chap 24 — écart assumé), ce chiffre reste à
-> re-mesurer sur un déploiement réel avant de le considérer à jour.
-
-Un T2 avec agentic actif consomme davantage que la somme des modules — le framework agentic charge des modèles et des tool registries qui ont leur propre empreinte.
+Un projet avec l'agentic actif consomme davantage que la somme des autres modules — le framework agentic charge des modèles et des tool registries qui ont leur propre empreinte.
 
 ---
 
-*Le pattern Docker prod est posé pour tous les tiers. Le prochain chapitre décrit la configuration du serveur Ubuntu 24.04 qui accueille l'ensemble de la flotte, du hardening SSH au bootstrap des services partagés.*
+*Le pattern Docker prod est posé pour tous les projets, quels que soient leurs modules. Le prochain chapitre décrit la configuration du serveur Ubuntu 24.04 qui accueille l'ensemble de la flotte, du hardening SSH au bootstrap des services partagés.*

@@ -21,7 +21,7 @@ Le Studio n'a de sens que si l'on scinde d'abord chaque projet en deux couches �
 
 C'est cette frontière qui réconcilie industrialisation et différenciation : on industrialise le moteur, on libère la carrosserie. Le diff à trois voies de Copier (Chap 17) respecte cette frontière dès lors qu'elle est **déclarée explicitement** — la vitrine est une zone `project-owned`, exclue de la propagation.
 
-> **Écart assumé** — la frontière s'est redessinée en cours de route : la vitrine T0 est aujourd'hui rendue par les mêmes composants React que T1/T2 (`frontend/src/pages/Landing.tsx` et `frontend/src/components/blocks/**`), plutôt que par un gabarit HTML Jinja dédié. Ce code de rendu est donc redevenu **châssis** (`copier update` le propage normalement) — seule la *donnée* produite par le Studio (`landing-manifest.json`, skin/blocks/hero_image) reste `project-owned` et gelée par `_skip_if_exists`. La frontière entre les deux couches n'a pas disparu ; elle est descendue d'un cran, du fichier entier jusqu'à son seul contenu. Décision produit (Chap 25) : cohérence du stack et réutilisation du code à la promotion de tier, au prix du rendu 100 % client-side (pas de prerendering) — un compromis SEO/vitesse assumé par rapport au HTML statique d'origine.
+> **Écart assumé** — la frontière s'est redessinée en cours de route : la vitrine de tout projet, quels que soient ses modules actifs, est aujourd'hui rendue par les mêmes composants React (`frontend/src/pages/Landing.tsx` et `frontend/src/components/blocks/**`), plutôt que par un gabarit HTML Jinja dédié à un profil minimal. Ce code de rendu est donc redevenu **châssis** (`copier update` le propage normalement) — seule la *donnée* produite par le Studio (`landing-manifest.json`, skin/blocks/hero_image) reste `project-owned` et gelée par `_skip_if_exists`. La frontière entre les deux couches n'a pas disparu ; elle est descendue d'un cran, du fichier entier jusqu'à son seul contenu. Décision produit (Chap 25) : cohérence du stack et réutilisation du code quels que soient les modules activés par la suite, au prix du rendu 100 % client-side (pas de prerendering) — un compromis SEO/vitesse assumé par rapport au HTML statique d'origine.
 
 ## Le Pipeline d'Agents
 
@@ -73,17 +73,17 @@ La question « GitSky déploie-t-il automatiquement, ou faut-il un humain avant 
 
 > On barre l'étape **irréversible** (rendre public, indexer, dépenser en acquisition), jamais l'étape de **génération**. Générer est gratuit et réversible ; publier un domaine dédié avec du SEO acquis et des utilisateurs payants ne l'est pas.
 
-C'est la philosophie des tiers appliquée à la publication : cheap à tester, délibéré à engager. Elle donne trois modes indexés sur le **blast radius**, pas un choix binaire :
+Cheap à tester, délibéré à engager. Elle donne trois modes indexés sur le **blast radius** du projet, pas un choix binaire :
 
 | Mode | Quand | Rôle de l'humain |
 |---|---|---|
-| **Auto-publish guardrailé** | T0 (sous-domaine jetable), si les guardrails passent | *on-the-loop* : surveille le dashboard, hors du chemin critique |
+| **Auto-publish guardrailé** | nouveau projet sur sous-domaine de la flotte, si les guardrails passent | *on-the-loop* : surveille le dashboard, hors du chemin critique |
 | **Preview-first** (défaut sain) | déploiement auto sur `x.preview.mystudio.com` (noindex), live sur un clic | *on-the-loop* |
-| **HITL bloquant** | promotion T1→T2, domaine dédié, campagne payante | *in-the-loop* : approbation obligatoire |
+| **HITL bloquant** | domaine dédié, campagne payante, ou tout lancement à fort impact | *in-the-loop* : approbation obligatoire |
 
 Trois convictions sous-tendent ce modèle :
 
-**Ne pas réintroduire le goulot que la fabrique a supprimé.** 100 landings × approbation manuelle, et l'opérateur *redevient* le bottleneck que GitSky existe pour éliminer. Au T0, l'humain doit être *on* the loop, pas *in* it.
+**Ne pas réintroduire le goulot que la fabrique a supprimé.** Générer et publier des dizaines de projets × approbation manuelle systématique, et l'opérateur *redevient* le bottleneck que GitSky existe pour éliminer. Sur un sous-domaine jetable de la flotte, l'humain doit être *on* the loop, pas *in* it.
 
 **Remplacer « human-in-the-loop » par « guardrails-in-the-loop ».** Le gate par défaut est *machine*. L'humain n'intervient que sur échec de guardrail ou fort blast radius. C'est « cadrer, pas brider » — la philosophie du module security (Chap 14) transposée au design.
 
@@ -105,7 +105,7 @@ Règle de propriété des pixels, pour éviter que l'IA écrase le travail humai
 | Piloté par le manifest | regénérable — l'IA peut y repasser |
 | Échappatoire full-custom (code à la main) | gelée — jamais regénérée |
 
-Un projet qui gradue en T2 et mérite du sur-mesure bascule sa vitrine dans la zone échappatoire, définitivement protégée de toute régénération.
+Un projet qui grandit et mérite du sur-mesure bascule sa vitrine dans la zone échappatoire, définitivement protégée de toute régénération.
 
 ## Les Guardrails : Cadrer, pas Brider
 
@@ -133,7 +133,7 @@ Le Studio s'améliore alors *parce qu'il est câblé à un portefeuille de donn�
 ## Anti-Patterns à Éviter
 
 - **Régénérer à la volée à chaque déploiement.** Casse la reproductibilité et le cycle kill → résurrection. Le manifest se fige.
-- **Exiger une approbation humaine pour chaque T0.** Réintroduit le goulot d'étranglement opérateur.
+- **Exiger une approbation humaine pour chaque nouveau projet sur sous-domaine.** Réintroduit le goulot d'étranglement opérateur.
 - **Lâcher l'IA sans design system.** Produit une homogénéité IA, pire que l'homogénéité template car plus difficile à diagnostiquer.
 - **Éditer les fichiers générés sans passer par le manifest.** La prochaine régénération écrase le travail — sauf dans la zone échappatoire déclarée.
 

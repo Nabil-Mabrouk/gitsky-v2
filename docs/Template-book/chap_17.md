@@ -32,10 +32,10 @@ Chaque projet est décrit par un fichier YAML unique, versionné dans un repo ce
 project:
   name: pain-scraper
   domain: pain-scraper.mystudio.com
-  tier: t1                         # t0 | t1 | t2
 
 modules:
-  agentic: true                    # override du profil t1
+  admin: true
+  agentic: true
   monetization_subscription: true
 
 data_models:
@@ -65,8 +65,8 @@ Les propriétés se répartissent en six catégories :
 
 | Catégorie | Rôle |
 |---|---|
-| `project` | Identité et tier |
-| `modules` | Overrides des flags module par rapport au profil de tier |
+| `project` | Identité du projet (nom, domaine) |
+| `modules` | Sélection directe des flags module actifs (Chap 2) — aucun profil par défaut à surcharger |
 | `data_models` | Modèles SQLAlchemy à scaffolder dans `app/domain/` |
 | `domain_routes` | Routeurs FastAPI à scaffolder dans `app/domain/` |
 | `branding` | Variables CSS et actifs à injecter dans le frontend |
@@ -86,7 +86,7 @@ copier copy \
 Ce que le générateur fait, en 30 secondes :
 
 1. **Clone le template** localement.
-2. **Applique les substitutions Jinja2** dans tous les fichiers (nom du projet, tier, flags module, branding).
+2. **Applique les substitutions Jinja2** dans tous les fichiers (nom du projet, flags module, branding).
 3. **Scaffolde `app/domain/`** avec les modèles et routes déclarés dans `config.yaml`.
 4. **Génère la migration Alembic initiale** pour le domaine et pour chaque module activé.
 5. **Applique le branding** en réécrivant les variables CSS Tailwind et le logo.
@@ -108,20 +108,20 @@ Contrairement à Cookiecutter, Copier n'a pas de scripts `pre_gen`/`post_gen`. I
 
 | Mécanisme | Déclaration | Moment | Rôle dans GitSky |
 |---|---|---|---|
-| **Context hook** | `_jinja_extensions` + classe `ContextHook` (paquet `copier-template-extensions`) | Avant le rendu Jinja | Résout le profil de tier en flags `MODULE_*`, calcule les valeurs dérivées — sans multiplier les questions posées |
-| **`_tasks`** | Liste de commandes dans `copier.yml` | Après la génération des fichiers | Provisionne la DB, génère les migrations, enregistre au fleet dashboard, initialise le repo git |
+| **Context hook** | `_jinja_extensions` + classe `ContextHook` (paquet `copier-template-extensions`) | Avant le rendu Jinja | Normalise les flags `MODULE_*` fournis par `config.yaml`, calcule les valeurs dérivées (nom de base, workers Gunicorn par défaut) — sans multiplier les questions posées |
+| **`_tasks`** | Liste de commandes dans `copier.yml` | Après la génération des fichiers | Provisionne la DB, génère les migrations, enregistre au fleet dashboard, crée le dépôt GitHub et pousse le commit initial (Chap 26), initialise le repo git local |
 | **`_migrations`** | Liste versionnée dans `copier.yml` | Lors d'un `copier update` | Applique les nouvelles migrations sans casser les données existantes |
 
-Le **context hook** est l'équivalent d'un « pré-traitement » : il enrichit le contexte Jinja avant que les fichiers ne soient rendus. C'est là que le tier est résolu, avec **exactement la même logique que le runtime** (source unique de vérité) :
+Le **context hook** est l'équivalent d'un « pré-traitement » : il enrichit le contexte Jinja avant que les fichiers ne soient rendus. C'est là que les flags de modules sont normalisés, avec **exactement la même logique que le runtime** (source unique de vérité) :
 
 ```python
 # extensions/context.py
 from copier_template_extensions import ContextHook
 
-class TierResolver(ContextHook):
+class ModuleResolver(ContextHook):
     def hook(self, context: dict) -> None:
-        tier = context.get("gitsky_tier", "t0")
-        context["resolved_modules"] = resolve_profile(tier)
+        modules = context.get("modules", {}) or {}
+        context["resolved_modules"] = normalize_module_flags(modules)
 ```
 
 Déclaration dans `copier.yml` :
@@ -129,7 +129,7 @@ Déclaration dans `copier.yml` :
 ```yaml
 _jinja_extensions:
   - copier_template_extensions.TemplateExtensionLoader
-  - extensions/context.py:TierResolver
+  - extensions/context.py:ModuleResolver
 
 _tasks:
   - "python .copier/tasks/provision_db.py"
@@ -182,7 +182,7 @@ Le passage manuel à 30 projets serait impraticable. Le générateur rend cette 
 ## Anti-Patterns à Éviter
 
 - **Éditer les fichiers générés à la main sans remonter la modification dans le template.** Toute correction utile à plusieurs projets doit remonter au template pour propagation via `copier update`.
-- **Sauter le fleet register.** Un projet non enregistré n'apparaît pas dans le dashboard, ne bénéficie ni du kill mechanism ni des alertes.
+- **Sauter le fleet register.** Un projet non enregistré n'apparaît pas dans le dashboard et ne bénéficie ni du suivi de santé ni des alertes (Chap 19).
 - **Cloner un projet existant plutôt que le générer.** Le clone hérite des dérives et empêche la mise à jour propre du template.
 
 ---
