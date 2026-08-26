@@ -1,8 +1,9 @@
 """Spike du générateur Copier (Phase 2, incrément 0).
 
 Prouve le mécanisme de bout en bout : `copier copy` (API Python) génère un projet
-dont le `.env` porte le bon tier, le bon nom de projet, et les flags MODULE_*
-**résolus depuis le tier** par le context hook (équivalent réel du _pre du livre).
+dont le `.env` porte le bon nom de projet et les flags MODULE_* résolus par le
+context hook (équivalent réel du _pre du livre) — chacun un booléen indépendant,
+False si absent (Chap 2), sans profil ni palier.
 
 `unsafe=True` = équivalent de `--trust` : nécessaire car un context hook exécute
 du code.
@@ -30,10 +31,8 @@ sys.path.insert(0, str(GENERATOR / "extensions"))
 import context as ctx  # noqa: E402
 
 
-def _generate(
-    tier: str, name: str, dst: Path, modules: dict | None = None
-) -> set[str]:
-    data: dict = {"project": {"name": name, "tier": tier}}
+def _generate(name: str, dst: Path, modules: dict | None = None) -> set[str]:
+    data: dict = {"project": {"name": name}}
     if modules is not None:
         data["modules"] = modules
     run_copy(
@@ -47,73 +46,57 @@ def _generate(
     return set((dst / ".env").read_text(encoding="utf-8").splitlines())
 
 
-def test_generator_t0_all_modules_off():
+def test_generator_no_modules_active_by_default():
     with tempfile.TemporaryDirectory() as tmp:
-        lines = _generate("t0", "landing-x", Path(tmp) / "proj")
-        assert "GITSKY_TIER=t0" in lines
+        lines = _generate("landing-x", Path(tmp) / "proj")
         assert "PROJECT_NAME=landing-x" in lines
-        assert "MODULE_AUTH=false" in lines
+        # Aucun profil ne préremplit un flag : absent de `modules` -> False.
         assert "MODULE_AGENTIC=false" in lines
         assert "MODULE_MONETIZATION_SUBSCRIPTION=false" in lines
+        assert "MODULE_ADMIN=false" in lines
+        # module_auth n'est plus un flag (auth core, Chap 2 §1) : aucune ligne.
+        assert not any(line.startswith("MODULE_AUTH=") for line in lines)
         # CORS (settings.frontend_url) doit matcher l'origine prod, sinon le
         # navigateur bloque silencieusement /api/auth/login (pas d'erreur
         # visible côté UI, juste un fetch qui échoue).
         assert "FRONTEND_URL=https://landing-x.mystudio.com" in lines
 
 
-def test_generator_t2_resolves_full_profile():
+def test_generator_modules_override_activates_only_what_is_listed():
     with tempfile.TemporaryDirectory() as tmp:
-        lines = _generate("t2", "saas-y", Path(tmp) / "proj")
-        assert "GITSKY_TIER=t2" in lines
-        assert "PROJECT_NAME=saas-y" in lines
-        assert "MODULE_AUTH=true" in lines
+        lines = _generate(
+            "saas-y",
+            Path(tmp) / "proj",
+            modules={"admin": True, "agentic": True, "monetization_subscription": True},
+        )
         assert "MODULE_ADMIN=true" in lines
         assert "MODULE_AGENTIC=true" in lines
         assert "MODULE_MONETIZATION_SUBSCRIPTION=true" in lines
-        # tutorials « selon projet » -> désactivé par défaut, même en t2.
+        # Non listé -> reste False, aucun profil ne l'active en creux.
         assert "MODULE_TUTORIALS=false" in lines
         assert "FRONTEND_URL=https://saas-y.mystudio.com" in lines
 
 
-def test_override_enables_module_on_t1():
+def test_override_can_disable_a_module_explicitly():
     with tempfile.TemporaryDirectory() as tmp:
         lines = _generate(
-            "t1",
-            "mvp-z",
-            Path(tmp) / "proj",
-            modules={"agentic": True, "monetization_subscription": True},
-        )
-        # Overrides appliqués par-dessus le profil t1.
-        assert "MODULE_AGENTIC=true" in lines
-        assert "MODULE_MONETIZATION_SUBSCRIPTION=true" in lines
-        # Profil t1 conservé pour le reste.
-        assert "MODULE_AUTH=true" in lines
-        assert "MODULE_ADMIN=false" in lines  # non surchargé, reste off en t1
-
-
-def test_override_disables_module_on_t2():
-    with tempfile.TemporaryDirectory() as tmp:
-        lines = _generate(
-            "t2",
             "saas-w",
             Path(tmp) / "proj",
-            modules={"monetization_subscription": False},
+            modules={"monetization_shop": True, "monetization_subscription": False},
         )
-        # L'override peut aussi désactiver un module actif du profil.
+        # L'override explicite à False gagne, même si un autre flag est actif.
         assert "MODULE_MONETIZATION_SUBSCRIPTION=false" in lines
-        assert "MODULE_MONETIZATION_SHOP=true" in lines  # non touché
+        assert "MODULE_MONETIZATION_SHOP=true" in lines
 
 
 # --- Logique du scaffolding métier (unitaire, sans Copier) ----------------
 
-def test_generator_tiers_match_backend():
-    # Les profils vendorisés du générateur DOIVENT rester synchronisés avec le
+def test_generator_modules_match_backend():
+    # La liste vendorisée du générateur DOIT rester synchronisée avec le
     # runtime (app.core.config) — source unique garantie par ce test.
     from app.core.config import MODULE_FLAGS as BACKEND_FLAGS
-    from app.core.config import TIER_PROFILES as BACKEND_PROFILES
 
     assert ctx.MODULE_FLAGS == BACKEND_FLAGS
-    assert ctx.TIER_PROFILES == BACKEND_PROFILES
 
 
 def test_pluralize():
@@ -153,7 +136,7 @@ def _generate_domain(data_models: list, dst: Path) -> str:
         str(GENERATOR),
         str(dst),
         data={
-            "project": {"name": "pain-scraper", "tier": "t1"},
+            "project": {"name": "pain-scraper"},
             "data_models": data_models,
         },
         defaults=True,
@@ -186,7 +169,7 @@ def _generate_routers(domain_routes: list, dst: Path) -> str:
         str(GENERATOR),
         str(dst),
         data={
-            "project": {"name": "pain-scraper", "tier": "t1"},
+            "project": {"name": "pain-scraper"},
             "domain_routes": domain_routes,
         },
         defaults=True,
@@ -239,7 +222,7 @@ def test_tasks_provision_register_and_git_init():
         run_copy(
             str(GENERATOR),
             str(dst),
-            data={"project": {"name": "pain-scraper", "tier": "t1"}},
+            data={"project": {"name": "pain-scraper"}},
             defaults=True,
             quiet=True,
             unsafe=True,
@@ -251,7 +234,6 @@ def test_tasks_provision_register_and_git_init():
         # Task register_fleet : sans FLEET_URL en test -> skip gracieux.
         fleet = json.loads((dst / ".gitsky" / "fleet.json").read_text("utf-8"))
         assert fleet["name"] == "pain-scraper"
-        assert fleet["tier"] == "t1"
         assert fleet["registered"] == "skipped_no_fleet_url"
         # Task git init + commit initial (RÉELLE).
         assert (dst / ".git").is_dir()
@@ -272,7 +254,7 @@ def test_generated_project_ships_no_local_artifacts():
         run_copy(
             str(GENERATOR),
             str(dst),
-            data={"project": {"name": "pain-scraper", "tier": "t2"}},
+            data={"project": {"name": "pain-scraper"}, "modules": {"admin": True}},
             defaults=True,
             quiet=True,
             unsafe=True,
@@ -296,7 +278,7 @@ def test_initial_commit_contains_no_artifacts():
         run_copy(
             str(GENERATOR),
             str(dst),
-            data={"project": {"name": "pain-scraper", "tier": "t2"}},
+            data={"project": {"name": "pain-scraper"}, "modules": {"admin": True}},
             defaults=True,
             quiet=True,
             unsafe=True,
@@ -325,7 +307,7 @@ def test_domain_accepts_yaml_string_input():
             str(GENERATOR),
             str(dst),
             data={
-                "project": {"name": "p", "tier": "t0"},
+                "project": {"name": "p"},
                 "data_models": '[{"name": "Widget", "fields": {"label": "str"}}]',
             },
             defaults=True,
@@ -345,7 +327,7 @@ def test_branding_and_traefik_labels():
             str(GENERATOR),
             str(dst),
             data={
-                "project": {"name": "pain-scraper", "tier": "t1"},
+                "project": {"name": "pain-scraper"},
                 # branding partiel : primary_foreground doit retomber sur le défaut.
                 "branding": {"primary_color": "#FF0000", "font_family": "Roboto"},
             },
@@ -371,7 +353,6 @@ def test_full_nested_book_config():
     config = {
         "project": {
             "name": "pain-scraper",
-            "tier": "t1",
             "domain": "pain-scraper.mystudio.com",
         },
         "modules": {"agentic": True},
@@ -394,10 +375,8 @@ def test_full_nested_book_config():
             unsafe=True,
         )
         env = set((dst / ".env").read_text("utf-8").splitlines())
-        assert "GITSKY_TIER=t1" in env
         assert "PROJECT_NAME=pain-scraper" in env
-        assert "MODULE_AGENTIC=true" in env  # override par-dessus le profil t1
-        assert "MODULE_AUTH=true" in env  # profil t1
+        assert "MODULE_AGENTIC=true" in env  # override explicite
 
         compose = (dst / "docker-compose.yml").read_text("utf-8")
         assert "container_name: pain-scraper_backend" in compose

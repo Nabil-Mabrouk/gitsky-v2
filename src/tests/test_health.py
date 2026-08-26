@@ -69,10 +69,10 @@ def test_health_returns_503_when_db_is_down():
     assert resp.json()["detail"] == "Database unavailable"
 
 
-def test_health_still_reports_tier_and_modules():
-    # La charge utile existante (tier + flags) ne doit pas disparaître.
+def test_health_still_reports_modules():
+    # La charge utile existante (flags de modules) ne doit pas disparaître.
     session = _FakeSession(fail=False)
     body = _client_with(session).get("/health").json()
-    assert "tier" in body
+    assert "tier" not in body
     assert "modules" in body
-    assert "auth" in body["modules"]
+    assert body["modules"]["auth"] is True

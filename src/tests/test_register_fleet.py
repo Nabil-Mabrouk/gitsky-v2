@@ -31,7 +31,7 @@ def _run_in_tmp(func):
 
 def test_skips_without_fleet_url():
     marker = _run_in_tmp(
-        lambda: rf.register("p", "t0", "p.mystudio.com", "1.0.0", fleet_url="")
+        lambda: rf.register("p", "p.mystudio.com", "1.0.0", fleet_url="")
     )
     assert marker["registered"] == "skipped_no_fleet_url"
 
@@ -48,7 +48,6 @@ def test_posts_to_fleet_register_endpoint():
     marker = _run_in_tmp(
         lambda: rf.register(
             "pain-scraper",
-            "t0",
             "pain-scraper.mystudio.com",
             "1.0.0",
             fleet_url="http://fleet:8000",
@@ -60,7 +59,6 @@ def test_posts_to_fleet_register_endpoint():
     assert captured["url"].endswith("/api/fleet/projects/register")
     assert captured["payload"] == {
         "name": "pain-scraper",
-        "tier": "t0",
         "domain": "pain-scraper.mystudio.com",
         "template_version": "1.0.0",
     }

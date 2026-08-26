@@ -212,7 +212,7 @@ def test_scripts_pass_bash_syntax_check(name):
 
 
 def test_scripts_ship_into_generated_projects():
-    with projet_genere("pain-scraper", "t1") as dst:
+    with projet_genere("pain-scraper") as dst:
         for name in MAINTENANCE_SCRIPTS:
             assert (dst / "scripts" / name).is_file(), name
         # L'exemple de config est pré-rempli avec les noms RÉELS du projet.
@@ -225,17 +225,10 @@ def test_scripts_ship_into_generated_projects():
         )
 
 
-def test_t0_env_example_flags_no_database():
-    with projet_genere("landing-x", "t0") as dst:
-        example = (dst / ".env.backup.example").read_text(encoding="utf-8")
-        # T0 n'a pas de base : l'exemple doit le signaler explicitement.
-        assert "landing sans base" in example
-
-
 def test_shipped_scripts_have_unix_line_endings():
     # Les scripts tournent sur Ubuntu (Chap 22) : un CRLF (checkout Windows)
     # casse bash. Le .gitattributes livré doit garantir LF.
-    with projet_genere("pain-scraper", "t1") as dst:
+    with projet_genere("pain-scraper") as dst:
         assert (dst / ".gitattributes").is_file()
         for name in MAINTENANCE_SCRIPTS:
             raw = (dst / "scripts" / name).read_bytes()

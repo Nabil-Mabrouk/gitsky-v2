@@ -1,7 +1,7 @@
-"""Profils de tier -> flags MODULE_* (Phase 1, incrément 1).
+"""Flags MODULE_* (Phase 6 — catalogue de modules, Chap 2).
 
-Vérifie que `GITSKY_TIER` résout le bon ensemble de modules (tableau Chap 2 §3)
-et que la surcharge explicite d'un flag gagne toujours sur le profil.
+Chaque flag est un booléen indépendant, par défaut désactivé (aucun profil,
+aucun palier). `auth` est core : toujours actif, jamais un flag MODULE_*.
 
 On instancie `Settings` directement avec des kwargs (priorité maximale dans
 pydantic-settings) pour tester en process, sans dépendre de l'environnement.
@@ -19,61 +19,34 @@ def flags(s: Settings) -> dict[str, bool]:
     return {f: getattr(s, f) for f in MODULE_FLAGS}
 
 
-def test_t0_all_modules_off():
-    s = Settings(gitsky_tier="t0")
+def test_auth_is_core_not_a_module_flag():
+    assert "module_auth" not in MODULE_FLAGS
+
+
+def test_all_flags_off_by_default():
+    s = Settings()
     assert all(v is False for v in flags(s).values())
-    assert s.enabled_modules == []
+    # auth reste actif malgré tout : c'est core, pas un flag.
+    assert s.enabled_modules == ["auth"]
 
 
-def test_t1_profile():
-    s = Settings(gitsky_tier="t1")
-    # Actifs en T1.
-    assert s.module_auth is True
-    assert s.module_analytics is True
-    assert s.module_security_middleware is True
-    # Réservés à T2.
-    assert s.module_admin is False
-    assert s.module_i18n is False
-    assert s.module_agentic is False
+def test_each_flag_is_independently_settable():
+    s = Settings(module_admin=True, module_agentic=True)
+    assert s.module_admin is True
+    assert s.module_agentic is True
+    # Rien d'autre ne s'active en cascade : pas de profil, pas de dérivation.
+    assert s.module_analytics is False
     assert s.module_monetization_shop is False
 
 
-def test_t2_profile():
-    s = Settings(gitsky_tier="t2")
-    expected_on = {
-        "module_auth",
-        "module_admin",
-        "module_analytics",
-        "module_onboarding",
-        "module_security_middleware",
-        "module_i18n",
-        "module_agentic",
-        "module_monetization_shop",
-        "module_monetization_subscription",
+def test_enabled_modules_lists_auth_plus_active_flags():
+    s = Settings(module_admin=True, module_i18n=True)
+    assert s.enabled_modules == ["auth", "admin", "i18n"]
+
+
+def test_all_flags_can_be_enabled_at_once():
+    s = Settings(**{flag: True for flag in MODULE_FLAGS})
+    assert all(v is True for v in flags(s).values())
+    assert set(s.enabled_modules) == {"auth"} | {
+        f.removeprefix("module_") for f in MODULE_FLAGS
     }
-    on = {f for f in MODULE_FLAGS if getattr(s, f)}
-    assert on == expected_on
-    # tutorials = « selon projet » -> désactivé par défaut, activable au besoin.
-    assert s.module_tutorials is False
-
-
-def test_explicit_flag_overrides_tier():
-    # T0 (tout off) mais on force agentic + tutorials.
-    s = Settings(gitsky_tier="t0", module_agentic=True, module_tutorials=True)
-    assert s.module_agentic is True
-    assert s.module_tutorials is True
-    # Le reste demeure au profil T0.
-    assert s.module_auth is False
-    assert s.module_analytics is False
-
-
-def test_explicit_disable_overrides_tier():
-    # T2 mais on coupe explicitement la monétisation abonnement.
-    s = Settings(gitsky_tier="t2", module_monetization_subscription=False)
-    assert s.module_monetization_subscription is False
-    assert s.module_monetization_shop is True  # non touché
-
-
-def test_unknown_tier_defaults_all_off():
-    s = Settings(gitsky_tier="tX")
-    assert all(v is False for v in flags(s).values())

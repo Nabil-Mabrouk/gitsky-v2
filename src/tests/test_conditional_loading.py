@@ -1,8 +1,9 @@
-"""Preuve du chargement conditionnel des modules par tier (spike).
+"""Preuve du chargement conditionnel des modules (spike, Chap 2/3).
 
 Chaque cas s'exécute dans un interpréteur frais (sous-process) car
 `app.core.main` construit l'app et importe les modules au moment de l'import :
-un seul process ne pourrait pas tester plusieurs tiers proprement.
+un seul process ne pourrait pas tester plusieurs combinaisons de flags
+proprement.
 """
 
 import json
@@ -33,17 +34,19 @@ print(json.dumps({
 """
 
 
-def run(tier: str, **extra_env: str) -> dict:
-    env = {**os.environ, "GITSKY_TIER": tier, "PYTHONPATH": str(BACKEND), **extra_env}
+def run(**module_env: str) -> dict:
+    env = {**os.environ, "PYTHONPATH": str(BACKEND), **module_env}
     out = subprocess.check_output(
         [sys.executable, "-c", SNIPPET], cwd=str(BACKEND), env=env, text=True
     )
     return json.loads(out.strip().splitlines()[-1])
 
 
-def test_t0_loads_no_modules():
-    r = run("t0")
-    assert r["health"]["tier"] == "t0"
+def test_no_modules_active_by_default():
+    r = run()
+    # auth reste actif (core) : ce n'est pas un flag MODULE_*.
+    assert r["health"]["modules"]["auth"] is True
+    assert r["health"]["modules"]["analytics"] is False
     # Endpoints des modules absents.
     assert r["analytics_status"] == 404  # /api/admin/analytics non monté
     assert r["agentic_status"] == 404
@@ -53,9 +56,18 @@ def test_t0_loads_no_modules():
     assert r["security_imported"] is False
 
 
-def test_t2_loads_all_modules():
-    r = run("t2")
-    assert r["health"]["tier"] == "t2"
+def test_all_flags_active_loads_every_module():
+    r = run(
+        MODULE_ADMIN="true",
+        MODULE_ANALYTICS="true",
+        MODULE_SECURITY_MIDDLEWARE="true",
+        MODULE_AGENTIC="true",
+        MODULE_TUTORIALS="true",
+        MODULE_ONBOARDING="true",
+        MODULE_MONETIZATION_SHOP="true",
+        MODULE_MONETIZATION_SUBSCRIPTION="true",
+    )
+    assert r["health"]["modules"]["analytics"] is True
     assert r["analytics_status"] == 401  # monté mais protégé (require_admin)
     assert r["agentic_status"] == 200
     assert r["analytics_imported"] is True
@@ -63,12 +75,13 @@ def test_t2_loads_all_modules():
     assert r["security_imported"] is True
 
 
-def test_explicit_flag_overrides_tier_profile():
-    # Tier T0 (tout désactivé) mais on force analytics via une variable d'env.
-    r = run("t0", MODULE_ANALYTICS="true")
-    assert r["health"]["tier"] == "t0"
+def test_a_single_flag_activates_only_that_module():
+    # Aucun profil, aucune dérivation : activer analytics seul ne doit rien
+    # entraîner d'autre.
+    r = run(MODULE_ANALYTICS="true")
     assert r["health"]["modules"]["analytics"] is True
-    assert r["analytics_status"] == 401  # monté (override) mais protégé admin
+    assert r["analytics_status"] == 401  # monté (flag) mais protégé admin
     assert r["analytics_imported"] is True
-    # Les autres modules restent au profil T0 (désactivés).
+    # Les autres modules restent inactifs : pas de profil qui les entraînerait.
     assert r["agentic_imported"] is False
+    assert r["health"]["modules"]["agentic"] is False

@@ -1,8 +1,8 @@
 """Crontab de flotte + calendrier de maintenance (Phase 6, incr 7 — Chap 23 §6).
 
 Une crontab ne s'exécute pas en test, mais elle DOIT être cohérente : champs
-d'horaire valides, scripts référencés existants, sauvegarde avant kill_check, et
-aucun reliquat `hitl`/`/opt/0-hitl` du livre.
+d'horaire valides, scripts référencés existants, sauvegarde avant test de
+restauration, et aucun reliquat `hitl`/`/opt/0-hitl` du livre.
 """
 
 import re
@@ -52,15 +52,22 @@ def test_referenced_fleet_scripts_exist():
                 assert (SCRIPTS / name).is_file(), f"{name} référencé mais absent"
 
 
-def test_backup_runs_before_kill_check():
-    # Le livre l'exige : sauvegarde à 02:00 AVANT le kill_check de 03:00.
+def test_backup_runs_before_restore_test():
+    # Le 1er du mois, test-restore-fleet.sh restaure la sauvegarde du jour :
+    # elle doit donc déjà exister, donc tourner plus tôt dans la nuit.
     backup_hour = None
+    restore_test_hour = None
     for line in _cron_lines():
         fields, command = _schedule_and_command(line)
         if "backup-fleet.sh" in command:
             backup_hour = int(fields[1])  # champ « heure »
+        elif "test-restore-fleet.sh" in command:
+            restore_test_hour = int(fields[1])
     assert backup_hour is not None, "backup-fleet.sh doit être planifié"
-    assert backup_hour < 3, "la sauvegarde doit précéder le kill_check de 03:00"
+    assert restore_test_hour is not None, "test-restore-fleet.sh doit être planifié"
+    assert backup_hour < restore_test_hour, (
+        "la sauvegarde doit précéder le test de restauration"
+    )
 
 
 def test_health_poll_runs_every_minute():

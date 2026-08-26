@@ -98,8 +98,8 @@ def test_module_chain_skipped_when_flag_disabled():
     os.close(fd)
     db_file = Path(path)
     try:
-        # Profil T0 : analytics désactivé.
-        settings = Settings(gitsky_tier="t0")
+        # Aucun module activé par défaut : analytics désactivé.
+        settings = Settings()
         applied = run_migrations(url=_async_url(db_file), settings=settings)
 
         assert applied == ["core"]
@@ -121,8 +121,8 @@ def test_module_chain_applied_when_flag_enabled():
     os.close(fd)
     db_file = Path(path)
     try:
-        # analytics activé explicitement (indépendant du tier).
-        settings = Settings(gitsky_tier="t0", module_analytics=True)
+        # analytics activé explicitement.
+        settings = Settings(module_analytics=True)
         applied = run_migrations(url=_async_url(db_file), settings=settings)
 
         assert applied == ["core", "analytics"]
@@ -142,7 +142,7 @@ def test_tutorials_chain_applied_when_enabled():
     os.close(fd)
     db_file = Path(path)
     try:
-        settings = Settings(gitsky_tier="t0", module_tutorials=True)
+        settings = Settings(module_tutorials=True)
         applied = run_migrations(url=_async_url(db_file), settings=settings)
 
         assert applied == ["core", "tutorials"]
@@ -163,7 +163,7 @@ def test_security_chain_applied_when_enabled():
     os.close(fd)
     db_file = Path(path)
     try:
-        settings = Settings(gitsky_tier="t0", module_security_middleware=True)
+        settings = Settings(module_security_middleware=True)
         applied = run_migrations(url=_async_url(db_file), settings=settings)
 
         assert applied == ["core", "security"]
@@ -182,7 +182,7 @@ def test_onboarding_chain_applied_when_enabled():
     os.close(fd)
     db_file = Path(path)
     try:
-        settings = Settings(gitsky_tier="t0", module_onboarding=True)
+        settings = Settings(module_onboarding=True)
         applied = run_migrations(url=_async_url(db_file), settings=settings)
 
         assert applied == ["core", "onboarding"]
@@ -201,7 +201,7 @@ def test_agentic_chain_applied_when_enabled():
     os.close(fd)
     db_file = Path(path)
     try:
-        settings = Settings(gitsky_tier="t0", module_agentic=True)
+        settings = Settings(module_agentic=True)
         applied = run_migrations(url=_async_url(db_file), settings=settings)
 
         assert applied == ["core", "agentic"]
@@ -232,7 +232,7 @@ def test_monetization_chain_applied_when_shop_enabled():
     os.close(fd)
     db_file = Path(path)
     try:
-        settings = Settings(gitsky_tier="t0", module_monetization_shop=True)
+        settings = Settings(module_monetization_shop=True)
         applied = run_migrations(url=_async_url(db_file), settings=settings)
 
         assert applied == ["core", "monetization"]
@@ -251,7 +251,7 @@ def test_monetization_chain_applied_when_only_subscription():
     os.close(fd)
     db_file = Path(path)
     try:
-        settings = Settings(gitsky_tier="t0", module_monetization_subscription=True)
+        settings = Settings(module_monetization_subscription=True)
         applied = run_migrations(url=_async_url(db_file), settings=settings)
 
         assert "monetization" in applied
@@ -268,7 +268,7 @@ def test_fleet_chain_applied_when_enabled():
     os.close(fd)
     db_file = Path(path)
     try:
-        settings = Settings(gitsky_tier="t0", module_fleet=True)
+        settings = Settings(module_fleet=True)
         applied = run_migrations(url=_async_url(db_file), settings=settings)
 
         assert applied == ["core", "fleet"]

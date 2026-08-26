@@ -68,7 +68,7 @@ def _fresh_db():
 async def _seed_projects(factory, projects: list[tuple[str, str]]) -> None:
     async with factory() as db:
         for name, status in projects:
-            db.add(Project(name=name, tier="t1", status=status))
+            db.add(Project(name=name, status=status))
         await db.commit()
 
 
@@ -133,13 +133,13 @@ def test_recovery_logs_deployment_recovered():
     assert events == ["deployment_failed", "deployment_recovered"]
 
 
-def test_killed_projects_are_not_alarmed():
+def test_archived_projects_are_not_alarmed():
     async def scenario():
         engine, factory = _fresh_db()
         async with engine.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)
-        await _seed_projects(factory, [("dead-idea", "killed")])
-        # Muet, mais killed : un kill n'est pas une panne.
+        await _seed_projects(factory, [("dead-idea", "archived")])
+        # Muet, mais archived : une archive n'est pas une panne.
         async with factory() as db:
             changed = await hm.record_health_sweep(
                 db, {"dead-idea": None}, NOW
@@ -186,7 +186,7 @@ async def _seed_endpoint() -> None:
     async with _engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
     async with _factory() as db:
-        db.add(Project(name="silent-one", tier="t1", status="active"))
+        db.add(Project(name="silent-one", status="active"))
         await db.commit()
 
 

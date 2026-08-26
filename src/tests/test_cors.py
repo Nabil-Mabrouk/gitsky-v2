@@ -29,8 +29,9 @@ FRONTEND = get_settings().frontend_url
 
 
 def _preflight(origin: str):
-    # Le preflight est intercepté par CORSMiddleware avant le routage : pas
-    # besoin que la route existe (l'app par défaut est en tier t0 sans auth).
+    # Le preflight est intercepté par CORSMiddleware avant le routage : la
+    # route n'a même pas besoin d'exister (même si auth, core, la monte
+    # toujours).
     return client.options(
         "/api/auth/login",
         headers={

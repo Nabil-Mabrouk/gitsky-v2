@@ -91,18 +91,18 @@ async def _project_count() -> int:
 def test_register_then_upsert():
     r = client.post(
         "/api/fleet/projects/register",
-        json={"name": "pain-scraper", "tier": "t0", "domain": "pain-scraper.mystudio.com"},
+        json={"name": "pain-scraper", "domain": "pain-scraper.mystudio.com"},
     )
     assert r.status_code == 200
-    assert r.json()["tier"] == "t0"
+    assert r.json()["domain"] == "pain-scraper.mystudio.com"
 
     # Ré-enregistrement du même projet -> upsert (met à jour, pas de doublon).
     r2 = client.post(
         "/api/fleet/projects/register",
-        json={"name": "pain-scraper", "tier": "t1"},
+        json={"name": "pain-scraper", "domain": "pain-scraper.com"},
     )
     assert r2.status_code == 200
-    assert r2.json()["tier"] == "t1"
+    assert r2.json()["domain"] == "pain-scraper.com"
     assert asyncio.run(_project_count()) == 1
 
 
@@ -117,36 +117,11 @@ def test_projects_grid_requires_admin():
     assert any(p["name"] == "pain-scraper" for p in r.json())
 
 
-def test_kill_check_endpoint_kills_and_journals():
-    client.post("/api/fleet/projects/register", json={"name": "dead-idea", "tier": "t0"})
-
-    # Réservé à l'admin.
-    assert client.post("/api/fleet/projects/dead-idea/kill-check", json={}).status_code == 401
-
-    # J+21 sans signal -> kill_now, statut killed.
-    r = client.post(
-        "/api/fleet/projects/dead-idea/kill-check",
-        json={"days_since_deploy": 21},
-        headers=_auth(SEED["admin_id"]),
-    )
-    assert r.status_code == 200
-    body = r.json()
-    assert body["verdict"] == "kill_now"
-    assert body["status"] == "killed"
-
-    # Projet inconnu -> 404.
-    assert (
-        client.post(
-            "/api/fleet/projects/nope/kill-check",
-            json={},
-            headers=_auth(SEED["admin_id"]),
-        ).status_code
-        == 404
-    )
-
-
 def test_publish_promotion_flow():
-    client.post("/api/fleet/projects/register", json={"name": "launch-me", "tier": "t0"})
+    client.post(
+        "/api/fleet/projects/register",
+        json={"name": "launch-me", "domain": "launch-me.mystudio.com"},
+    )
     assert client.post("/api/fleet/projects/launch-me/promote", json={}).status_code == 401
 
     # draft -> preview (toujours autorisé).
@@ -158,7 +133,7 @@ def test_publish_promotion_flow():
     assert r1.json()["allowed"] is True
     assert r1.json()["publish_status"] == "preview"
 
-    # preview -> live (T0 + guardrails OK => auto).
+    # preview -> live (sous-domaine de la flotte + guardrails OK => auto).
     r2 = client.post(
         "/api/fleet/projects/launch-me/promote",
         json={"guardrails_pass": True},

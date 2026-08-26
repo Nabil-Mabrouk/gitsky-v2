@@ -6,9 +6,10 @@ défaut, activé par GITSKY_DOCKER_IT=1.
 
     GITSKY_DOCKER_IT=1 python -m pytest src/tests/test_docker_build_integration.py
 
-Auto-suffisant : le backend T0 tourne sur un SQLite dans /data, sans Postgres.
-Valide les corrections trouvées AU build : non-root, /app en lecture seule mais
-/data inscriptible, HEALTHCHECK Python -> /health à 200.
+Auto-suffisant : le conteneur est lancé avec un DATABASE_URL SQLite dans /data,
+pour ne pas dépendre d'un Postgres externe dans ce test. Valide les corrections
+trouvées AU build : non-root, /app en lecture seule mais /data inscriptible,
+HEALTHCHECK Python -> /health à 200.
 """
 
 import json
@@ -40,7 +41,7 @@ def _docker(*args, **kw) -> subprocess.CompletedProcess:
 
 @pytest.fixture(scope="module")
 def backend_image():
-    with projet_genere("it-proj", "t2") as dst:
+    with projet_genere("it-proj") as dst:
         build = _docker("build", "-f", "Dockerfile", "-t", IMAGE, ".", cwd=str(dst))
         assert build.returncode == 0, build.stderr[-2000:]
         yield IMAGE
@@ -51,7 +52,6 @@ def test_backend_runs_non_root_health_ok(backend_image):
     _docker("rm", "-f", CONTAINER)
     run = _docker(
         "run", "-d", "--name", CONTAINER,
-        "-e", "GITSKY_TIER=t0",
         "-e", "DATABASE_URL=sqlite+aiosqlite:////data/gitsky.db",
         backend_image,
     )

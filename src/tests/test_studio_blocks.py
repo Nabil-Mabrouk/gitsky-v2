@@ -49,7 +49,7 @@ def _generate_manifest(landing: dict, project: dict | None = None) -> dict:
         run_copy(
             str(GENERATOR),
             str(dst),
-            data={"project": project or {"name": "acme", "tier": "t0"}, "landing": landing},
+            data={"project": project or {"name": "acme"}, "landing": landing},
             defaults=True,
             quiet=True,
             unsafe=True,

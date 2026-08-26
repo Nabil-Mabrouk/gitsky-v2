@@ -3,8 +3,8 @@
 # shared_services/scripts/backup-fleet.sh — Sauvegarde 3-2-1 de TOUTE la flotte.
 # (Chap 23 §« Sauvegarde Multi-Projets »)
 #
-# Tourne à 02:00 UTC, AVANT le kill_check de 03:00 : les projets sur le point
-# d'être tués ont ainsi une sauvegarde fraîche.
+# Tourne à 02:00 UTC, AVANT le test de restauration mensuel de 04:00 : celui-ci
+# a ainsi toujours une sauvegarde fraîche à vérifier.
 #
 # ÉCART AU LIVRE (décision d'archi Phase 6) : le Chap 23 énumère les bases via
 # `SELECT datname FROM pg_database` d'une instance PostgreSQL PARTAGÉE. GitSky a

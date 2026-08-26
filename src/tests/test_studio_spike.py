@@ -84,7 +84,7 @@ def test_landing_manifest_serializes_blocks_to_valid_json():
             str(GENERATOR),
             str(dst),
             data={
-                "project": {"name": "pain-scraper", "tier": "t0"},
+                "project": {"name": "pain-scraper"},
                 "landing": {
                     "blocks": [
                         {"type": "hero", "headline": "Marre du scraping ?", "subhead": "On collecte pour vous."},
@@ -118,7 +118,7 @@ def test_landing_manifest_preserved_on_copier_update():
         run_copy(
             str(template),
             str(project),
-            data={"project": {"name": "x", "tier": "t0"}},
+            data={"project": {"name": "x"}},
             defaults=True,
             quiet=True,
             unsafe=True,

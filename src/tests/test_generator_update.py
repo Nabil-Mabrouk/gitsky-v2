@@ -86,7 +86,7 @@ def test_copier_update_runs_migration():
         run_copy(
             str(template),
             str(project),
-            data={"project": {"name": "pain-scraper", "tier": "t1"}},
+            data={"project": {"name": "pain-scraper"}},
             defaults=True,
             quiet=True,
             unsafe=True,

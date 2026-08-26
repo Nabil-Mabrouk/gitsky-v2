@@ -69,13 +69,13 @@ def test_tutorials_chain_reuses_userrole_enum_without_duplicate_error(postgres_u
     # Reproduit le scénario réel : core (+ autres chaînes) déjà appliqué,
     # tutorials activé ensuite — l'enum `userrole` existe déjà, la chaîne
     # tutorials doit le réutiliser, jamais tenter de le recréer.
-    settings_before = Settings(gitsky_tier="t2", database_url=postgres_url)
+    settings_before = Settings(database_url=postgres_url)
     applied_before = run_migrations(url=postgres_url, settings=settings_before)
     assert "core" in applied_before
     assert "tutorials" not in applied_before
 
     settings_after = Settings(
-        gitsky_tier="t2", module_tutorials=True, database_url=postgres_url
+        module_tutorials=True, database_url=postgres_url
     )
     applied_after = run_migrations(url=postgres_url, settings=settings_after)
     assert "tutorials" in applied_after

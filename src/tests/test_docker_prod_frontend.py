@@ -22,8 +22,8 @@ from helpers import projet_genere  # noqa: E402
 TEMPLATE_FRONTEND = GENERATOR / "template" / "frontend"
 
 
-def _render(tier: str = "t1") -> str:
-    with projet_genere("pain-scraper", tier) as dst:
+def _render(**data) -> str:
+    with projet_genere("pain-scraper", **data) as dst:
         return (dst / "frontend" / "Dockerfile").read_text(encoding="utf-8")
 
 
@@ -76,7 +76,7 @@ def test_lockfile_ships_with_the_template():
 
 
 def test_lockfile_is_generated_in_projects():
-    with projet_genere("pain-scraper", "t1") as dst:
+    with projet_genere("pain-scraper") as dst:
         assert (dst / "frontend" / "package-lock.json").is_file()
 
 
@@ -132,7 +132,7 @@ def test_build_fails_loudly_without_api_url():
 
 
 def test_dev_api_url_cannot_leak_into_the_bundle():
-    with projet_genere("pain-scraper", "t1") as dst:
+    with projet_genere("pain-scraper") as dst:
         # Le .env du frontend pointe sur localhost:8000 (développement). S'il
         # entrait dans le contexte de build, le bundle de prod risquerait de
         # partir avec cette URL.
@@ -165,8 +165,10 @@ def test_healthcheck_present():
     assert "--interval=30s" in body
 
 
-# --- Un seul artefact, indépendant du tier ---------------------------------
+# --- Un seul artefact, indépendant des modules activés ----------------------
 
 
-def test_frontend_dockerfile_is_identical_across_tiers():
-    assert _render("t0") == _render("t1") == _render("t2")
+def test_frontend_dockerfile_is_identical_across_module_combinations():
+    # Le frontend n'embarque aucun MODULE_* au build : le Dockerfile ne doit
+    # pas varier selon les modules backend activés.
+    assert _render() == _render(modules={"admin": True, "agentic": True})

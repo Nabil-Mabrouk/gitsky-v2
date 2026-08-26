@@ -56,7 +56,7 @@ def projet_temporaire() -> Iterator[Path]:
 
 
 @contextmanager
-def projet_genere(name: str, tier: str, **data) -> Iterator[Path]:
+def projet_genere(name: str, **data) -> Iterator[Path]:
     """Génère un projet SANS les _tasks (git init/add/commit) et cède son chemin.
 
     Les tests qui ne font que LIRE des fichiers générés n'ont aucun besoin du
@@ -70,7 +70,7 @@ def projet_genere(name: str, tier: str, **data) -> Iterator[Path]:
         run_copy(
             str(GENERATOR),
             str(dst),
-            data={"project": {"name": name, "tier": tier}, **data},
+            data={"project": {"name": name}, **data},
             defaults=True,
             quiet=True,
             unsafe=True,

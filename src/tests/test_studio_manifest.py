@@ -92,7 +92,7 @@ def test_save_load_roundtrip_and_autoversion():
 
 def test_generation_from_manifest_is_deterministic():
     m = _manifest()
-    data = {**to_copier_data(m), "project": {"name": "pain-scraper", "tier": "t0"}}
+    data = {**to_copier_data(m), "project": {"name": "pain-scraper"}}
     root = Path(tempfile.mkdtemp())
     try:
         manifests, themes = [], []

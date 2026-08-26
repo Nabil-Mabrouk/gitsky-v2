@@ -2,8 +2,8 @@
 
 Le trou fleet (`/projects/register` public) et l'IDOR agentic ont montré que la
 sécurité route-par-route ne survit pas aux ajouts futurs sans garde-fou global.
-Ce test monte l'app COMPLÈTE (t2 + fleet + tutorials) et vérifie, pour chaque
-route réellement enregistrée :
+Ce test monte l'app COMPLÈTE (tous les flags MODULE_* actifs) et vérifie, pour
+chaque route réellement enregistrée :
 
 1. tout ce qui vit sous /api/admin/ exige `require_admin` ;
 2. toute route mutante (POST/PUT/PATCH/DELETE) porte une dépendance d'auth —
@@ -14,7 +14,7 @@ Ajouter une route mutante sans auth fait échouer la CI : c'est voulu. Si la
 route est légitimement publique, l'ajouter à l'allowlist AVEC sa justification.
 
 Sous-process (patron de test_conditional_loading) : `app.core.main` fige ses
-flags à l'import, un process frais garantit le tier voulu.
+flags à l'import, un process frais garantit la combinaison de flags voulue.
 """
 
 import json
@@ -79,9 +79,16 @@ print(json.dumps(routes))
 def _all_routes() -> list[dict]:
     env = {
         **os.environ,
-        "GITSKY_TIER": "t2",
-        "MODULE_FLEET": "true",
+        "MODULE_ADMIN": "true",
+        "MODULE_ANALYTICS": "true",
+        "MODULE_ONBOARDING": "true",
         "MODULE_TUTORIALS": "true",
+        "MODULE_SECURITY_MIDDLEWARE": "true",
+        "MODULE_I18N": "true",
+        "MODULE_AGENTIC": "true",
+        "MODULE_MONETIZATION_SHOP": "true",
+        "MODULE_MONETIZATION_SUBSCRIPTION": "true",
+        "MODULE_FLEET": "true",
         "PYTHONPATH": str(BACKEND),
     }
     out = subprocess.check_output(

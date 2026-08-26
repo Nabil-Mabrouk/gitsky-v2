@@ -64,7 +64,7 @@ app.include_router(fleet_router, prefix="/api/fleet")
 app.dependency_overrides[get_db] = _override_get_db
 client = TestClient(app)
 
-PAYLOAD = {"name": "guarded", "tier": "t0"}
+PAYLOAD = {"name": "guarded", "domain": "guarded.mystudio.com"}
 
 
 @atexit.register
@@ -143,12 +143,11 @@ def test_generator_task_sends_token_header(tmp_path, monkeypatch):
 
     def handler(request: httpx.Request) -> httpx.Response:
         seen["token"] = request.headers.get("X-Fleet-Token")
-        return httpx.Response(200, json={"name": "p", "tier": "t0"})
+        return httpx.Response(200, json={"name": "p"})
 
     fake = httpx.Client(transport=httpx.MockTransport(handler))
     register_fleet.register(
         project="p",
-        tier="t0",
         domain="p.mystudio.com",
         template_version="1.0.0",
         fleet_url="http://fleet.local",
