@@ -53,6 +53,22 @@ def _user_columns(db_file: Path) -> set[str]:
         engine.dispose()
 
 
+def _columns(db_file: Path, table: str) -> set[str]:
+    engine = create_engine(f"sqlite:///{db_file.as_posix()}")
+    try:
+        return {c["name"] for c in inspect(engine).get_columns(table)}
+    finally:
+        engine.dispose()
+
+
+def _fleet_config(db_file: Path) -> Config:
+    cfg = Config(str(BACKEND / "alembic.ini"))
+    cfg.set_main_option("script_location", str(BACKEND / "alembic" / "modules" / "fleet"))
+    cfg.set_main_option("version_table", "alembic_version_fleet")
+    cfg.set_main_option("sqlalchemy.url", f"sqlite+aiosqlite:///{db_file.as_posix()}")
+    return cfg
+
+
 def test_core_chain_upgrade_and_downgrade():
     fd, path = tempfile.mkstemp(suffix=".db")
     os.close(fd)
@@ -275,6 +291,40 @@ def test_fleet_chain_applied_when_enabled():
         tables = _table_names(db_file)
         assert {"fleet_projects", "fleet_lifecycle_events"} <= tables
         assert "alembic_version_fleet" in tables
+        # Catalogue de modules a plat (Phase 6) : plus de colonne tier, meme
+        # sur une base migree depuis zero.
+        assert "tier" not in _columns(db_file, "fleet_projects")
+        assert "tier" not in _columns(db_file, "fleet_lifecycle_events")
+    finally:
+        try:
+            db_file.unlink()
+        except OSError:
+            pass
+
+
+def test_fleet_drop_tier_migration_on_a_database_created_before_it_existed():
+    # Ce scenario reproduit une base de PRODUCTION deja migree avant le retrait
+    # des tiers (Phase 6) : 0001/0002 avaient encore la colonne `tier`. Une
+    # base qui s'arrete a 0002 doit pouvoir avancer jusqu'a `head` et perdre la
+    # colonne proprement, sans avoir a etre recreee depuis zero.
+    fd, path = tempfile.mkstemp(suffix=".db")
+    os.close(fd)
+    db_file = Path(path)
+    try:
+        cfg = _fleet_config(db_file)
+
+        command.upgrade(cfg, "0002_fleet_maintenance_runs")
+        assert "tier" in _columns(db_file, "fleet_projects")
+        assert "tier" in _columns(db_file, "fleet_lifecycle_events")
+
+        command.upgrade(cfg, "head")
+        assert "tier" not in _columns(db_file, "fleet_projects")
+        assert "tier" not in _columns(db_file, "fleet_lifecycle_events")
+
+        # downgrade restaure la colonne (chemin de secours).
+        command.downgrade(cfg, "0002_fleet_maintenance_runs")
+        assert "tier" in _columns(db_file, "fleet_projects")
+        assert "tier" in _columns(db_file, "fleet_lifecycle_events")
     finally:
         try:
             db_file.unlink()
