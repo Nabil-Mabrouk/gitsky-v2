@@ -31,7 +31,7 @@ from app.core.database import Base, get_db  # noqa: E402
 from app.core.models import User, UserRole  # noqa: E402
 from app.modules.fleet import landing_collector_client  # noqa: E402
 from app.modules.fleet import router as fleet_router  # noqa: E402
-from app.modules.fleet.models import Project  # noqa: E402
+from app.modules.fleet.models import FleetLifecycleEvent, Project  # noqa: E402
 
 _DB_FILE = Path(tempfile.gettempdir()) / f"gitsky_fleet_{os.getpid()}.db"
 if _DB_FILE.exists():
@@ -140,6 +140,61 @@ def test_publish_promotion_flow():
         headers=_auth(SEED["admin_id"]),
     )
     assert r2.json()["publish_status"] == "live"
+
+
+def test_archive_requires_admin():
+    client.post(
+        "/api/fleet/projects/register",
+        json={"name": "to-archive", "domain": "to-archive.mystudio.com"},
+    )
+    assert client.post("/api/fleet/projects/to-archive/archive").status_code == 401
+    assert (
+        client.post(
+            "/api/fleet/projects/to-archive/archive", headers=_auth(SEED["user_id"])
+        ).status_code
+        == 403
+    )
+
+
+def test_archive_sets_status_and_journals_event_once():
+    client.post(
+        "/api/fleet/projects/register",
+        json={"name": "archive-me", "domain": "archive-me.mystudio.com"},
+    )
+    r = client.post(
+        "/api/fleet/projects/archive-me/archive", headers=_auth(SEED["admin_id"])
+    )
+    assert r.status_code == 200
+    assert r.json()["status"] == "archived"
+
+    async def _events() -> int:
+        async with factory() as db:
+            result = await db.execute(
+                select(func.count())
+                .select_from(FleetLifecycleEvent)
+                .where(
+                    FleetLifecycleEvent.project_name == "archive-me",
+                    FleetLifecycleEvent.event_type == "archived",
+                )
+            )
+            return result.scalar_one()
+
+    assert asyncio.run(_events()) == 1
+
+    # Idempotent : réarchiver ne journalise pas un second événement.
+    r2 = client.post(
+        "/api/fleet/projects/archive-me/archive", headers=_auth(SEED["admin_id"])
+    )
+    assert r2.status_code == 200
+    assert r2.json()["status"] == "archived"
+    assert asyncio.run(_events()) == 1
+
+
+def test_archive_unknown_project_is_404():
+    r = client.post(
+        "/api/fleet/projects/does-not-exist/archive", headers=_auth(SEED["admin_id"])
+    )
+    assert r.status_code == 404
 
 
 def test_project_leads_requires_admin_and_proxies_landing_collector(monkeypatch):

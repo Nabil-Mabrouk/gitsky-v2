@@ -24,6 +24,7 @@ FLEET_SCRIPTS = [
     "fleet-disk.sh",
     "fleet-health.sh",
     "test-restore-fleet.sh",
+    "deploy-on-push.sh",
 ]
 
 BASH = shutil.which("bash") or ""
@@ -428,6 +429,163 @@ def test_fleet_disk_skips_reporting_without_fleet_url(tmp_path):
 
     assert r.returncode == 0, r.stderr
     assert not log.exists()
+
+
+# --- deploy-on-push.sh ------------------------------------------------------
+
+
+def _fake_curl_deploy(fakebin: Path, log: Path, *, pending: str = "") -> None:
+    # GET (pas de "-X POST" dans les args) -> répond `pending` sur stdout
+    # (simule /api/fleet/deploys/pending). POST -> journalise l'appel (report),
+    # même patron que _fake_curl mais avec un corps de réponse pour le GET.
+    c = fakebin / "curl"
+    _write_lf(
+        c,
+        "#!/usr/bin/env bash\n"
+        f'echo "$@" >> "{log.as_posix()}"\n'
+        'if [[ "$*" == *"-X POST"* ]]; then\n'
+        "  exit 0\n"
+        "fi\n"
+        f'printf %s "{pending}"\n',
+    )
+    c.chmod(0o755)
+
+
+def _fake_git(fakebin: Path, *, fail: bool = False) -> None:
+    g = fakebin / "git"
+    _write_lf(g, "#!/usr/bin/env bash\n" + ("exit 1\n" if fail else "exit 0\n"))
+    g.chmod(0o755)
+
+
+def _fake_docker_deploy(fakebin: Path, *, compose_fails: bool = False, health_fails: bool = False) -> None:
+    _fake_docker(fakebin, rf"""
+        case "$1" in
+          compose) {"exit 1" if compose_fails else "exit 0"} ;;
+          exec)    {"exit 1" if health_fails else "exit 0"} ;;
+        esac
+    """)
+
+
+def _make_project_dirs(base: Path, *names: str) -> Path:
+    for name in names:
+        (base / name).mkdir(parents=True, exist_ok=True)
+    return base
+
+
+def test_deploy_redeploys_every_pending_project_and_advances_cursor(tmp_path):
+    fakebin = tmp_path / "bin"; fakebin.mkdir()
+    projects = _make_project_dirs(tmp_path / "projects", "pain-scraper", "launch-me")
+    curl_log = tmp_path / "curl_calls.log"
+    _fake_curl_deploy(fakebin, curl_log, pending="5\tpain-scraper\n6\tlaunch-me")
+    _fake_git(fakebin)
+    _fake_docker_deploy(fakebin)
+    state = tmp_path / "state" / "deploy.state"
+
+    r = _run("deploy-on-push.sh", fakebin, tmp_path,
+              FLEET_URL="https://api.example.com", FLEET_REGISTER_TOKEN="tok",
+              PROJECTS_DIR=projects.as_posix(), STATE_FILE=state.as_posix())
+
+    assert r.returncode == 0, r.stderr
+    assert state.read_text().strip() == "6"
+    calls = curl_log.read_text()
+    assert calls.count('"status":"success"') == 2
+    assert '"project":"pain-scraper"' in calls
+    assert '"project":"launch-me"' in calls
+
+
+def test_deploy_reports_failure_when_project_directory_missing(tmp_path):
+    fakebin = tmp_path / "bin"; fakebin.mkdir()
+    projects = tmp_path / "projects"; projects.mkdir()  # "ghost" n'existe pas dedans
+    curl_log = tmp_path / "curl_calls.log"
+    _fake_curl_deploy(fakebin, curl_log, pending="9\tghost")
+    _fake_git(fakebin)
+    _fake_docker_deploy(fakebin)
+    state = tmp_path / "state" / "deploy.state"
+
+    r = _run("deploy-on-push.sh", fakebin, tmp_path,
+              FLEET_URL="https://api.example.com", FLEET_REGISTER_TOKEN="tok",
+              PROJECTS_DIR=projects.as_posix(), STATE_FILE=state.as_posix())
+
+    assert r.returncode == 1
+    assert '"status":"failure"' in curl_log.read_text()
+    assert '"project":"ghost"' in curl_log.read_text()
+    # Le curseur avance quand même : un projet cassé ne doit pas bloquer les
+    # suivants indéfiniment.
+    assert state.read_text().strip() == "9"
+
+
+def test_deploy_reports_failure_when_git_pull_diverges(tmp_path):
+    fakebin = tmp_path / "bin"; fakebin.mkdir()
+    projects = _make_project_dirs(tmp_path / "projects", "pain-scraper")
+    curl_log = tmp_path / "curl_calls.log"
+    _fake_curl_deploy(fakebin, curl_log, pending="1\tpain-scraper")
+    _fake_git(fakebin, fail=True)  # simule un git pull --ff-only refusé
+    _fake_docker_deploy(fakebin)
+    state = tmp_path / "state" / "deploy.state"
+
+    r = _run("deploy-on-push.sh", fakebin, tmp_path,
+              FLEET_URL="https://api.example.com", FLEET_REGISTER_TOKEN="tok",
+              PROJECTS_DIR=projects.as_posix(), STATE_FILE=state.as_posix())
+
+    assert r.returncode == 1
+    assert '"status":"failure"' in curl_log.read_text()
+
+
+def test_deploy_reports_failure_when_health_check_fails_after_build(tmp_path):
+    fakebin = tmp_path / "bin"; fakebin.mkdir()
+    projects = _make_project_dirs(tmp_path / "projects", "pain-scraper")
+    curl_log = tmp_path / "curl_calls.log"
+    _fake_curl_deploy(fakebin, curl_log, pending="1\tpain-scraper")
+    _fake_git(fakebin)
+    _fake_docker_deploy(fakebin, health_fails=True)
+    state = tmp_path / "state" / "deploy.state"
+
+    r = _run("deploy-on-push.sh", fakebin, tmp_path,
+              FLEET_URL="https://api.example.com", FLEET_REGISTER_TOKEN="tok",
+              PROJECTS_DIR=projects.as_posix(), STATE_FILE=state.as_posix())
+
+    assert r.returncode == 1
+    call = curl_log.read_text()
+    assert '"status":"failure"' in call
+    assert "health" in call
+
+
+def test_deploy_exits_cleanly_when_nothing_pending(tmp_path):
+    fakebin = tmp_path / "bin"; fakebin.mkdir()
+    curl_log = tmp_path / "curl_calls.log"
+    _fake_curl_deploy(fakebin, curl_log, pending="")
+    _fake_git(fakebin)
+    _fake_docker_deploy(fakebin)
+    state = tmp_path / "state" / "deploy.state"
+
+    r = _run("deploy-on-push.sh", fakebin, tmp_path,
+              FLEET_URL="https://api.example.com", FLEET_REGISTER_TOKEN="tok",
+              PROJECTS_DIR=(tmp_path / "projects").as_posix(), STATE_FILE=state.as_posix())
+
+    assert r.returncode == 0, r.stderr
+    # Aucun report : seul le GET (fetch pending) a été appelé.
+    assert "-X POST" not in curl_log.read_text()
+
+
+def test_deploy_resumes_from_existing_state_file_cursor(tmp_path):
+    fakebin = tmp_path / "bin"; fakebin.mkdir()
+    projects = _make_project_dirs(tmp_path / "projects", "launch-me")
+    curl_log = tmp_path / "curl_calls.log"
+    _fake_curl_deploy(fakebin, curl_log, pending="42\tlaunch-me")
+    _fake_git(fakebin)
+    _fake_docker_deploy(fakebin)
+    state = tmp_path / "state" / "deploy.state"
+    state.parent.mkdir(parents=True)
+    state.write_text("20\n")
+
+    r = _run("deploy-on-push.sh", fakebin, tmp_path,
+              FLEET_URL="https://api.example.com", FLEET_REGISTER_TOKEN="tok",
+              PROJECTS_DIR=projects.as_posix(), STATE_FILE=state.as_posix())
+
+    assert r.returncode == 0, r.stderr
+    # Le curseur précédent (20) doit avoir été envoyé comme since_id.
+    assert "since_id=20" in curl_log.read_text()
+    assert state.read_text().strip() == "42"
 
 
 # --- Qualité des scripts livrés --------------------------------------------

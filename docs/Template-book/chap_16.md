@@ -84,7 +84,7 @@ Stripe permet de configurer plusieurs webhooks avec chacun leur propre secret. D
 | A — Secret unique | Un webhook Stripe, un secret partagé, un endpoint qui route | Configuration simple, un seul secret à faire tourner | Si le secret fuit, tous les projets sont exposés |
 | B — Secret par projet | Un webhook Stripe par projet (10-30 webhooks), un endpoint valide le bon secret par projet | Isolation forte, un secret compromis n'affecte qu'un projet | Multiplication des configurations Stripe, ré-armement plus complexe |
 
-**Recommandation : Option A pour les projets T0-T1, Option B dès qu'un projet dépasse ~1 000 € de MRR.**
+**Recommandation : Option A pour un projet qui démarre, Option B dès qu'un projet dépasse ~1 000 € de MRR.**
 
 Le secret partagé est un compromis acceptable tant que tous les projets sont sous le même contrôle opérationnel. Dès qu'un projet atteint un revenu où la fuite de données de paiement serait coûteuse, il mérite son propre webhook Stripe avec son propre secret.
 
@@ -406,4 +406,4 @@ La section **Mes achats** dans `/profile` liste tous les achats fulfilled de l'u
 
 ---
 
-*La monétisation clôt la partie des modules optionnels — un projet en T2 peut désormais générer du revenu. La partie suivante détaille l'industrialisation : générateur, services partagés, fleet dashboard et cycle de vie complet d'un projet.*
+*La monétisation clôt la partie des modules optionnels — un projet ayant activé `module_monetization_shop` et/ou `module_monetization_subscription` peut désormais générer du revenu. La partie suivante détaille l'industrialisation : générateur, services partagés, fleet dashboard et cycle de vie complet d'un projet.*

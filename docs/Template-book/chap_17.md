@@ -35,8 +35,15 @@ project:
 
 modules:
   admin: true
+  analytics: true
+  onboarding: false
+  tutorials: false
+  security_middleware: true
+  i18n: false
   agentic: true
+  monetization_shop: false
   monetization_subscription: true
+  fleet: false
 
 data_models:
   - name: Company
@@ -61,12 +68,28 @@ fleet:
   stripe_account: mystudio_main    # compte Stripe partagé
 ```
 
+`modules` s'appuie sur un **catalogue plat de flags** (`admin`, `analytics`,
+`onboarding`, `tutorials`, `security_middleware`, `i18n`, `agentic`,
+`monetization_shop`, `monetization_subscription`, `fleet`), tous **désactivés
+par défaut** et activables indépendamment les uns des autres — il n'y a pas de
+bundle prédéfini à surcharger. `auth` et le SEO ne figurent pas dans ce
+catalogue : ils sont **core**, montés dans tous les projets sans exception, et
+n'ont donc pas de flag.
+
+**Les clés YAML sont courtes, sans le préfixe `module_`** (`admin`, pas
+`module_admin`) — c'est ce que le context hook du générateur attend
+(`extensions/context.py`, `ModuleResolver`) : une clé absente ou mal
+préfixée est simplement ignorée (traitée comme `False`), sans erreur ni
+avertissement. Le préfixe `module_` n'apparaît que côté runtime, comme nom de
+variable d'environnement (`MODULE_ADMIN=true` dans le `.env` généré) et comme
+attribut de `Settings` (Chap 3) — jamais comme clé de `config.yaml`.
+
 Les propriétés se répartissent en six catégories :
 
 | Catégorie | Rôle |
 |---|---|
-| `project` | Identité du projet (nom, domaine) |
-| `modules` | Sélection directe des flags module actifs (Chap 2) — aucun profil par défaut à surcharger |
+| `project` | Identité du projet |
+| `modules` | Flags module activés pour ce projet, parmi le catalogue plat `module_*` |
 | `data_models` | Modèles SQLAlchemy à scaffolder dans `app/domain/` |
 | `domain_routes` | Routeurs FastAPI à scaffolder dans `app/domain/` |
 | `branding` | Variables CSS et actifs à injecter dans le frontend |
@@ -108,20 +131,22 @@ Contrairement à Cookiecutter, Copier n'a pas de scripts `pre_gen`/`post_gen`. I
 
 | Mécanisme | Déclaration | Moment | Rôle dans GitSky |
 |---|---|---|---|
-| **Context hook** | `_jinja_extensions` + classe `ContextHook` (paquet `copier-template-extensions`) | Avant le rendu Jinja | Normalise les flags `MODULE_*` fournis par `config.yaml`, calcule les valeurs dérivées (nom de base, workers Gunicorn par défaut) — sans multiplier les questions posées |
-| **`_tasks`** | Liste de commandes dans `copier.yml` | Après la génération des fichiers | Provisionne la DB, génère les migrations, enregistre au fleet dashboard, crée le dépôt GitHub et pousse le commit initial (Chap 26), initialise le repo git local |
+| **Context hook** | `_jinja_extensions` + classe `ContextHook` (paquet `copier-template-extensions`) | Avant le rendu Jinja | Normalise les flags `module_*` déclarés dans `config.yaml` en variables d'environnement `MODULE_*`, calcule les valeurs dérivées — sans multiplier les questions posées |
+| **`_tasks`** | Liste de commandes dans `copier.yml` | Après la génération des fichiers | Provisionne la DB, génère les migrations, enregistre au fleet dashboard, initialise le repo git |
 | **`_migrations`** | Liste versionnée dans `copier.yml` | Lors d'un `copier update` | Applique les nouvelles migrations sans casser les données existantes |
 
-Le **context hook** est l'équivalent d'un « pré-traitement » : il enrichit le contexte Jinja avant que les fichiers ne soient rendus. C'est là que les flags de modules sont normalisés, avec **exactement la même logique que le runtime** (source unique de vérité) :
+Le **context hook** est l'équivalent d'un « pré-traitement » : il enrichit le contexte Jinja avant que les fichiers ne soient rendus. C'est là que les flags module sont normalisés, avec **exactement la même logique que le runtime** (source unique de vérité) :
 
 ```python
 # extensions/context.py
 from copier_template_extensions import ContextHook
+from app.core.module_flags import MODULE_FLAGS_CATALOG   # les dix flags module_*
 
-class ModuleResolver(ContextHook):
+class ModuleFlagsHook(ContextHook):
     def hook(self, context: dict) -> None:
-        modules = context.get("modules", {}) or {}
-        context["resolved_modules"] = normalize_module_flags(modules)
+        context["resolved_modules"] = {
+            flag: context.get(flag, False) for flag in MODULE_FLAGS_CATALOG
+        }
 ```
 
 Déclaration dans `copier.yml` :
@@ -129,7 +154,7 @@ Déclaration dans `copier.yml` :
 ```yaml
 _jinja_extensions:
   - copier_template_extensions.TemplateExtensionLoader
-  - extensions/context.py:ModuleResolver
+  - extensions/context.py:ModuleFlagsHook
 
 _tasks:
   - "python .copier/tasks/provision_db.py"
@@ -182,7 +207,7 @@ Le passage manuel à 30 projets serait impraticable. Le générateur rend cette 
 ## Anti-Patterns à Éviter
 
 - **Éditer les fichiers générés à la main sans remonter la modification dans le template.** Toute correction utile à plusieurs projets doit remonter au template pour propagation via `copier update`.
-- **Sauter le fleet register.** Un projet non enregistré n'apparaît pas dans le dashboard et ne bénéficie ni du suivi de santé ni des alertes (Chap 19).
+- **Sauter le fleet register.** Un projet non enregistré n'apparaît pas dans le dashboard et ne bénéficie pas des alertes de monitoring de la flotte.
 - **Cloner un projet existant plutôt que le générer.** Le clone hérite des dérives et empêche la mise à jour propre du template.
 
 ---

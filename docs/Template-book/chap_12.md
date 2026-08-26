@@ -4,7 +4,7 @@
 
 Le module `onboarding` est un moteur d'évaluation par flux JSON qui profile un utilisateur à son inscription (ou lors d'une mise à jour de profil), et lui attribue un label technique et un score exploitables par le reste de l'application.
 
-Activation : `MODULE_ONBOARDING=true` (par défaut en T2, mais peut être activé dès T1 pour les projets où le profilage est un enjeu de conversion).
+Activation : `module_onboarding: true` dans le bloc `modules:` de `config.yaml` (`MODULE_ONBOARDING=true` côté `.env` généré) — comme tout module du catalogue, il est désactivé par défaut, à activer pour les projets où le profilage à l'inscription est un enjeu de conversion.
 
 Contrairement à une inscription classique, l'onboarding transforme un formulaire administratif en **question sur le besoin de l'utilisateur** — ce qui améliore à la fois l'engagement initial et la qualité de la segmentation ensuite.
 

@@ -2,7 +2,7 @@
 
 ## Introduction
 
-Le module `i18n` de GitSky rend une application multilingue **à partir du tier T2**. Il n'est jamais activé en T0 ou T1 — la traduction est un investissement dont le retour n'apparaît qu'à un stade avancé du produit, quand le marché domestique est validé.
+Le module `i18n` de GitSky rend une application multilingue lorsqu'il est activé via `MODULE_I18N=true` dans le bloc `modules:` de `config.yaml` (voir Chap 5). C'est un choix indépendant, fait à la création du projet — la traduction est souvent un investissement dont le retour n'apparaît qu'à un stade avancé du produit, quand le marché domestique est validé.
 
 Activation : `MODULE_I18N=true`.
 

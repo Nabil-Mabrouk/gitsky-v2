@@ -1075,8 +1075,8 @@ done
 find /backups -name "*.dump.gz" -mtime +14 -delete
 ```
 
-Ce script tourne à 02:00 UTC, avant le `kill_check` de 03:00 — les
-sauvegardes des projets sur le point d'être tués sont ainsi préservées.
+Ce script tourne à 02:00 UTC, en heure creuse — avant que le trafic de la
+journée ne reprenne sur la flotte.
 
 ### Vérification des Sauvegardes de Flotte
 

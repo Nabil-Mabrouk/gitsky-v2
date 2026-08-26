@@ -132,7 +132,8 @@ services:
 
 Le châssis embarque `template_service` (démo minimale d'un step agent). L'exemple
 complet — un générateur de chanson à pipeline `analyze → lyrics → style → Suno` —
-est livré dans `examples/mezouedai/` (voir la démonstration T0→T1→T2).
+est livré dans `examples/mezouedai/`, avec `agentic: true` activé dans le bloc
+`modules:` de son `config.yaml` (clé courte, sans le préfixe `module_` — Chap 17).
 
 ## Modèles de Données pour le Tracking des Exécutions
 
@@ -442,4 +443,4 @@ params = merge_params(default_params, prefs.get("custom_params", {}))
 
 ---
 
-*Ce framework transforme GitSky d'une plateforme statique en un véritable écosystème d'automatisation intelligente. Le prochain chapitre présente le dernier module standard : la monétisation Stripe, qui permet à un projet en tier T2 de générer du revenu récurrent ou de vendre des produits numériques.*
+*Ce framework transforme GitSky d'une plateforme statique en un véritable écosystème d'automatisation intelligente. Le prochain chapitre présente le dernier module standard : la monétisation Stripe, qui permet à un projet ayant activé `module_monetization_shop` et/ou `module_monetization_subscription` de générer du revenu récurrent ou de vendre des produits numériques.*

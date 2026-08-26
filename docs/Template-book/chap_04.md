@@ -2,7 +2,7 @@
 
 ## Introduction à la Modélisation
 
-Le schéma de données de GitSky est réparti entre le **core** (présent à tous les tiers) et les **modules** (chacun apportant ses propres tables). Cette organisation reflète directement l'architecture décrite au chapitre précédent : chaque table appartient à une couche identifiée, et un module désactivé n'introduit ni ses modèles ni ses migrations dans la base.
+Le schéma de données de GitSky est réparti entre le **core** (présent dans tous les projets) et les **modules** (chacun apportant ses propres tables, activées uniquement si le module l'est). Cette organisation reflète directement l'architecture décrite au chapitre précédent : chaque table appartient à une couche identifiée, et un module désactivé n'introduit ni ses modèles ni ses migrations dans la base.
 
 Nous utilisons **SQLAlchemy** comme ORM, ce qui nous permet de :
 
@@ -12,7 +12,7 @@ Nous utilisons **SQLAlchemy** comme ORM, ce qui nous permet de :
 
 ## Les Modèles du Core
 
-Deux entités sont toujours présentes lorsque `MODULE_AUTH=true` — soit dès le tier T1.
+Deux entités sont toujours présentes, dans tout projet GitSky : l'authentification est une capacité **core**, câblée directement — jamais un flag `MODULE_*` optionnel (voir Chap 2).
 
 ### `User` — L'Identité et les Rôles
 
@@ -37,7 +37,7 @@ class User(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 ```
 
-En T0 (Landing pur), même la table `users` n'est pas nécessaire — `MODULE_AUTH=false` désactive à la fois le routeur d'authentification et la migration qui crée la table. Les emails sont alors collectés par le landing-collector partagé (voir Chap 18).
+Même un projet landing pur (aucun module optionnel activé) garde la table `users` — elle appartient au core, toujours monté et toujours migré, quels que soient les modules choisis. En pratique, un tel projet ne s'en sert souvent que pour les comptes opérateur : les emails de leads captés sur la landing passent par le landing-collector partagé plutôt que par un compte utilisateur dédié (voir Chap 18).
 
 ## Les Modèles des Modules
 
@@ -104,7 +104,7 @@ class Visit(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 ```
 
-Activation : `MODULE_ANALYTICS=true`. En T0, la collecte se fait plutôt via le landing-collector partagé pour mutualiser l'infrastructure GeoIP (Chap 18).
+Activation : `MODULE_ANALYTICS=true`. Pour un projet qui n'active pas ce module, la collecte se fait plutôt via le landing-collector partagé, pour mutualiser l'infrastructure GeoIP (Chap 18).
 
 ### Module `security` — Journal des Événements de Sécurité
 
@@ -124,7 +124,7 @@ class SecurityEvent(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 ```
 
-Activation : `MODULE_SECURITY_MIDDLEWARE=true` (activé par défaut à T1 et T2).
+Activation : `MODULE_SECURITY_MIDDLEWARE=true` — désactivé par défaut comme tout module du catalogue, à activer explicitement projet par projet.
 
 ### Module `monetization` — Boutique et Abonnements
 
@@ -178,15 +178,15 @@ Règle métier : si `status ∈ {active, trialing}`, le rôle utilisateur devien
 
 ## Table Récapitulative des Modèles par Couche
 
-| Modèle | Couche | Flag d'activation | T0 | T1 | T2 |
-|---|---|---|:---:|:---:|:---:|
-| `User`, `UserRole` | core | `MODULE_AUTH` | ❌ | ✅ | ✅ |
-| `Tutorial`, `Lesson` | module `tutorials` | `MODULE_TUTORIALS` | ❌ | ❌ | selon projet |
-| `UserProfile` | module `onboarding` | `MODULE_ONBOARDING` | ❌ | ❌ | ✅ |
-| `Visit` | module `analytics` | `MODULE_ANALYTICS` | via collector partagé | ✅ | ✅ |
-| `SecurityEvent` | module `security` | `MODULE_SECURITY_MIDDLEWARE` | via proxy Traefik | ✅ | ✅ |
-| `Product`, `Purchase` | module `monetization` | `MODULE_MONETIZATION_SHOP` | ❌ | ❌ | selon projet |
-| `Subscription` | module `monetization` | `MODULE_MONETIZATION_SUBSCRIPTION` | ❌ | optionnel | ✅ |
+| Modèle | Couche | Flag d'activation | Présence |
+|---|---|---|---|
+| `User`, `UserRole` | core | — (toujours monté, pas de flag) | toujours présente |
+| `Tutorial`, `Lesson` | module `tutorials` | `MODULE_TUTORIALS` | selon projet |
+| `UserProfile` | module `onboarding` | `MODULE_ONBOARDING` | selon projet |
+| `Visit` | module `analytics` | `MODULE_ANALYTICS` | selon projet (sinon via collector partagé) |
+| `SecurityEvent` | module `security` | `MODULE_SECURITY_MIDDLEWARE` | selon projet |
+| `Product`, `Purchase` | module `monetization` | `MODULE_MONETIZATION_SHOP` | selon projet |
+| `Subscription` | module `monetization` | `MODULE_MONETIZATION_SUBSCRIPTION` | selon projet |
 
 ## Gestion des Migrations avec Alembic
 
@@ -233,8 +233,8 @@ Un runner Python (plutôt qu'un script shell) reste portable entre environnement
 
 Cette approche implique un coût de complexité initial, mais permet trois propriétés critiques :
 
-1. **Une base de données minimale à chaque tier** — pas de tables inutiles.
-2. **Migrer de tier = ajouter des chaînes de migrations** sans risque sur celles déjà appliquées.
+1. **Une base de données minimale par projet** — pas de tables inutiles, seulement celles des modules réellement activés (plus le core, toujours présent).
+2. **Activer un module en cours de vie du projet = ajouter sa chaîne de migrations** sans risque sur celles déjà appliquées.
 3. **Désactiver un module** n'a pas d'impact sur les autres, ni sur le core.
 
 ### Workflow Alembic pour un Nouveau Module

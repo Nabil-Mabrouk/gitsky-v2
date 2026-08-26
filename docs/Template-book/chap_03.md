@@ -2,7 +2,7 @@
 
 ## Pourquoi FastAPI ?
 
-Pour le template **GitSky**, nous avons besoin d'un backend capable de gérer des tâches asynchrones, une validation de données stricte, une documentation automatique, et surtout **d'activer ou désactiver des modules entiers de fonctionnalités selon le tier du projet**. FastAPI s'est imposé comme le choix naturel grâce à :
+Pour le template **GitSky**, nous avons besoin d'un backend capable de gérer des tâches asynchrones, une validation de données stricte, une documentation automatique, et surtout **d'activer ou désactiver des modules entiers de fonctionnalités selon les besoins de chaque projet**. FastAPI s'est imposé comme le choix naturel grâce à :
 
 1.  **Performance :** Basé sur Starlette et Pydantic, il est l'un des frameworks Python les plus rapides.
 2.  **Asynchronisme natif :** Crucial pour les appels à l'IA ou les traitements de données lourds sans bloquer l'API.
@@ -11,12 +11,12 @@ Pour le template **GitSky**, nous avons besoin d'un backend capable de gérer de
 
 ## Structure d'un Projet Professionnel
 
-L'architecture GitSky repose sur trois couches distinctes : `core`, `modules`, `domain`. Cette séparation est ce qui permet à un même code base de porter les trois tiers présentés au chapitre précédent.
+L'architecture GitSky repose sur trois couches distinctes : `core`, `modules`, `domain`. Cette séparation est ce qui permet à un même code base de porter n'importe quelle combinaison du catalogue de modules présenté au chapitre précédent.
 
 ```text
 backend/
 ├── app/
-│   ├── core/                   # Toujours présent — socle de tous les tiers
+│   ├── core/                   # Toujours présent — socle commun à tous les projets
 │   │   ├── auth/               # JWT + gestion des rôles utilisateur
 │   │   ├── admin_shell/        # Coquille admin extensible
 │   │   ├── database.py         # Session et moteur SQLAlchemy
@@ -107,20 +107,19 @@ class Settings(BaseSettings):
     environment: str = "development"
     database_url: str
 
-    # Tier — profil par défaut des flags module (t0 | t1 | t2)
-    gitsky_tier: str = "t2"
-
-    # Modules — chacun surcharge le profil de tier si présent dans .env
-    module_auth: bool = True
-    module_admin: bool = True
+    # Modules — catalogue à plat, chacun désactivé par défaut et indépendant
+    # des autres. auth et SEO ne figurent pas ici : ce sont des capacités core,
+    # toujours montées, sans flag (voir Chap 2).
+    module_admin: bool = False
     module_analytics: bool = False
     module_onboarding: bool = False
     module_tutorials: bool = False
-    module_security_middleware: bool = True
+    module_security_middleware: bool = False
     module_i18n: bool = False
     module_agentic: bool = False
     module_monetization_shop: bool = False
     module_monetization_subscription: bool = False
+    module_fleet: bool = False   # réservé à l'app fleet dashboard elle-même
 
     class Config:
         env_file = ".env"
@@ -134,7 +133,7 @@ Cela garantit qu'une variable manquante (`SECRET_KEY`, `DATABASE_URL`, `PROJECT_
 
 ## Connexion à la Base de Données (SQLAlchemy)
 
-Chaque projet GitSky possède sa **propre base de données PostgreSQL** — cette isolation est ce qui permet à un projet de vivre, migrer de tier, ou être arrêté sans impacter les autres. La connexion utilise SQLAlchemy en mode **asynchrone** (moteur `asyncpg` en production) et fournit une session fraîche à chaque requête via le pattern « Dependency Injection ».
+Chaque projet GitSky possède sa **propre base de données PostgreSQL**, dès sa création — cette isolation est ce qui permet à un projet de vivre, d'activer ou de désactiver des modules, ou d'être archivé sans impacter les autres. La connexion utilise SQLAlchemy en mode **asynchrone** (moteur `asyncpg` en production) et fournit une session fraîche à chaque requête via le pattern « Dependency Injection ».
 
 ```python
 # app/core/database.py
@@ -206,12 +205,12 @@ if settings.module_analytics:
 
 @app.get("/health")
 async def health():
-    return {"status": "ok", "project": settings.project_name, "tier": settings.gitsky_tier}
+    return {"status": "ok", "project": settings.project_name}
 ```
 
 ## Lancer le Backend
 
-Grâce à Docker Compose, le lancement est automatique. Le point d'entrée Uvicorn reste identique quel que soit le tier :
+Grâce à Docker Compose, le lancement est automatique. Le point d'entrée Uvicorn reste identique quelle que soit la combinaison de modules activés :
 
 ```bash
 uvicorn app.core.main:app --host 0.0.0.0 --port 8000 --reload

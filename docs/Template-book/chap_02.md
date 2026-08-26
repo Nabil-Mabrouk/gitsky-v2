@@ -2,83 +2,116 @@
 
 ## Introduction
 
-GitSky n'est pas destiné à un projet unique. Il est conçu comme un **template industriel** capable de porter un grand nombre de projets web indépendants, hébergés ensemble sur la même flotte. Les premières versions de ce livre organisaient cela autour d'un système à trois paliers (T0/T1/T2) empruntés à la logique de la *startup factory* — un projet gagnait en complexité au fur et à mesure qu'il prouvait un signal de traction. Cette logique convenait à un usage précis (tester des idées jetables), mais elle imposait une rigidité inutile dès que GitSky sert à héberger des projets qui existent déjà, ou qui n'ont simplement pas vocation à suivre une trajectoire de croissance mesurée par des seuils.
+GitSky n'est pas destiné à un projet unique. Il est conçu comme un **template industriel** capable de porter un grand nombre de projets indépendants — chacun avec son propre périmètre fonctionnel, son propre domaine, son propre cycle de vie — sur une infrastructure mutualisée. Un template mono-taille échoue toujours d'un côté ou de l'autre — surdimensionné pour un projet simple, sous-dimensionné pour un produit qui a besoin d'admin, de facturation ou d'internationalisation.
 
-La version actuelle du template abandonne les paliers. Chaque projet est créé **complet dès le départ** — sa propre base PostgreSQL isolée, ses propres conteneurs, son propre domaine — et l'opérateur choisit, module par module, les fonctionnalités dont ce projet précis a besoin. Un module non activé ne charge aucune route, aucun modèle SQL, aucune migration Alembic : un projet léger reste léger non pas parce qu'il est enfermé dans un palier inférieur, mais simplement parce que le code inutile n'entre jamais dans le process qui tourne.
+La solution retenue est un **catalogue de modules à plat**, activables indépendamment via des variables d'environnement `MODULE_*`. Un même code base, un nombre arbitraire de combinaisons possibles. Chaque projet choisit à sa création exactement les modules dont il a besoin — ni plus, ni moins — et peut en activer ou désactiver d'autres à tout moment de sa vie, sans migration de « palier » ni notion de promotion.
 
-## 1. Le Principe : un Catalogue à Plat, Pas d'Escalier
+> **Écart au livre (Phase 6)** — les versions précédentes de cet ouvrage décrivaient un système à trois paliers (T0/T1/T2) avec promotion automatique sur signal mesurable et kill mechanism en cas d'échec. Ce système a été retiré : GitSky ne présume plus qu'un projet est une idée en test destinée à grandir ou à être arrêtée — c'est un hébergement mutualisé pour des projets qui vivent leur propre trajectoire, décidée par un opérateur humain, pas par un cron. Le cycle de vie (création → actif → archivage manuel) est couvert au Chap 20.
 
-Chaque module de GitSky s'active ou se désactive indépendamment via une variable d'environnement `MODULE_*`, sans dépendre d'un profil imposé. Deux modules forment le **socle toujours actif** — sans eux, il n'y a pas de projet exploitable — et le reste du catalogue est optionnel.
+## 1. Pourquoi un Catalogue Plutôt que des Paliers
 
-| Module | Statut | Ce qu'il apporte |
-|---|---|---|
-| Authentification (JWT + refresh) & gestion des utilisateurs | Core, toujours actif | Comptes, rôles, sessions — présent dès la création de tout projet |
-| SEO dynamique | Core, toujours actif | Sitemap, robots.txt, meta tags — pas de flag `MODULE_*`, fait partie du chassis (Chap 10) |
-| Admin shell | Optionnel | Dashboard `/admin` : gestion des utilisateurs, waitlist, et un onglet par module activé qui en expose un (Chap 9) |
-| Analytics GeoIP + carte du monde | Optionnel | Suivi de trafic, visites, conversion (Chap 13) |
-| Onboarding dynamique | Optionnel | Profilage progressif d'un nouvel utilisateur (Chap 12) |
-| Content system (tutoriaux/leçons) | Optionnel | Contenu pédagogique ou documentation gérable depuis l'admin (Chap 11) |
-| Framework agentic IA | Optionnel | Services IA outillés (agents, outils, quotas) pour le projet (Chap 15) |
-| Monétisation boutique (Stripe) | Optionnel | Produits, achats ponctuels (Chap 16) |
-| Monétisation abonnements (Stripe) | Optionnel | Abonnements récurrents (Chap 16) |
-| Security middleware | Optionnel | Détection d'intrusion, journal `security_events` (Chap 14) |
-| Internationalisation (i18n) | Optionnel | Contenu multilingue FR/EN (Chap 8) |
-| Fleet | Réservé au dashboard de flotte lui-même | Jamais activé sur un projet applicatif ordinaire — uniquement sur l'app qui pilote la flotte (Chap 19) |
+Générer un projet coûte peu ; le faire tourner en production coûte du temps opérateur (surveillance, sauvegardes, sécurité) proportionnel à ce qu'il expose réellement. Un projet qui n'a besoin que d'une landing page et d'un formulaire de contact n'a aucune raison de charger un shell d'administration, un moteur d'onboarding ou une intégration Stripe — chaque module actif est une route de plus à sécuriser, une migration de plus à maintenir, une dépendance de plus à surveiller.
 
-Le principe reste celui déjà énoncé dans les versions précédentes du chassis : **un module désactivé ne coûte rien**, à l'exécution comme à la construction — mais il n'existe plus de combinaison de modules "interdite" ou "réservée à un palier supérieur". Un projet peut activer la monétisation sans l'admin shell, ou l'agentic sans l'analytics, si c'est ce dont il a besoin.
+Le catalogue à plat réconcilie deux exigences :
 
-## 2. Empreinte : une Question de Modules, Pas de Palier
+- **Un socle minimal** commun à tout projet — authentification et SEO — présent partout, jamais à activer ni à désactiver.
+- **Des modules optionnels**, chacun résolvant un besoin précis (admin, i18n, analytics, monétisation, contenu, agentic…), activables un par un selon ce que le projet fait réellement.
 
-L'empreinte mémoire d'un projet dépend directement des modules qu'il active, pas d'une catégorie qui lui serait assignée. Le tableau ci-dessous donne des combinaisons typiques à titre indicatif — ce ne sont pas des paliers imposés, seulement des repères pour dimensionner un VPS :
+## 2. Le Socle Commun (Core)
 
-| Combinaison typique | Modules actifs | RAM indicative |
-|---|---|---|
-| Landing seule | Core (auth + SEO) uniquement | ~50-80 Mo |
-| Application avec compte utilisateur | Core + admin + analytics | ~180-250 Mo |
-| SaaS complet | Core + admin + analytics + i18n + monétisation + agentic | ~700 Mo à 1 Go |
+Deux capacités sont présentes dans **tout** projet GitSky, sans variable d'activation :
 
-Un projet peut parfaitement se situer entre ces repères, ou les dépasser — rien dans l'architecture n'impose de rester dans une case. Sur un VPS mutualisé de 8 Go à ~20 €/mois, ces ordres de grandeur permettent d'héberger simultanément plusieurs dizaines de projets légers, ou un nombre plus restreint de projets complets, ou un mélange des deux (voir Chap 1 pour l'architecture d'hébergement mutualisé).
+| Capacité | Pourquoi elle est core |
+|---|---|
+| **Authentification** (JWT + refresh) | Un projet mutualisé sur une flotte a presque toujours besoin de comptes, ne serait-ce que pour l'accès opérateur — en faire un flag optionnel n'économisait qu'un cas rare tout en compliquant chaque autre module qui en dépend (admin, onboarding, monétisation…). |
+| **SEO dynamique** | Sitemap, robots.txt et métadonnées structurées ont un coût quasi nul et un bénéfice immédiat dès la mise en ligne, quel que soit le projet. |
 
-## 3. Choisir ses Modules à la Création
+Comme le `landing`/`domain` métier de chaque projet, ces deux capacités ne figurent pas dans `MODULE_FLAGS` (Chap 3 §config.py) — elles sont câblées directement dans le core.
 
-Le générateur (Chap 17) expose un bloc `modules` dans le `config.yaml` de chaque projet — une simple liste de booléens, sans logique de profil à résoudre au préalable :
+## 3. Le Catalogue des Modules Optionnels
 
-```yaml
-modules:
-  admin: true
-  analytics: true
-  monetization_subscription: true
-  agentic: false
+Chaque module est un booléen indépendant, **désactivé par défaut**. Un module désactivé ne charge aucune route, aucun modèle SQL, aucune migration Alembic — l'empreinte d'un projet minimal reste faible, non pas parce que le code manque, mais parce que le code inutile est court-circuité au démarrage (Chap 3 §Modules Conditionnels).
+
+| Module | Variable | Ce qu'il apporte | Chapitre |
+|---|---|---|---|
+| Admin shell | `MODULE_ADMIN` | Interface d'administration (gestion utilisateurs, contenu) | Chap 9 |
+| Internationalisation | `MODULE_I18N` | Traductions FR/EN, routage par préfixe de langue | Chap 8 |
+| Analytics | `MODULE_ANALYTICS` | Suivi visiteurs RGPD-compatible, dashboard de flux/audience | Chap 13 |
+| Onboarding dynamique | `MODULE_ONBOARDING` | Flow de qualification/profilage configurable en JSON | Chap 12 |
+| Content system | `MODULE_TUTORIALS` | Catalogue de tutoriaux/leçons (cas d'usage : université virtuelle) | Chap 11 |
+| SecurityMiddleware | `MODULE_SECURITY_MIDDLEWARE` | Inspection des requêtes, journalisation `SecurityEvent` | Chap 14 |
+| Framework agentic IA | `MODULE_AGENTIC` | Orchestration de services IA, crédits, recovery | Chap 15 |
+| Monétisation boutique | `MODULE_MONETIZATION_SHOP` | Produits/achats ponctuels via Stripe | Chap 16 |
+| Monétisation abonnements | `MODULE_MONETIZATION_SUBSCRIPTION` | Abonnements récurrents via Stripe | Chap 16 |
+| Fleet (réservé au dashboard) | `MODULE_FLEET` | Registre de projets, cycle de vie, intégration GitHub — n'a de sens que pour l'app fleet dashboard elle-même, jamais pour un projet métier | Chap 19, 20, 26 |
+
+Aucun de ces modules n'est un prérequis d'un autre, à une exception near : certains (onboarding, monétisation abonnement) supposent des comptes utilisateurs — ils s'appuient donc sur l'authentification core, déjà toujours présente.
+
+Le fichier `.env` d'un projet minimal (landing + capture de leads, rien d'autre) :
+
+```env
+PROJECT_NAME=pain-scraper
+VITE_API_URL=https://pain-scraper.mystudio.com
+# Aucun MODULE_* activé : authentification et SEO restent présents (core),
+# le reste est désactivé par défaut.
 ```
 
-Tout module omis du bloc reste désactivé par défaut (sauf le socle core, toujours actif). Rien n'empêche de revenir sur ce choix plus tard : activer un module supplémentaire après coup est un changement de configuration (`.env` du projet + redéploiement), jamais une réécriture — puisque GitSky ne construit qu'**un seul Dockerfile**, identique quels que soient les modules choisis (Chap 21). Le Chapitre 27 décrit l'assistant de création qui rend ce choix accessible depuis le dashboard, sans édition manuelle de YAML.
+Un projet avec admin, i18n et monétisation par abonnement :
 
-## 4. Cycle de Vie d'un Projet : Créé → Actif → Archivé
+```env
+PROJECT_NAME=code-reviewer-pro
+MODULE_ADMIN=true
+MODULE_I18N=true
+MODULE_MONETIZATION_SUBSCRIPTION=true
+STRIPE_SECRET_KEY=sk_live_xxx
+```
 
-Sans paliers, il n'y a plus de critère numérique de promotion ni de mécanisme de kill automatique. Le cycle de vie d'un projet GitSky tient en trois états :
+Un projet qui active le framework agentic :
 
-- **Créé** : le projet vient d'être généré et déployé (Chap 17, Chap 27), il apparaît dans le fleet dashboard.
-- **Actif** : le projet tourne normalement. L'opérateur peut à tout moment ajuster ses modules, son domaine, ou consulter son état de santé et de sécurité depuis le dashboard (Chap 19).
-- **Archivé** : l'opérateur a décidé, manuellement, d'arrêter le projet. Le dashboard exécute alors la procédure d'archivage — arrêt des conteneurs, sauvegarde froide de la base conservée, libération du domaine après un délai de grâce (détaillé au Chap 19 et Chap 20).
+```env
+PROJECT_NAME=code-reviewer-pro
+MODULE_AGENTIC=true
+ANTHROPIC_API_KEY=sk-ant-xxx
+```
 
-Aucune bascule n'est automatique : ni la mise en route d'un module, ni l'archivage. C'est un choix délibéré — GitSky ne pose plus d'hypothèse sur la trajectoire attendue d'un projet (test d'idée, produit établi, projet client…), donc il ne peut plus décider à sa place quand un projet a "réussi" ou "échoué". Le dashboard reste néanmoins un allié actif : il continue de faire remonter des alertes (coût, santé, sécurité — Chap 19) pour que la décision d'archiver reste éclairée, même si elle n'est plus prise par un script.
+## 4. Base de Données : Toujours PostgreSQL, Toujours Dédiée
 
-## 5. Anti-Patterns à Éviter
+Chaque projet reçoit **systématiquement** son propre conteneur PostgreSQL, quel que soit son catalogue de modules activés (Chap 18 §2 détaille l'isolation par conteneur). Il n'existe plus d'exception « projet sans base » : même une simple landing avec capture de leads gagne à avoir sa propre base dès le départ — la complexité d'ajouter Postgres après coup (migration de données, changement d'infra) dépassait largement l'économie qu'elle permettait.
 
-**Activer tous les modules "au cas où".** Chaque module actif ajoute de la RAM, de la surface d'attaque, et des migrations à maintenir. Le catalogue à plat rend cela tentant puisqu'il n'y a plus de palier qui le décourage explicitement — la discipline doit venir de l'opérateur : n'activer que ce que le projet utilise réellement aujourd'hui.
+## 5. Empreinte : Fonction des Modules, Pas d'un Palier
 
-**Dupliquer un projet en copiant ses fichiers plutôt qu'en le régénérant.** Comme au Chap 17 : un clone hérite des dérives et ne bénéficie plus jamais de `copier update`.
+L'empreinte mémoire d'un projet dépend directement du nombre de modules activés, pas d'une case dans laquelle il serait rangé. Un projet réduit au socle core (auth + SEO, rien d'autre) mesure une empreinte proche du plancher observé pour le châssis ; chaque module optionnel activé ajoute son propre delta — le framework agentic, en particulier, charge des modèles et des registries d'outils qui pèsent nettement plus lourd que les autres modules (détail chiffré au Chap 21 §Empreinte Mémoire).
 
-**Laisser un projet inactif tourner indéfiniment faute de décision.** Sans kill automatique, un projet mort ne s'arrête plus tout seul — il consomme des ressources et de l'attention jusqu'à ce que l'opérateur agisse. La routine matinale sur le fleet dashboard (Chap 19, Chap 23) est ce qui remplace la discipline qu'apportait autrefois le mécanisme de kill : elle doit rester un réflexe, pas une option.
+Cette variabilité, plutôt qu'un coût fixe par palier, est ce qui permet à un VPS mutualisé de porter un grand nombre de projets simultanément : le prix marginal d'un projet supplémentaire dépend uniquement de ce qu'il active réellement.
+
+## 6. Faire Évoluer un Projet
+
+Activer ou désactiver un module n'est jamais une réécriture — c'est une **mise à jour du `.env`** suivie d'un redéploiement :
+
+1. **Mise à jour du `.env`** : basculer le(s) flag(s) `MODULE_*` concerné(s).
+2. **Alembic upgrade** : les tables nécessaires au(x) nouveau(x) module(s) sont créées (chaque module porte sa propre chaîne de migrations, Chap 6).
+3. **Rebuild et déploiement** : `docker compose build && docker compose up -d`.
+
+Chaque changement est **réversible** tant qu'on ne détruit pas de données — un retour au `.env` précédent suivi d'un Alembic downgrade suffit à revenir en arrière.
+
+Publier un projet (`draft` → `preview` → `live`) est une décision séparée du choix de modules — elle est couverte au Chap 19 (fleet dashboard) et Chap 24 (Studio), et gérée par domaine plutôt que par palier : un sous-domaine mutualisé de la flotte peut passer en ligne automatiquement si les guardrails passent, un domaine dédié exige toujours une approbation humaine (blast radius plus élevé).
+
+## 7. Principes de Sélection des Modules
+
+**N'activer que ce que le projet utilise réellement.** Chaque module actif est une route de plus à sécuriser, une migration de plus à maintenir. Un module activé « au cas où » sans usage réel est un coût permanent pour un bénéfice nul.
+
+**Retirer un module devenu inutile.** Un flag qu'on n'ose plus désactiver par peur de casser quelque chose est un signal qu'il manque de tests — le retirer doit être aussi sûr que l'activer.
+
+**Le nombre de modules actifs n'est pas un indicateur de maturité.** Un projet avec deux modules actifs n'est pas « moins avancé » qu'un projet qui en a huit — les deux peuvent être en pleine production, avec des besoins simplement différents.
 
 ## Checklist du Chapitre
 
-- [ ] Je sais quels modules sont core (toujours actifs) et lesquels sont optionnels
-- [ ] Je choisis les modules d'un nouveau projet en fonction de ses besoins réels, pas "par défaut" ou "au cas où"
-- [ ] Je sais qu'activer un module plus tard ne demande qu'une reconfiguration, jamais une réécriture
-- [ ] Je consulte régulièrement le fleet dashboard pour repérer moi-même les projets à archiver
-- [ ] Je comprends que l'archivage est désormais une décision humaine, pas un script automatique
+- [ ] Je sais quels modules mon projet active et pourquoi chacun est nécessaire
+- [ ] Je connais la distinction entre le socle core (auth + SEO, toujours présent) et les modules optionnels
+- [ ] Je sais que chaque projet a systématiquement sa propre base PostgreSQL, indépendamment de ses modules
+- [ ] Je retire un module dès qu'il n'est plus utilisé, plutôt que de le laisser actif « au cas où »
+- [ ] Je sais où se décide le cycle de vie d'un projet (Chap 20) et sa publication (Chap 19/24), séparément du choix de modules
 
 ---
 
-*Ce catalogue de modules structure tout le reste de l'ouvrage : la Partie II décrit le core présent à tout projet, la Partie III les modules optionnels que chaque projet active à la carte, et la Partie IV le générateur et la flotte qui rendent l'ensemble opérationnel à grande échelle — génération (Chap 17), assistant de création et intégration GitHub (Chap 26-27), services partagés (Chap 18), fleet dashboard (Chap 19) et cycle de vie (Chap 20). Dans le prochain chapitre, nous détaillons l'initialisation du backend FastAPI, socle commun à tout projet GitSky.*
+*Ce catalogue structure tout le reste de l'ouvrage : la Partie II décrit le core présent dans tout projet, la Partie III les modules optionnels que chaque projet active selon ses besoins, et la Partie IV le générateur et la flotte qui rendent l'ensemble opérationnel à grande échelle. Dans le prochain chapitre, nous détaillons l'initialisation du backend FastAPI, socle commun à tout projet.*

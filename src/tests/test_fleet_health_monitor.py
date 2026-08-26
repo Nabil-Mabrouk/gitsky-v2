@@ -248,3 +248,67 @@ def test_health_sweep_endpoint_flags_silent_project(monkeypatch):
     )
     assert r.status_code == 200
     assert r.json()["failed"] == ["silent-one"]
+
+
+# --- bulk_health_status (Chap 28 — grille de flotte) ------------------------
+
+
+def test_bulk_health_status_unknown_when_never_swept():
+    async def scenario():
+        engine, factory = _fresh_db()
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
+        await _seed_projects(factory, [("brand-new", "active")])
+        async with factory() as db:
+            result = await hm.bulk_health_status(db, ["brand-new"])
+        await engine.dispose()
+        return result
+
+    assert asyncio.run(scenario()) == {"brand-new": "unknown"}
+
+
+def test_bulk_health_status_reflects_latest_event_per_project():
+    async def scenario():
+        engine, factory = _fresh_db()
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
+        await _seed_projects(
+            factory, [("failing-app", "active"), ("recovered-app", "active")]
+        )
+        # failing-app : muet, jamais rétabli.
+        async with factory() as db:
+            await hm.record_health_sweep(
+                db, {"failing-app": NOW - timedelta(minutes=10)}, NOW
+            )
+        # recovered-app : muet puis de nouveau joignable.
+        async with factory() as db:
+            await hm.record_health_sweep(
+                db, {"recovered-app": NOW - timedelta(minutes=10)}, NOW
+            )
+        async with factory() as db:
+            await hm.record_health_sweep(
+                db,
+                {"recovered-app": NOW + timedelta(minutes=2)},
+                NOW + timedelta(minutes=2),
+            )
+
+        async with factory() as db:
+            result = await hm.bulk_health_status(db, ["failing-app", "recovered-app"])
+        await engine.dispose()
+        return result
+
+    result = asyncio.run(scenario())
+    assert result == {"failing-app": "failing", "recovered-app": "healthy"}
+
+
+def test_bulk_health_status_empty_input_returns_empty_dict():
+    async def scenario():
+        engine, factory = _fresh_db()
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
+        async with factory() as db:
+            result = await hm.bulk_health_status(db, [])
+        await engine.dispose()
+        return result
+
+    assert asyncio.run(scenario()) == {}

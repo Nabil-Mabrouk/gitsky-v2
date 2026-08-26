@@ -26,6 +26,13 @@ FLEET_REGISTER_TOKEN=
 # deployment_failed pour tout projet muet > 5 min (Chap 23 §Monitoring flotte).
 * * * * * /opt/gitsky/shared_services/scripts/fleet-health.sh >> /var/log/gitsky_health.log 2>&1
 
+# ── Déploiement continu ──────────────────────────────────────────────────────
+# Redeploy des projets dont GitHub a signalé un push sur la branche de
+# déploiement (Chap 26). Le webhook journalise, ce script exécute : git pull +
+# docker compose up -d --build ont besoin d'un accès Docker réel, que le
+# conteneur dashboard n'a lui jamais.
+*/2 * * * * /opt/gitsky/shared_services/scripts/deploy-on-push.sh >> /var/log/gitsky_deploy.log 2>&1
+
 # ── Sauvegardes ──────────────────────────────────────────────────────────────
 # Sauvegarde 3-2-1 de toutes les bases projet à 02:00.
 0 2 * * * /opt/gitsky/shared_services/scripts/backup-fleet.sh >> /var/log/gitsky_backup.log 2>&1

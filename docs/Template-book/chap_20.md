@@ -2,97 +2,86 @@
 
 ## Introduction
 
-Ce chapitre formalise le cycle de vie complet d'un projet GitSky, de sa création à son archivage ou sa sortie de la flotte. Il rassemble sous une même chronologie des concepts distribués dans les chapitres précédents — catalogue de modules (Chap 2), création et générateur (Chap 17), intégration GitHub (Chap 26), assistant de création (Chap 27), fleet dashboard (Chap 19), maintenance (Chap 23).
+> **Écart au livre (Phase 6)** — ce chapitre décrivait auparavant un système de paliers T0/T1/T2 avec promotion automatique sur signal mesurable et un cron `kill_check` qui arrêtait les projets sans surveillance humaine (voir Chap 2 pour le contexte du retrait). Ce mécanisme a disparu : GitSky ne présume plus qu'un projet est une idée en test qu'il faut faire grandir ou tuer selon un score. Le cycle de vie est aujourd'hui volontairement simple, et chaque décision qui compte reste **entre les mains d'un opérateur humain**.
 
-L'objectif est double : donner à l'opérateur un playbook clair, et documenter le contrat de la flotte pour tout collaborateur qui interviendrait sur un projet.
+Ce chapitre décrit le cycle de vie complet d'un projet GitSky : sa création, sa vie active (modules, publication), son archivage, et les trajectoires qui l'en font sortir (migration de domaine, émancipation, cession). Il s'appuie sur le fleet dashboard (Chap 19) pour les actions opérateur et sur le catalogue de modules (Chap 2) pour ce qui peut changer en cours de route.
 
-## Vue d'Ensemble : Six Étapes
+## Vue d'Ensemble
 
 ```text
-+----------+----------------+------------+-------------+-------------+---------------+
-| Besoin   | Création       | Personna-  | Déploiement | Maintenance | Archivage ou  |
-|          | (wizard/CLI)   | lisation   | continu     |             | sortie flotte |
-+----------+----------------+------------+-------------+-------------+---------------+
+   Création          Vie active                    Archivage
+  (générateur,   ──►  (modules activables,   ──►   (manuel, décision
+   Chap 17)            publication draft/            opérateur,
+                        preview/live,                 Chap 19)
+                        Chap 2 §6 / Chap 24)
 ```
 
-Chaque étape a ses **entrées**, ses **livrables**, et ses **critères de passage à la suivante** — mais contrairement aux versions antérieures de ce livre, aucun de ces critères n'est un seuil numérique évalué automatiquement. Chaque transition est une décision de l'opérateur ou un événement technique (un push Git, par exemple), jamais un score.
+Contrairement à l'ancien système, il n'y a **aucune fenêtre de temps, aucun seuil de coût, aucun signal mesuré automatiquement** qui fait avancer un projet d'un stage à l'autre. Un projet reste actif indéfiniment tant qu'un opérateur ne décide pas explicitement de l'archiver.
 
-## Étape 1 — Création
+## Création
 
-Le projet naît d'un choix explicite : un nom, un sous-ensemble du catalogue de modules (Chap 2), un domaine, et un dépôt GitHub (nouveau ou existant).
+Un projet naît via le générateur (Chap 17) : nom, choix de modules (Chap 2), domaine, puis `copier copy && docker compose up -d`. Il s'enregistre lui-même auprès du fleet dashboard (`register_fleet.py`, Chap 19) et apparaît dans la grille avec le statut `active`.
 
-**Entrées :** nom du projet, modules à activer, domaine souhaité, informations GitHub.
+À ce stade, l'automatisation s'arrête là où le générateur produit un projet fonctionnel — la création d'un dépôt GitHub dédié et son premier push restent une étape manuelle pour l'instant (voir Chap 26 pour ce qui est déjà automatisé côté intégration continue, et ce qui ne l'est pas encore).
 
-**Deux chemins possibles :**
+## Vie Active
 
-- **L'assistant de création** (Chap 27) — le chemin recommandé : un formulaire dans le fleet dashboard qui couvre les quatre entrées ci-dessus et déclenche la création + le premier déploiement en une action.
-- **Le générateur en ligne de commande** (Chap 17) — `copier copy --data-file config.yaml <template> <dest>`, utile pour scripter la création de plusieurs projets ou pour un usage hors dashboard.
+Un projet actif peut évoluer sur deux axes indépendants, sans qu'aucun des deux ne soit contraint par l'autre :
 
-**Livrables :** un projet démarrable, un premier commit dans son dépôt GitHub, une entrée dans le fleet dashboard, un premier déploiement en ligne derrière Traefik.
+**Ses modules** — activer ou désactiver un `MODULE_*` à tout moment (Chap 2 §6). Ce n'est jamais une « promotion », juste une mise à jour de configuration suivie d'un redéploiement.
 
-**Critère de passage à l'étape suivante :** le projet répond sur `/health` avec un statut `200`.
+**Son statut de publication** — `draft` → `preview` → `live`, géré par `evaluate_promotion` (Chap 19, Chap 24). Le passage en `live` est automatique si le projet est encore sur un sous-domaine de la flotte (`*.mystudio.com`) et que les guardrails passent ; il exige une approbation humaine explicite dès qu'un domaine dédié est en jeu — le blast radius d'un domaine premier (souvent une campagne payante, un budget engagé) justifie la revue qu'un sous-domaine jetable n'a pas besoin d'exiger.
 
-## Étape 2 — Personnalisation via GitHub
+Ces deux axes sont journalisés indépendamment dans `fleet_lifecycle_events` (voir §Journal de la Flotte ci-dessous).
 
-Le projet généré est un point de départ professionnel, pas un produit fini. La logique métier propre au projet (Chap 11 pour un exemple complet) se développe dans le dépôt GitHub créé à l'étape précédente — localement, comme n'importe quel projet FastAPI/React.
+## Archivage
 
-**Activités :**
+Un projet s'archive **uniquement sur décision d'un opérateur**, depuis le fleet dashboard (`POST /api/fleet/projects/{name}/archive`, réservé aux comptes admin). L'action est idempotente : réarchiver un projet déjà archivé ne journalise pas d'événement supplémentaire.
 
-- Cloner le dépôt (`git clone`, ou via la clé de déploiement/l'installation GitHub App si le dépôt est privé — Chap 26).
-- Ajouter les modèles et routeurs métier dans `app/domain/`.
-- Ajouter les composants React nécessaires côté frontend.
-- Committer et pousser sur la branche par défaut.
+**Ce que l'archivage fait aujourd'hui :** marque le projet `archived`, exclu dès lors du monitoring de disponibilité (`health_monitor.py` ignore les projets archivés — une archive n'est pas une panne) et de la grille par défaut.
 
-**Livrable :** un dépôt GitHub qui contient à la fois le chassis GitSky et le code métier du projet.
+**Ce que l'archivage ne fait pas (encore) :** il n'arrête aucun conteneur, ne retire aucun label Traefik, ne libère aucun domaine, ne déclenche aucune sauvegarde froide dédiée. L'arrêt effectif de l'infrastructure reste, pour l'instant, une action manuelle séparée de l'opérateur (`docker compose down` dans le dossier du projet, retrait des labels, DNS). Documenter cet écart plutôt que le taire est volontaire — un opérateur qui archive un projet en pensant que les conteneurs s'arrêtent avec pourrait avoir une mauvaise surprise sur sa facture VPS. Automatiser cette partie est un chantier ouvert, pas encore planifié.
 
-## Étape 3 — Déploiement Continu
+Il n'existe pas non plus, à ce stade, d'action « réactiver » dédiée dans le dashboard — un projet archivé par erreur se corrige en repassant son statut à `active` directement en base, en attendant qu'un endpoint dédié existe.
 
-Chaque push sur la branche par défaut déclenche un redéploiement, sans intervention manuelle — décrit en détail au Chap 26.
+## Migration Sous-Domaine → Domaine Premier
 
-**Le chemin automatique (dépôt créé par GitSky, webhook actif) :**
-
-1. GitHub notifie le webhook du fleet dashboard.
-2. Le pipeline exécute `git pull`, applique un `copier update` si le template a évolué, reconstruit et redémarre les conteneurs (`docker compose up -d --build`), applique les migrations via le service `migrate`.
-3. Un contrôle de santé (`/health`) confirme le succès ; l'échec est journalisé et visible au dashboard (Chap 19).
-
-**Le chemin manuel (dépôt existant lié sans droits webhook) :** l'opérateur déclenche le redéploiement d'un clic depuis le dashboard, qui exécute la même séquence à la demande plutôt que sur événement `push`.
-
-## Étape 4 — Maintenance
-
-Un projet en production n'est jamais "terminé" — il entre dans le régime de maintenance mutualisée décrit au Chap 23 : sauvegardes 3-2-1 automatiques, monitoring de disponibilité, revue hebdomadaire des `security_events`, rotation périodique des secrets.
-
-Le fleet dashboard (Chap 19) continue de faire remonter des alertes tout au long de cette étape — coût inhabituel, échec de santé prolongé, événements de sécurité en rafale. Ces alertes ne déclenchent plus aucune action automatique : elles informent l'opérateur, qui décide.
-
-## Étape 5 (optionnelle) — Migration Sous-Domaine → Domaine Premier
-
-Un projet créé sur un sous-domaine de la flotte (`mon-projet.mystudio.com`) peut, à tout moment où l'opérateur le juge pertinent, migrer vers un domaine dédié (`mon-projet.com`). Cette migration doit préserver le SEO déjà acquis et ne pas casser les liens partagés par des utilisateurs. Procédure en quatre étapes :
+Quand un opérateur décide qu'un projet mérite son propre domaine (`pain-scraper.com` au lieu de `pain-scraper.mystudio.com`), la migration doit préserver le SEO déjà acquis et ne pas casser les liens partagés par des utilisateurs. Voici la procédure en quatre étapes.
 
 ### Étape 1 — Provisionnement du Nouveau Domaine (J-7)
 
 - Achat du domaine.
-- Configuration DNS chez le registrar : enregistrement `A` vers l'IP du VPS, `MX` vers le SMTP relay partagé si le projet reçoit des emails, `CAA` autorisant Let's Encrypt.
+- Configuration DNS chez le registrar :
+  - Enregistrement `A` pointant vers l'IP du VPS.
+  - Enregistrements `MX` vers le SMTP relay partagé si le projet reçoit des emails.
+  - Enregistrement `CAA` autorisant Let's Encrypt.
 - Ajout des labels Traefik du projet pour accepter les **deux domaines simultanément**.
-- Génération du certificat pour le nouveau domaine (Let's Encrypt HTTP-01 — pas DNS-01, ce n'est pas un wildcard).
+- Génération du certificat pour le nouveau domaine (Let's Encrypt HTTP-01 standard — pas DNS-01 puisque ce n'est pas un wildcard).
+
+À ce stade, les deux URLs répondent — l'ancienne reste primaire, la nouvelle est en accueil.
 
 ### Étape 2 — Préparation SEO (J-4)
 
-- Email aux utilisateurs annonçant le nouveau domaine.
-- Mise à jour du `canonical` de toutes les pages vers le **nouveau** domaine (Chap 10).
-- Mise à jour du `sitemap.xml`, soumission à Google Search Console pour le nouveau domaine.
+- Email aux utilisateurs annonçant le nouveau domaine (motif : identité de marque forte).
+- Mise à jour du `canonical` de toutes les pages pour pointer vers le **nouveau** domaine (via composant SEO du Chap 10).
+- Mise à jour du `sitemap.xml` pour lister les URLs sous le nouveau domaine.
+- Soumission du sitemap à Google Search Console pour le nouveau domaine, revendication de propriété.
+
+Le `canonical` pointant vers le nouveau signale à Google la préférence sans encore casser l'ancien.
 
 ### Étape 3 — Bascule Primaire (J-0)
 
 - Inversion du `PROJECT_DOMAIN` dans le `.env` : le nouveau domaine devient primaire.
-- L'ancien sous-domaine renvoie une **redirection 301** via un middleware Traefik :
+- L'ancien sous-domaine renvoie désormais une **redirection 301** vers le nouveau, gérée par un middleware Traefik :
 
 ```yaml
 labels:
-  - "traefik.http.middlewares.redirect-old.redirectregex.regex=^https://mon-projet.mystudio.com/(.*)"
-  - "traefik.http.middlewares.redirect-old.redirectregex.replacement=https://mon-projet.com/$${1}"
+  - "traefik.http.middlewares.redirect-old.redirectregex.regex=^https://pain-scraper.mystudio.com/(.*)"
+  - "traefik.http.middlewares.redirect-old.redirectregex.replacement=https://pain-scraper.com/$${1}"
   - "traefik.http.middlewares.redirect-old.redirectregex.permanent=true"
 ```
 
-- Email de confirmation aux utilisateurs.
+- Envoi d'un email de confirmation aux utilisateurs.
 
 ### Étape 4 — Suivi (J+30)
 
@@ -103,59 +92,50 @@ labels:
 ### Anti-Patterns à Éviter
 
 - **Suppression brutale du sous-domaine** — casse tous les liens externes accumulés, perte SEO définitive.
-- **Absence de redirection 301** — Google traite le nouveau domaine comme un site vierge.
+- **Absence de redirection 301** — Google traite le nouveau domaine comme un site vierge, perte de tout le PageRank.
 - **Migration pendant une campagne active** — la baisse SEO temporaire tue le rendement des campagnes en cours.
 
-## Étape 6 — Archivage ou Sortie de Flotte
+### Timing Recommandé
+
+Idéal : avant le lancement d'une grosse acquisition (Product Hunt, article invité, campagne payante) qui ferait converger du trafic vers l'ancien domaine — pas pendant.
+
+## Émancipation : Sortir un Projet de la Flotte
+
+Un projet qui a suffisamment grandi peut justifier de sortir de l'infrastructure mutualisée. C'est une décision d'opérateur, pas un seuil automatique.
 
 ### Option A — Rester dans la flotte
 
-Le cas par défaut : le projet continue à bénéficier des services partagés indéfiniment, tant que l'opérateur ne décide pas de l'archiver.
+Le cas par défaut : le projet continue à bénéficier des services partagés (Postgres, Traefik, SMTP, LLM proxy) tant que rien ne justifie d'en sortir.
 
-### Option B — Archivage
+### Option B — Émancipation
 
-L'opérateur archive un projet manuellement depuis le fleet dashboard — jamais via un `docker compose down` ad hoc, sinon la sauvegarde et la journalisation ne se font pas. La procédure :
+L'opérateur peut décider de sortir le projet de la flotte partagée :
 
-1. `docker compose down` dans le dossier du projet.
-2. Retrait des labels Traefik.
-3. Dump PostgreSQL compressé archivé sur stockage froid (S3, Backblaze) — conservé au minimum 90 jours.
-4. Le sous-domaine reste réservé pendant 30 jours (garde contre le squatting immédiat) avant d'être libéré.
-5. Journalisation dans le fleet dashboard : statut `archived`, date, raison saisie par l'opérateur.
-
-### Option C — Sortie de la Flotte (Émancipation)
-
-Quand un projet devient suffisamment important pour justifier une infrastructure dédiée — charge, exigences de conformité, revenus qui dépassent ce qu'une flotte mutualisée doit raisonnablement porter — l'opérateur peut l'en extraire :
-
-- Migration vers un compte Stripe propre (rattachement à une entité juridique dédiée).
+- Migration vers un compte Stripe propre (rattachement à une entité juridique dédiée — voir Chap 16 §considérations légales).
 - Migration vers un VPS dédié (ou cluster).
 - Extraction de la base PostgreSQL du service partagé vers une base dédiée.
 - Retrait des labels Traefik du proxy partagé.
 
 Cette procédure est décrite dans le playbook `docs/emancipation.md` du repo `startup-factory-configs/`. Elle est réversible en cas de sur-anticipation.
 
-### Option D — Vente ou Acqui-Hire
+### Option C — Vente ou acqui-hire
 
-Un projet à traction significative peut être vendu. L'isolation stricte de la flotte (une DB, un domaine, un compte Stripe metadata-namespacé, un dépôt GitHub propre) rend cette extraction mécanique.
-
-## Reconstitution d'un Projet Archivé
-
-Un projet archivé peut être ressuscité si un besoin resurgit :
-
-1. Extraire le dump PostgreSQL du stockage froid.
-2. Regénérer le projet via `copier copy` avec le même `config.yaml` (versionné dans `startup-factory-configs/`).
-3. Restaurer la base.
-4. Redéployer, réactiver le webhook GitHub si nécessaire.
-
-Cette procédure prend environ 30 minutes. La conservation des dumps pendant 90 jours minimum rend cette option disponible.
+Un projet à traction significative peut être vendu. La flotte étant conçue avec isolation stricte (une DB, un domaine, un compte Stripe metadata-namespacé), cette extraction est mécanique.
 
 ## Le Journal de la Flotte
 
-Chaque événement du cycle de vie (création, redéploiement, mise à jour de template, changement de domaine, archivage) est journalisé dans une table `fleet_lifecycle_events` interrogeable depuis le fleet dashboard. Ce journal permet de calculer :
+Chaque événement du cycle de vie est journalisé dans `fleet_lifecycle_events`, interrogeable depuis le fleet dashboard. Le vocabulaire actuel :
 
-- Le nombre de projets actifs vs. archivés dans le temps.
-- L'ancienneté moyenne d'un projet dans la flotte.
-- La fraction de la flotte à jour du dernier `copier update` — utile pour prioriser la propagation d'un correctif de sécurité.
+| `event_type` | Déclenché par |
+|---|---|
+| `born` | Enregistrement initial (`register_fleet.py`, à la création) |
+| `publish_preview` / `publish_live` | Changement de statut de publication (`evaluate_promotion`, Chap 19/24) |
+| `deployment_failed` / `deployment_recovered` | Poller de disponibilité (`fleet-health.sh`, Chap 23) |
+| `archived` | Archivage manuel par un opérateur (ce chapitre) |
+| `deploy_triggered` | Push GitHub vérifié sur la branche de déploiement (Chap 26) |
+
+Contrairement à l'ancien système, ce journal ne sert plus à calculer un taux de survie T0 → T1 → T2 — il n'y a plus de paliers à comparer. Il reste néanmoins la source de vérité pour tout audit : reconstituer l'historique complet d'un projet (quand il a été créé, quand il a changé de statut, quand un déploiement a échoué, quand il a été archivé) sans avoir à recouper plusieurs logs.
 
 ---
 
-*Ce chapitre clôt la partie industrialisation. La dernière partie du livre couvre la production et la maintenance : configuration du serveur Ubuntu, sauvegardes de flotte et bonnes pratiques opérationnelles.*
+*Ce chapitre clôt la partie industrialisation. La dernière partie du livre couvre la production et la maintenance : configuration du serveur Ubuntu, sauvegardes de flotte, intégration GitHub et bonnes pratiques opérationnelles.*

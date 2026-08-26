@@ -2,7 +2,7 @@
 
 ## Introduction
 
-Le passage du développement à la production nécessite une approche différente de Docker. En local nous privilégions le confort (rechargement à chaud, ports exposés) ; en production nous visons performance, sécurité et légèreté. Ce chapitre décortique les Dockerfiles optimisés du template GitSky, valides pour les trois tiers T0, T1 et T2.
+Le passage du développement à la production nécessite une approche différente de Docker. En local nous privilégions le confort (rechargement à chaud, ports exposés) ; en production nous visons performance, sécurité et légèreté. Ce chapitre décortique les Dockerfiles optimisés du template GitSky, valides pour tout projet quel que soit son catalogue de modules activés (Chap 2).
 
 ## Le Pattern Multi-Stage
 
@@ -39,7 +39,7 @@ USER appuser
 applicative ne peut donc pas modifier le code en place. Attention au piège :
 `WORKDIR /app` crée le dossier en `root`, et `COPY --chown=appuser` ne change que
 les *fichiers copiés*, pas le dossier lui-même. Les écritures runtime légitimes
-(SQLite d'un T0, uploads) vont donc dans un dossier `/data` dédié, seul
+(uploads, fichiers temporaires) vont donc dans un dossier `/data` dédié, seul
 emplacement rendu inscriptible pour `appuser` :
 
 ```dockerfile
@@ -60,13 +60,13 @@ gunicorn app.core.main:app -k uvicorn_worker.UvicornWorker --bind 0.0.0.0:8000
 intégré à Uvicorn : ce dernier est **déprécié depuis Uvicorn 0.30** et émet un
 avertissement au démarrage.
 
-**Le nombre de workers ne figure pas dans le `CMD`.** Le figer au build
-produirait *une image par configuration*, en contradiction avec la règle « un
-seul Dockerfile » ci-dessous. On passe donc le nombre par la variable
-`WEB_CONCURRENCY`, que Gunicorn lit nativement, injectée depuis le `.env` du
-projet — une simple valeur de configuration par projet, réglée à la création
-(défaut raisonnable : 2) et ajustable à tout moment sans rebuild, par exemple
-si la charge d'un projet augmente.
+**Le nombre de workers ne figure pas dans le `CMD`.** C'est un réglage de
+configuration par projet — 2 par défaut, ajustable selon la charge réelle —
+mais le figer au build produirait *une image par valeur*, en contradiction
+avec la règle « un seul Dockerfile » ci-dessous. On passe donc le nombre par la
+variable `WEB_CONCURRENCY`, que Gunicorn lit nativement, injectée depuis le
+`.env` du projet. Augmenter la capacité d'un projet se résume alors à changer
+cette valeur et redéployer — sans rebuild.
 
 ## Surveillance de l'État (Healthchecks)
 
@@ -79,26 +79,33 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
 
 ## Un Seul Dockerfile pour Tous les Projets
 
-Le template GitSky n'a pas de Dockerfile par configuration — **un seul Dockerfile production** est utilisé quels que soient les modules activés par le projet. Ce sont les flags `MODULE_*` du `.env` qui décident, à l'exécution, quels routers, modèles et migrations sont chargés.
+Le template GitSky n'a pas de Dockerfile par profil — **un seul Dockerfile production** est utilisé quel que soit le catalogue de modules du projet. Ce sont les flags `MODULE_*` du `.env` qui décident, à l'exécution, quels routers, modèles et migrations sont chargés.
 
 Trois avantages :
 
 - **Un seul artefact à builder** et à stocker dans le registre — pas de multiplication d'images.
-- **Activer un module supplémentaire** se fait via un simple redéploiement avec un `.env` mis à jour, sans rebuild.
-- **La revue de sécurité** se fait sur une seule image, pas plusieurs.
+- **Activer un module de plus** se fait via un simple redéploiement avec un `.env` mis à jour, sans rebuild.
+- **La revue de sécurité** se fait sur une seule image, pas une par combinaison.
 
-L'empreinte disque de l'image reste identique quels que soient les modules activés — **~320 Mo pour le backend, ~260 Mo pour le frontend** (tailles mesurées). Le backend part de `python:3.12-slim` (~180 Mo) plus les dépendances installées ; le frontend de `node:24-alpine` (~230 Mo) plus `serve` et le `dist/` (le bundle statique lui-même ne pèse que quelques centaines de Ko, mais l'image qui le sert porte la base Node). L'empreinte **mémoire** au runtime, en revanche, varie fortement selon les modules activés — c'est cette variation qui permet de porter des dizaines de projets légers sur le même VPS aux côtés de quelques projets complets (Chap 2).
+L'empreinte disque de l'image reste identique quel que soit le projet — **~320 Mo pour le backend, ~260 Mo pour le frontend** (tailles mesurées). Le backend part de `python:3.12-slim` (~180 Mo) plus les dépendances installées ; le frontend de `node:24-alpine` (~230 Mo) plus `serve` et le `dist/` (le bundle statique lui-même ne pèse que quelques centaines de Ko, mais l'image qui le sert porte la base Node). L'empreinte **mémoire** au runtime, en revanche, varie fortement selon les modules activés (Chap 2 §5) — c'est cette variation qui permet de porter un grand nombre de projets légers sur le même VPS.
 
-## Empreinte Mémoire par Combinaison de Modules (Mesurée)
+## Empreinte Mémoire selon les Modules Activés (Mesurée)
 
-| Combinaison | Modules activés | RAM initiale | RAM sous charge légère |
-|---|---|---|---|
-| Landing seule | Core (auth + SEO) uniquement | ~50 Mo | ~60 Mo |
-| App avec compte utilisateur | Core + admin + security + analytics | ~180 Mo | ~250 Mo |
-| SaaS complet | Tous les modules + agentic | ~700 Mo | ~900 Mo à 1 Go |
+| Combinaison de modules | RAM initiale | RAM sous charge légère |
+|---|---|---|
+| Aucun module optionnel (core seul : auth + SEO) | ~50 Mo | ~60 Mo |
+| Auth + security + analytics | ~180 Mo | ~250 Mo |
+| Tous les modules + agentic | ~700 Mo | ~900 Mo à 1 Go |
 
-Un projet avec l'agentic actif consomme davantage que la somme des autres modules — le framework agentic charge des modèles et des tool registries qui ont leur propre empreinte.
+> Ces chiffres datent d'avant le retrait du système de paliers (Phase 6) — ils
+> restaient jusque-là associés à des profils T0/T1/T2 fixes. Le mécanisme
+> mesuré n'a pas changé (l'empreinte suit toujours les modules activés), mais
+> les combinaisons exactes ci-dessus sont désormais illustratives plutôt que
+> des points de passage obligés — à re-mesurer sur un déploiement réel avant
+> de les considérer à jour pour un projet donné.
+
+Un projet avec agentic actif consomme davantage que la somme de ses autres modules — le framework agentic charge des modèles et des tool registries qui ont leur propre empreinte.
 
 ---
 
-*Le pattern Docker prod est posé pour tous les projets, quels que soient leurs modules. Le prochain chapitre décrit la configuration du serveur Ubuntu 24.04 qui accueille l'ensemble de la flotte, du hardening SSH au bootstrap des services partagés.*
+*Le pattern Docker prod est posé pour tout projet, quel que soit son catalogue de modules. Le prochain chapitre décrit la configuration du serveur Ubuntu 24.04 qui accueille l'ensemble de la flotte, du hardening SSH au bootstrap des services partagés.*

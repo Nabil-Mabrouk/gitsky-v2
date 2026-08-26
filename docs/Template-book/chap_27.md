@@ -2,78 +2,57 @@
 
 ## Introduction
 
-Les Chap 2, 17 et 26 posent chacun une pièce : le catalogue de modules, le générateur Copier, l'intégration GitHub. L'assistant de création est ce qui les assemble en un seul parcours, accessible depuis le fleet dashboard, sans édition manuelle de YAML ni ligne de commande : nom du projet, modules, GitHub, domaine — et un clic pour créer et déployer.
+Les deux chapitres précédents ont posé les briques séparément : le catalogue de modules (Chap 2), le générateur Copier (Chap 17), l'enregistrement fleet (Chap 19), l'intégration GitHub (Chap 26). Ce chapitre les assemble derrière un seul geste opérateur : nom du projet, modules à activer, domaine, et un choix GitHub (créer un dépôt, en lier un existant, ou rien pour l'instant) → un projet généré sur disque, enregistré dans la flotte, avec son dépôt lié et son premier push tenté automatiquement.
 
-> **État d'implémentation.** Comme le Chap 26, ce chapitre documente la conception cible de l'assistant (feuille de route, phase E) — l'interface et le point d'entrée backend qu'il décrit sont à construire par-dessus les fondations déjà posées (générateur, fleet dashboard, catalogue de modules).
+> Ce chapitre documente un état en construction (Phase 6, incrément wizard). L'orchestration backend (génération, enregistrement, dépôt, premier push, bootstrap du premier déploiement) est réelle et testée ; ce qui reste manuel ou simplifié est listé en fin de chapitre, pas caché.
 
-## 1. Le Parcours en Cinq Étapes
+## Ce qui Fonctionne Aujourd'hui
 
-### Étape 1 — Nom du Projet
+### `POST /api/fleet/projects`
 
-Un champ texte, validé en direct contre le registre du fleet dashboard (Chap 19) pour éviter un doublon. Le nom choisi devient `PROJECT_NAME` et préfixe toutes les ressources Docker (Chap 1).
+Un seul endpoint orchestre tout, dans un ordre délibéré :
 
-### Étape 2 — Modules
+1. **Validation.** Le nom doit être un slug DNS-safe (minuscules, chiffres, tirets — il devient un nom de répertoire, un identifiant PostgreSQL et un sous-domaine). `github_mode=link` exige `github_repo`. Invalide → `400`, avant toute autre étape.
+2. **Génération.** `generator_client.generate_project` invoque `copier.run_copy` réellement (pas `skip_tasks=True` comme dans les tests du générateur) : le projet est matérialisé sous `PROJECTS_DIR/<nom>`, et les `_tasks` de `copier.yml` s'exécutent pour de vrai — `git init`, `git add`, un premier commit (Chap 17). C'est la seule étape **sans filet** : si le générateur n'est pas accessible (`GITSKY_GENERATOR_PATH` absent ou invalide), la requête échoue en `503` et **rien n'est enregistré** — pas de projet fantôme dans la flotte.
+3. **Enregistrement.** Une fois généré, le projet est inséré dans `fleet_projects` et journalise `born` (même geste que `/projects/register`, Chap 19) — le domaine par défaut est `<nom>.mystudio.com` si aucun n'est fourni (Chap 1).
+4. **GitHub (optionnel).** Selon `github_mode` : `create` appelle `github_client.create_repo` (Chap 26) ; `link` utilise le `github_repo` fourni tel quel. Dans les deux cas, le webhook push est tenté (`_install_webhook`, la même fonction que les endpoints `create-repo`/`link-repo` de la fiche projet).
+5. **Premier push.** Si un dépôt a été créé ou lié, `git_client.push_initial_commit` ajoute le remote et pousse le commit initial du projet généré.
+6. **Bootstrap du premier déploiement.** Si le push a réussi mais que le webhook n'a **pas** pu être installé, rien d'autre ne déclenchera jamais de redeploy pour ce projet — le endpoint journalise lui-même un `deploy_triggered` pour que `deploy-on-push.sh` (Chap 26) le trouve au prochain passage. Si le webhook **est** installé, GitHub notifiera de lui-même à la prochaine livraison : pas de double déclenchement.
 
-Une liste à cocher reprenant le catalogue du Chap 2 — le socle (auth, SEO) est coché et grisé, non désactivable. Chaque case cochée met à jour une estimation d'empreinte RAM affichée en direct, sur la base des repères du Chap 2, pour que l'opérateur voie le compromis avant de valider.
+**À partir de l'étape 3, plus rien n'est fatal.** Un échec de création de dépôt, d'installation de webhook, ou de premier push ne fait jamais échouer la requête (toujours `201`) — il est journalisé sous forme de message dans `warnings`, et l'opérateur peut reprendre la main depuis la fiche projet (les endpoints `create-repo`/`link-repo` de Chap 26 restent utilisables après coup). Un projet généré et enregistré sans dépôt lié est un résultat utile, jamais une raison de tout annuler.
 
-### Étape 3 — GitHub
+### `GET /api/fleet/module-catalog`
 
-Deux choix, décrits en détail au Chap 26 :
+Renvoie le catalogue plat (Chap 2), clés courtes sans le préfixe `module_` — c'est ce que le formulaire affiche en cases à cocher. `auth` n'y figure pas : il est core, jamais un choix.
 
-- **Créer un nouveau dépôt** — l'assistant propose un nom de dépôt dérivé du nom du projet, modifiable.
-- **Lier un dépôt existant** — un champ pour l'URL du dépôt ; l'assistant indique si la GitHub App y a accès (webhook installable) ou non (repli sur redéploiement manuel).
+### L'Écran du Wizard
 
-### Étape 4 — Domaine
+Un seul écran (`/admin/fleet/new`, accessible depuis le bouton « + Nouveau projet » de la grille, Chap 19), pas une suite d'étapes avec barre de progression : nom, cases à cocher pour les modules, domaine optionnel, et un choix GitHub (radio : aucun / créer / lier, avec le champ `owner/repo` qui n'apparaît que pour le lien). À la soumission, un résumé affiche ce qui a réellement été fait — projet généré, dépôt lié, webhook installé ou non, push réussi ou non, premier déploiement déclenché ou non — et les avertissements le cas échéant, jamais un faux « tout est vert » silencieux.
 
-- **Sous-domaine de la flotte** (par défaut) — `<nom-du-projet>.mystudio.com`, disponible immédiatement grâce au certificat wildcard partagé (Chap 1).
-- **Domaine dédié** — l'opérateur saisit un domaine déjà pointé vers l'IP du VPS ; l'assistant avertit si la résolution DNS n'est pas encore en place (la génération du certificat Let's Encrypt échouera sinon — Chap 22 FAQ).
+## Configuration
 
-### Étape 5 — Récapitulatif
+| Variable | Rôle | Défaut |
+|---|---|---|
+| `GITSKY_GENERATOR_PATH` | Chemin vers le dossier du générateur (contient `copier.yml`) | absent — la création de projet échoue en `503` sans lui |
+| `PROJECTS_DIR` | Racine où les projets sont générés (même variable que `deploy-on-push.sh`, Chap 26) | `/opt/gitsky/projects` |
 
-Une synthèse des quatre choix précédents, avec un bouton unique : **Créer & Déployer**.
+**Le paquet `copier` n'est pas dans `requirements.txt` du template**, par le même raisonnement que le SDK Stripe (Chap 16) : c'est une dépendance propre au module `fleet`, pas à tout projet généré — l'ajouter inconditionnellement gonflerait l'image de chaque projet pour une capacité que seul le fleet dashboard utilise. Une image de fleet dashboard doit l'installer en plus. L'import est paresseux (`import copier` à l'intérieur de la fonction, pas en tête de module) : un projet qui n'active pas `module_fleet` ne charge jamais ce code, et un fleet dashboard sans `copier` installé démarre quand même — la création de projet échoue seulement au moment où elle est tentée, pas au démarrage du process.
 
-## 2. Ce qui se Passe Après le Clic
+## Ce qui Manque Encore
 
-Un nouvel endpoint backend orchestre la création :
-
-```
-POST /api/fleet/projects
-```
-
-Séquence :
-
-1. **Assemblage du payload** — le formulaire est traduit côté serveur en l'équivalent d'un `config.yaml` (Chap 17), sans jamais exposer sa syntaxe à l'opérateur.
-2. **Génération** — le générateur est invoqué via l'**API Python de Copier** (`copier.run_copy(...)`), pas par un appel CLI shell-out : cela permet de contrôler précisément la portée de `unsafe=True` (l'équivalent programmatique de `--trust`) plutôt que de la déléguer à un sous-processus.
-3. **GitHub** — création ou liaison du dépôt, push du commit initial, installation du webhook (Chap 26).
-4. **Premier déploiement** — `docker compose up -d --build`, migrations, contrôle de santé (Chap 21/25 §2).
-5. **Enregistrement** — le projet apparaît dans le fleet dashboard (Chap 19).
-
-Cette séquence prend un temps réel (générer, pousser sur GitHub, builder les images, démarrer les conteneurs — potentiellement plusieurs minutes). L'assistant ne bloque pas silencieusement : chaque étape met à jour un indicateur de progression dans l'interface (streaming via SSE, ou interrogation périodique du statut) : *Génération du projet… → Création du dépôt GitHub… → Premier déploiement… → Vérification de la santé… → Prêt.*
-
-## 3. Validation et Gestion des Erreurs
-
-- **Nom déjà pris** ou **domaine déjà utilisé par un autre projet** : bloqué avant tout appel au générateur.
-- **Domaine dédié mal résolu** : avertissement à l'étape 4, mais création possible quand même (l'opérateur corrigera le DNS avant que le certificat ne soit tenté) — l'assistant ne doit pas empêcher un cas d'usage légitime (préparer un projet avant que le DNS ne se propage).
-- **Échec en cours de séquence** (ex. le dépôt GitHub est créé mais le premier déploiement échoue) : l'assistant ne repart pas de zéro. Le projet est marqué `creation_failed` dans le fleet dashboard, avec la dernière étape atteinte visible, et l'opérateur reprend depuis le bouton « Redéployer » (Chap 19, Chap 26 §5) plutôt que de régénérer un doublon.
-
-## 4. Après la Création
-
-L'assistant redirige vers la page détail du projet dans le fleet dashboard (Chap 19), avec un rappel des prochaines étapes : cloner le dépôt, développer la logique métier (Chap 20 étape 2), pousser — le déploiement continu (Chap 26) prend le relais automatiquement.
-
-## Anti-Patterns à Éviter
-
-- **Bloquer l'interface sans retour de progression.** La séquence de création dure plusieurs minutes ; un assistant silencieux donne l'impression d'un plantage.
-- **Autoriser des noms de projet dupliqués.** Casserait le préfixage `PROJECT_NAME` et les routes Traefik d'un projet existant.
-- **Cacher l'estimation d'empreinte des modules.** L'opérateur doit voir le compromis RAM avant de cocher "tous les modules par réflexe" (anti-pattern déjà signalé au Chap 2).
-- **Réactiver toute la séquence depuis zéro après un échec partiel.** Un dépôt GitHub déjà créé ne doit pas être dupliqué à chaque nouvel essai.
+1. **Pas de flux de progression (SSE/polling).** L'endpoint est synchrone : la requête HTTP reste ouverte le temps de la génération + de l'enregistrement + du dépôt + du push. Pour le template actuel (quelques dizaines de fichiers), ça reste de l'ordre de la seconde ; un template qui grossirait significativement, ou une génération sur un disque lent, justifierait de repasser ce flux en asynchrone avec suivi de progression (Chap 27, roadmap originale) — pas fait tant que le besoin ne s'est pas fait sentir.
+2. **La provision de base de données réelle reste simulée.** `provision_db.py` (une des `_tasks` du générateur, Chap 17) ne crée une base que si `POSTGRES_CONTAINER` est configuré dans l'environnement du process qui génère — sinon il l'ignore proprement. Le wizard ne configure pas cette variable à la place de l'opérateur.
+3. **Pas de vérification DNS.** Le domaine fourni (ou le sous-domaine par défaut) n'est jamais vérifié disponible ni câblé automatiquement côté Traefik — cette étape reste, comme avant ce chapitre, une action d'infra séparée.
+4. **La migration GitHub App reste ouverte** (Chap 26) : le wizard hérite de la même authentification par jeton d'accès personnel que `create-repo`/`link-repo`.
 
 ## Checklist du Chapitre
 
-- [ ] Je peux créer un projet complet (nom, modules, GitHub, domaine) sans écrire de YAML
-- [ ] Je vois l'empreinte RAM estimée avant de valider mes choix de modules
-- [ ] Je comprends ce qui se passe entre le clic et le projet en ligne
-- [ ] Je sais qu'un échec partiel se rattrape depuis le dashboard, pas en recommençant tout
+- [ ] `GITSKY_GENERATOR_PATH` et `PROJECTS_DIR` sont configurés sur le fleet dashboard en production
+- [ ] Le paquet `copier` est installé dans l'image du fleet dashboard (absent du `requirements.txt` de base, par design)
+- [ ] Je sais lire un résultat de création : `generated`/`github_repo`/`webhook_installed`/`pushed`/`deploy_triggered` et la liste `warnings`
+- [ ] Je sais qu'un warning n'est jamais une raison de relancer toute la création — les endpoints `create-repo`/`link-repo` (Chap 26) reprennent la main sur un projet déjà généré
+- [ ] Je sais que la provision de base réelle et le câblage DNS restent hors périmètre de ce wizard
 
 ---
 
-*L'assistant de création clôt la boucle "utiliser" du guide opérateur (Chap 25) : un opérateur n'a plus jamais besoin de toucher une ligne de commande pour faire naître un nouveau projet dans la flotte.*
+*Ce chapitre clôt la partie industrialisation : de l'idée d'un nouveau projet à son premier déploiement, en un seul geste opérateur, avec les limites de cette version assumées plutôt que cachées. Le prochain chantier ouvert — la refonte visuelle du dashboard (Phase F) — n'a pas sa place ici tant que le code ne la fait pas.*

@@ -2,7 +2,9 @@
 
 ## Introduction
 
-Le module `analytics` de GitSky enregistre l'activité des visiteurs de manière **respectueuse du RGPD** et alimente le dashboard admin en visualisations de flux et d'audience. Il est activable à partir du tier T1 (`MODULE_ANALYTICS=true`) — en T0, la collecte est déportée sur le landing-collector partagé de la flotte (voir Chap 18).
+> **Écart au livre (Phase 6)** : ce chapitre présentait auparavant le module `analytics` comme activable « à partir du tier T1 », avec la collecte déportée vers un service mutualisé de la flotte pour les projets « T0 ». Le système de paliers T0/T1/T2 a été retiré du framework (voir Chap 2). `analytics` est un module du catalogue comme les autres : désactivé par défaut, il s'active projet par projet, sans condition de palier.
+
+Le module `analytics` de GitSky enregistre l'activité des visiteurs de manière **respectueuse du RGPD** et alimente le dashboard admin en visualisations de flux et d'audience. Comme tout module du catalogue, il est désactivé par défaut et s'active projet par projet via `analytics: true` dans le bloc `modules:` de `config.yaml` (clé courte, sans le préfixe `module_` — Chap 17) — ce qui devient `MODULE_ANALYTICS=true` côté `.env` généré.
 
 ## Le Middleware de Tracking
 

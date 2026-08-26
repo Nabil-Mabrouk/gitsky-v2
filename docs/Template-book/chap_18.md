@@ -15,8 +15,8 @@ Ce chapitre décrit chacun de ces services : rôle, implémentation recommandée
 |                                                  |
 |  [Traefik]         HTTPS wildcard + routing      |
 |  [PostgreSQL]      données des services partagés  |
-|  [Landing          Collecte des leads T0         |
-|   Collector]       partagée                      |
+|  [Landing          Collecte des leads sans       |
+|   Collector]       friction, partagée            |
 |  [LLM Proxy]       Clés API + quotas             |
 |  [GeoIP]           Résolution IP → pays/ville    |
 |  [SMTP Relay]      Emails transactionnels        |
@@ -25,11 +25,11 @@ Ce chapitre décrit chacun de ces services : rôle, implémentation recommandée
 |                                                  |
 |         ↕ Consommés par tous les projets ↕       |
 |                                                  |
-|  Projet A (T0)  Projet B (T1)  Projet C (T2)  … |
+|  Projet A       Projet B       Projet C       … |
 +--------------------------------------------------+
 ```
 
-Tous les services partagés vivent sur le réseau interne `shared-services-net` du VPS, jamais exposé à Internet — à une exception délibérée près : la capture du landing collector (§3), qui doit être joignable depuis chaque landing T0. Le principe reste le même : seule cette route précise passe par Traefik, jamais le service dans son ensemble.
+Tous les services partagés vivent sur le réseau interne `shared-services-net` du VPS, jamais exposé à Internet — à une exception délibérée près : la capture du landing collector (§3), qui doit être joignable depuis la landing de n'importe quel projet. Le principe reste le même : seule cette route précise passe par Traefik, jamais le service dans son ensemble.
 
 ## 1. Traefik : Routage HTTPS Mutualisé
 
@@ -65,8 +65,8 @@ Chaque projet doté d'une base embarque **son propre conteneur PostgreSQL**,
 défini dans son `docker-compose.yml` (Chap 1), plutôt qu'une base parmi d'autres
 dans une instance partagée. Cette isolation par conteneur permet :
 
-- La restauration ou le kill d'un projet sans impacter les autres — on détruit
-  un conteneur et son volume, rien d'autre.
+- La restauration ou l'archivage d'un projet sans impacter les autres — on
+  détruit un conteneur et son volume, rien d'autre.
 - Des sauvegardes indépendantes, un dump par conteneur (Chap 23).
 - Une révocation nette : supprimer le conteneur coupe tout accès, plus
   radicalement qu'un `REVOKE`.
@@ -77,19 +77,20 @@ dans une instance partagée. Cette isolation par conteneur permet :
   ~100 connexions, sans se disputer un pool commun.
 
 Le prix est de ~52 Mo de RAM par conteneur PostgreSQL au repos (mesuré,
-`postgres:16.3-alpine`) — chaque projet en porte un, sans exception. Sur une
-flotte réaliste de plusieurs dizaines de projets, cela reste dans le budget du
-VPS mutualisé (voir le tableau des coûts et les repères d'empreinte du Chap 2).
+`postgres:16.3-alpine`). Chaque projet en a systématiquement un (Chap 2 §4) —
+sur une flotte réaliste d'une dizaine de projets, cela reste sous 1 Go,
+largement dans le budget du VPS (voir le tableau des coûts).
 
 > **Note d'architecture.** Une première version du template mutualisait une
-> seule instance PostgreSQL avec une base par projet. Elle économisait de la
-> RAM sur le VPS, mais au prix d'un couplage fort : une requête pathologique ou
-> un autovacuum en retard sur un projet pouvait dégrader tous les autres, y
-> compris ceux qui génèrent du revenu. Concentrer des codebases hétérogènes
-> dans la même instance était le mauvais compromis. Le conteneur par projet a
-> donc été retenu, **sans exception pour aucun projet** — les trois bénéfices
-> ci-dessus (restauration, sauvegarde, révocation) y sont d'ailleurs *plus*
-> vrais qu'avec une base partagée.
+> seule instance PostgreSQL avec une base par projet. Elle économisait ~500 Mo
+> de RAM sur le VPS de 8 Go, mais au prix d'un couplage fort : une requête
+> pathologique ou un autovacuum en retard sur un projet encore en rodage
+> pouvait dégrader un projet qui, lui, génère du revenu. Sur une flotte où
+> certains projets sont expérimentaux par construction, concentrer des
+> codebases non éprouvées dans la même instance que les projets établis était
+> le mauvais compromis. Le conteneur par projet a donc été retenu — les trois
+> bénéfices ci-dessus (restauration, sauvegarde, révocation) y sont d'ailleurs
+> *plus* vrais qu'avec une base partagée.
 
 La création de la base est prise en charge par Compose au premier démarrage
 (variables `POSTGRES_DB` / `POSTGRES_USER` / `POSTGRES_PASSWORD` du `.env`). Le
@@ -103,12 +104,12 @@ POSTGRES_PASSWORD=$(python -c "import secrets; print(secrets.token_hex(24))")
 
 Une instance PostgreSQL partagée subsiste néanmoins dans les services partagés,
 mais **uniquement pour les données des services eux-mêmes** : la table centrale
-du landing collector (§3, optionnel) et les logs du LLM proxy. Elle n'héberge
-aucune base de projet.
+du landing collector (§3) et les logs du LLM proxy. Elle n'héberge aucune base
+de projet.
 
-## 3. Landing Collector (Service Optionnel)
+## 3. Landing Collector
 
-Chaque projet possède désormais sa propre base et peut donc gérer ses propres captures d'emails via son module `auth` (rôle `waitlist`) dès sa création. Le **landing collector** reste néanmoins disponible comme service partagé optionnel, pour les projets qui veulent une capture d'emails simple sans même attendre que leur backend applicatif soit branché — par exemple une landing publiée avant que le reste du projet ne soit développé. C'est un service partagé unique qui reçoit les formulaires via une API commune et les persiste dans une table centrale.
+Une landing page a souvent besoin de capturer des emails **avant** que le projet n'ait de compte utilisateur à proposer — avant même que `MODULE_AUTH` ait un rôle à jouer, ou tout simplement parce qu'un simple champ email sans friction convertit mieux qu'un formulaire d'inscription complet. Router cette capture à travers l'authentification et la base propres de chaque projet ajouterait de la complexité pour un besoin identique partout. Le **landing collector** est un service partagé unique qui reçoit les formulaires via une API commune et les persiste dans une table centrale, indépendamment des modules activés par le projet qui les capte.
 
 ```python
 # shared-services/landing-collector/main.py — extrait
@@ -123,7 +124,7 @@ async def collect_lead(lead: LeadIn):
     return {"ok": True}
 ```
 
-Un projet qui utilise ce service poste **en same-origin**, sur son propre domaine — pas sur un domaine dédié au collecteur (un hostname interne comme `landing-collector.mystudio.internal` ne résoudrait de toute façon nulle part publiquement, et forcerait une configuration CORS pour rien) :
+Une landing poste **en same-origin**, sur son propre domaine — pas sur un domaine dédié au collecteur (un hostname interne comme `landing-collector.mystudio.internal` ne résoudrait de toute façon nulle part publiquement, et forcerait une configuration CORS pour rien) :
 
 ```tsx
 await fetch("/leads", {
@@ -134,7 +135,7 @@ await fetch("/leads", {
 
 Ce `/leads` same-origin atterrit sur Traefik comme n'importe quelle requête vers le domaine de la landing — mais Traefik le route vers le landing collector, pas vers le frontend du projet, grâce à un routeur **sans contrainte `Host()`** : `Path(\`/leads\`) && Method(\`POST\`)`. Cette règle matche sur tous les domaines de la flotte à la fois, ce qui évite de déclarer une route par projet. `Path()` est un match exact (pas `PathPrefix()`) : seule cette unique route est exposée, jamais `/leads/{project}` ni `/leads/{project}/stats` (§ci-dessous) — le collecteur reste pour le reste sur `shared-services-net`, injoignable depuis Internet.
 
-Le fleet dashboard (Chap 19) lit cette table pour afficher le funnel des projets qui utilisent ce service, et un onglet Leads (Chap 19) permet de consulter la liste brute des emails captés. La **capture** (`POST /leads`) reste publique — les landings postent sans secret — mais la **lecture**, que ce soit les stats agrégées (`GET /leads/{project}/stats`) ou la liste (`GET /leads/{project}`), est réservée au dashboard : elle exige un en-tête `X-Collector-Token` comparé à `COLLECTOR_STATS_TOKEN`, et n'est de toute façon joignable QUE depuis `shared-services-net` (jamais via Traefik). Sinon, le funnel ou les emails de n'importe quel projet fuiteraient à quiconque joint le collecteur. Comme partout dans le châssis : ouvert en développement sans token, `503` fail-closed en production non configurée.
+Le fleet dashboard (Chap 19) lit cette table pour afficher le funnel de chaque projet, et un onglet Leads (Chap 19) permet de consulter la liste brute des emails captés. La **capture** (`POST /leads`) reste publique — les landings postent sans secret — mais la **lecture**, que ce soit les stats agrégées (`GET /leads/{project}/stats`) ou la liste (`GET /leads/{project}`), est réservée au dashboard : elle exige un en-tête `X-Collector-Token` comparé à `COLLECTOR_STATS_TOKEN`, et n'est de toute façon joignable QUE depuis `shared-services-net` (jamais via Traefik). Sinon, le funnel ou les emails de n'importe quel projet fuiteraient à quiconque joint le collecteur. Comme partout dans le châssis : ouvert en développement sans token, `503` fail-closed en production non configurée.
 
 ## 4. LLM Proxy Partagé
 
@@ -173,7 +174,7 @@ Les logs consolidés servent au fleet dashboard pour afficher le coût LLM par p
 
 ## 5. Relais SMTP
 
-Un unique compte SMTP (par exemple **Resend**, **Postmark**, ou un serveur Postfix maison) sert tous les projets. Les emails transactionnels — activation de compte, invitation waitlist, notifications de kill, reçus Stripe — passent tous par ce relais.
+Un unique compte SMTP (par exemple **Resend**, **Postmark**, ou un serveur Postfix maison) sert tous les projets. Les emails transactionnels — activation de compte, invitation waitlist, notifications de cycle de vie (Chap 20), reçus Stripe — passent tous par ce relais.
 
 Chaque projet est identifié par un expéditeur (`no-reply@pain-scraper.mystudio.com`), et le contenu est rendu depuis les templates Jinja du projet lui-même.
 
@@ -237,9 +238,10 @@ Sur le VPS 8 Go à 20 €/mois, les services partagés consomment :
 
 Il reste donc ~7,3 Go de RAM pour les projets applicatifs. À cela s'ajoutent les
 conteneurs PostgreSQL **par projet** (§2) : ~52 Mo au repos chacun (mesuré,
-`postgres:16.3-alpine`), sans exception. Une flotte de 15 projets ajoute ainsi
-~780 Mo, laissant une marge confortable pour les modules applicatifs eux-mêmes
-selon les repères d'empreinte du Chap 2.
+`postgres:16.3-alpine`), pour chaque projet de la flotte sans exception. Une
+flotte de 15 projets ajoute ainsi ~780 Mo rien que pour leurs bases — le reste
+de la marge disponible dépend directement des modules que chaque projet active
+(Chap 2 §5), pas d'un nombre de projets abstrait.
 
 ---
 

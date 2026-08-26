@@ -29,6 +29,7 @@ from fastapi.testclient import TestClient  # noqa: E402
 from app.core import mailer  # noqa: E402
 from app.modules.agentic.llm_client import call_llm  # noqa: E402
 from app.modules.agentic.tools.suno import suno_generate  # noqa: E402
+from app.modules.fleet import github_client  # noqa: E402
 from app.modules.fleet.landing_collector_client import fetch_leads  # noqa: E402
 from app.modules.monetization.router import shop_router  # noqa: E402
 from landing_collector import mailer as landing_collector_mailer  # noqa: E402
@@ -86,6 +87,16 @@ INTEGRATIONS = [
         "landing_collector_mailer",
         lambda: landing_collector_mailer.send_email("a@b.com", "s", "b"),
         ["SMTP_HOST"],
+    ),
+    (
+        "fleet_github_create_repo",
+        lambda: asyncio.run(github_client.create_repo("p")),
+        ["FLEET_GITHUB_TOKEN"],
+    ),
+    (
+        "fleet_github_create_webhook",
+        lambda: asyncio.run(github_client.create_webhook("o/r", "https://x/webhook", "s")),
+        ["FLEET_GITHUB_TOKEN"],
     ),
 ]
 

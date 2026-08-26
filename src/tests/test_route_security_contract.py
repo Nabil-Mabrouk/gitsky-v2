@@ -43,6 +43,7 @@ PUBLIC_MUTATING_ALLOWLIST = {
     ("POST", "/api/auth/logout"): "doit fonctionner même avec un token expiré",
     ("POST", "/api/shop/webhook"): "appelé par Stripe, authentifié par signature",
     ("POST", "/api/onboarding/evaluate"): "scoring public sans persistance (Chap 12)",
+    ("POST", "/api/fleet/webhooks/github/{name}"): "appelé par GitHub, authentifié par signature HMAC (X-Hub-Signature-256)",
 }
 
 SNIPPET = r"""

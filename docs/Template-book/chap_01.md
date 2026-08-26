@@ -199,7 +199,7 @@ Traefik gère un certificat wildcard `*.mystudio.com` via Let's Encrypt DNS-01. 
 Chaque projet dispose :
 
 - de son propre réseau `internal-net` (jamais partagé avec un autre projet)
-- de sa propre base de données PostgreSQL (isolation nette, restauration ou archivage facile)
+- de sa propre base de données PostgreSQL (isolation nette, sauvegarde et restauration indépendantes)
 - de ses propres conteneurs backend et frontend
 - d'un `PROJECT_NAME` unique qui préfixe l'ensemble des ressources Docker
 
@@ -213,18 +213,16 @@ Chaque projet dispose :
 |    +----+-----+----------+------------+          |
 |    |          |          |            |          |
 |  Projet A   Projet B   Projet C  Fleet Dashboard |
-|              (mystudio.com)                      |
+|  (landing)  (SaaS)     (boutique) (mystudio.com) |
 |                                                  |
 |  Chaque projet = 1 container backend             |
 |                + 1 container frontend            |
 |                + 1 base PostgreSQL isolée        |
-|                (modules activés au choix,        |
-|                 voir Chap 2)                     |
 |                                                  |
 +--------------------------------------------------+
 ```
 
-Sur un VPS à 20 €/mois, ce modèle permet d'héberger simultanément **plusieurs dizaines de projets légers** (peu de modules actifs) ou **un nombre plus restreint de projets complets** (catalogue de modules activé en grande partie), ou un mélange des deux — voir Chap 2 pour le détail du catalogue de modules et des ordres de grandeur d'empreinte mémoire.
+Sur un VPS à 20 €/mois, ce modèle permet d'héberger simultanément plusieurs dizaines de projets sans saturation — chacun ne consomme que les ressources des modules qu'il a réellement activés, un projet minimal (landing + capture de leads) coûtant bien moins qu'un projet avec admin, i18n et monétisation (voir Chap 2 pour le détail du catalogue de modules).
 
 ## Commandes de Référence
 
@@ -239,4 +237,4 @@ Voici les commandes essentielles pour piloter votre infrastructure :
 
 ---
 
-*Ce chapitre pose les fondations techniques mutualisées du template. Dans le prochain chapitre, nous détaillons le catalogue de modules qui permet à un même code base de porter aussi bien une landing minimale qu'une webapp complète, sans jamais réécrire l'architecture.*
+*Ce chapitre pose les fondations techniques mutualisées du template. Dans le prochain chapitre, nous détaillons le catalogue de modules qui permet à un même code base de porter aussi bien une landing minimale qu'une webapp complète avec administration, internationalisation et monétisation.*

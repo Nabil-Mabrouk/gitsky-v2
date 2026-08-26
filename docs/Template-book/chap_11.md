@@ -6,7 +6,7 @@ Ce chapitre illustre la création d'un **module métier** de bout en bout, en pr
 
 Le module `tutorials` que nous décrivons ici suit exactement le même contrat que les modules du core décrits aux chapitres précédents : un dossier `app/modules/tutorials/` qui apporte ses modèles, ses routeurs, ses schémas, ses migrations, et une entrée dans le shell admin.
 
-Activation : `MODULE_TUTORIALS=true` (T2 par défaut, ou selon le projet).
+Activation : `module_tutorials: true` dans le bloc `modules:` de `config.yaml` (`MODULE_TUTORIALS=true` côté `.env` généré) — comme tout module du catalogue, il est désactivé par défaut et s'active projet par projet, indépendamment des autres modules.
 
 ## Anatomie du Module
 

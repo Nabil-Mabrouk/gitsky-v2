@@ -2,7 +2,9 @@
 
 ## Introduction
 
-Le module `security` de GitSky ajoute un `SecurityMiddleware` qui inspecte chaque requête entrante à la recherche de patterns d'attaque connus, et journalise les événements suspects dans une table `SecurityEvent`. Il est **activé par défaut à partir du tier T1** (`MODULE_SECURITY_MIDDLEWARE=true`) — en T0, la protection est déportée sur le proxy Traefik partagé de la flotte.
+> **Écart au livre (Phase 6)** : ce chapitre présentait auparavant `security_middleware` comme activé par défaut « à partir du tier T1 », avec la protection déportée vers le proxy Traefik partagé pour les projets « T0 ». Le système de paliers T0/T1/T2 a été retiré du framework (voir Chap 2). `security_middleware` est aujourd'hui un module du catalogue comme les autres : désactivé par défaut, il doit être explicitement activé projet par projet — il n'y a plus d'activation automatique liée à un palier.
+
+Le module `security` de GitSky ajoute un `SecurityMiddleware` qui inspecte chaque requête entrante à la recherche de patterns d'attaque connus, et journalise les événements suspects dans une table `SecurityEvent`. Comme tout module du catalogue, il est désactivé par défaut et s'active projet par projet via `module_security_middleware: true` dans le bloc `modules:` de `config.yaml` (`MODULE_SECURITY_MIDDLEWARE=true` côté `.env` généré).
 
 ## Philosophie : Journaliser, ne pas Bloquer
 

@@ -2,7 +2,7 @@
 
 ## Introduction
 
-Le SEO fait partie du **core** de GitSky — les composants qu'il fournit sont présents à tous les tiers. Une landing invisible aux moteurs de recherche perd 80 % de son trafic potentiel, donc l'optimisation est active dès T0.
+Le SEO fait partie du **core** de GitSky, au même titre que `auth` (Chap 7) — les composants qu'il fournit sont montés sans condition, dans tous les projets, quels que soient les modules optionnels activés. Une landing invisible aux moteurs de recherche perd 80 % de son trafic potentiel, donc l'optimisation est active dès la création du projet.
 
 Ce chapitre couvre les patterns SEO à intégrer dans une application Single Page React : balises meta dynamiques, sitemap généré côté backend, données structurées Schema.org, et intégration avec le module `i18n` (Chap 8) lorsqu'il est activé.
 
@@ -81,16 +81,18 @@ Le sitemap est également généré **par langue** — chaque URL apparaît une 
 
 Toutes les pages ne doivent pas être indexées. Les pages de profil utilisateur, le dashboard admin, ou les pages de succès de paiement contiennent des informations privées ou peu utiles au référencement. La propriété `noindex={true}` du composant `SEO` envoie l'instruction aux moteurs de recherche.
 
-## SEO dès le Tier T0
+## SEO pour un Projet en Phase de Lancement
 
-Un projet T0 (une simple landing) bénéficie de tout le socle SEO ci-dessus. Les métriques à surveiller à ce stade sont différentes :
+> **Écart au livre (Phase 6)** : cette section reliait autrefois l'indexation SEO au « kill mechanism » — un mécanisme de notation automatique des signaux de croissance qui pouvait décider seul d'arrêter un projet T0 mal indexé. Ce mécanisme (ainsi que `kill_check.py` et les paliers T0/T1/T2 qu'il pilotait) a été retiré du framework. Les métriques ci-dessous restent pertinentes, mais leur interprétation est désormais entièrement entre les mains de l'opérateur.
+
+Un projet qui ne mobilise que le socle core (une simple landing, sans module optionnel activé) bénéficie déjà de tout le socle SEO ci-dessus. Les métriques à surveiller à ce stade sont différentes :
 
 - **Google Search Console** : la landing est-elle indexée ?
 - **Position moyenne** sur les mots-clés cibles (extraits du harvest de la phase idée).
 - **Taux de clic** dans les SERPs sur les impressions générées.
 
-Un T0 mal indexé après 21 jours est un signal négatif fort pour le kill mechanism (voir Chap 2).
+Une landing mal indexée après 21 jours est un signal opérationnel fort, mais c'est à l'opérateur humain d'en tirer les conséquences — retravailler le contenu, activer d'autres modules, ou archiver le projet manuellement (`POST /api/fleet/projects/{name}/archive`, voir Chap 20). GitSky ne prend plus cette décision automatiquement.
 
 ---
 
-*Notre socle est désormais complet côté frontend et backend, à tous les tiers. La partie suivante détaille les modules optionnels qui viennent enrichir un projet selon ses besoins.*
+*Notre socle est désormais complet côté frontend et backend, sans condition de palier. La partie suivante détaille les modules optionnels qui viennent enrichir un projet selon ses besoins.*

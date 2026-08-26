@@ -10,15 +10,15 @@ faire depuis le fleet dashboard.
 | Fréquence | Tâche | Script |
 |---|---|---|
 | 60 s | Poll `/health` de la flotte → alerte `deployment_failed` | `fleet-health.sh` |
+| Toutes les 2 min | Redeploy des projets avec un push GitHub en attente sur la branche de déploiement (Chap 26) | `deploy-on-push.sh` |
 | Quotidien 02:00 | Sauvegarde 3-2-1 de toutes les bases projet | `backup-fleet.sh` |
-| Quotidien 03:00 | Kill check (déclenché par le dashboard, Chap 20) | — |
 | Horaire | Jauge disque consolidée | `fleet-disk.sh` |
 | Hebdo (dim 05:00) | Purge des images Docker orphelines | `docker image prune` |
 | Mensuel (1er, 04:00) | Test de restauration d'un projet tiré au hasard | `test-restore-fleet.sh` |
 | Mensuel | Rotation des logs de maintenance (> 30 j) | `find … -delete` |
 
-La sauvegarde de 02:00 précède **volontairement** le kill_check de 03:00 : un
-projet sur le point d'être tué a ainsi une sauvegarde fraîche.
+La sauvegarde de 02:00 précède **volontairement** le test de restauration
+mensuel de 04:00 : celui-ci a ainsi toujours une sauvegarde fraîche à vérifier.
 
 ## Tâches manuelles
 
