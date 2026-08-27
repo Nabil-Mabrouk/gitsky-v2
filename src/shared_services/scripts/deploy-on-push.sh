@@ -27,6 +27,10 @@
 #   RUN_COPIER_UPDATE  — "1" pour lancer `copier update --trust` avant le build
 #                        (défaut désactivé : peut demander une résolution de
 #                        conflit interactive, pas sûr sans supervision, sous cron)
+#   HEALTH_CHECK_RETRIES / HEALTH_CHECK_DELAY — essais / délai (s) entre deux
+#                        sondes /health post-build (défauts 6 / 5, soit 30 s
+#                        max) — configurables pour que les tests n'attendent
+#                        pas réellement ce délai.
 # =============================================================================
 
 set -euo pipefail
@@ -36,6 +40,8 @@ FLEET_REGISTER_TOKEN="${FLEET_REGISTER_TOKEN:?FLEET_REGISTER_TOKEN requis}"
 PROJECTS_DIR="${PROJECTS_DIR:-/opt/gitsky/projects}"
 STATE_FILE="${STATE_FILE:-/var/lib/gitsky/deploy-on-push.state}"
 RUN_COPIER_UPDATE="${RUN_COPIER_UPDATE:-0}"
+HEALTH_CHECK_RETRIES="${HEALTH_CHECK_RETRIES:-6}"
+HEALTH_CHECK_DELAY="${HEALTH_CHECK_DELAY:-5}"
 
 mkdir -p "$(dirname "$STATE_FILE")"
 LAST_ID=$(cat "$STATE_FILE" 2>/dev/null || echo 0)
@@ -84,17 +90,28 @@ deploy_one() {
     # (127, "not found"), quel que soit le succès réel du redeploy. Même bug,
     # même fix que fleet-health.sh (trouvé indépendamment ici en vérifiant
     # un vrai cycle de redeploy bout en bout).
-    if docker exec "${project}_backend" python -c '
+    #
+    # HEALTH_CHECK_RETRIES essais / HEALTH_CHECK_DELAY s (30 s par défaut) :
+    # `docker compose up -d --build` rend la main dès que les conteneurs
+    # DÉMARRENT, pas quand Gunicorn est prêt à accepter des connexions — un
+    # premier essai immédiat échoue quasi systématiquement (bug de prod réel,
+    # constaté sur un vrai cycle : le redeploy avait réellement réussi, seule
+    # la sonde était trop pressée). Même ordre de grandeur que le
+    # start-period du HEALTHCHECK du Dockerfile.
+    for _ in $(seq 1 "$HEALTH_CHECK_RETRIES"); do
+        if docker exec "${project}_backend" python -c '
 import sys, urllib.request
 try:
     sys.exit(0 if urllib.request.urlopen("http://localhost:8000/health", timeout=4).status == 200 else 1)
 except Exception:
     sys.exit(1)
 ' >/dev/null 2>&1; then
-        echo "  ✓ ${project} redéployé, /health répond."
-        report "$project" "success" "redeploy ok"
-        return 0
-    fi
+            echo "  ✓ ${project} redéployé, /health répond."
+            report "$project" "success" "redeploy ok"
+            return 0
+        fi
+        sleep "$HEALTH_CHECK_DELAY"
+    done
     echo "  ✗ ${project} : redeploy fait mais /health ne répond pas."
     report "$project" "failure" "redeploy fait mais /health ne répond pas"
     return 1

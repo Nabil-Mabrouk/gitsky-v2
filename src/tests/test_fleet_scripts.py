@@ -57,6 +57,13 @@ def _fake_curl(fakebin: Path, log: Path, *, fail: bool = False) -> None:
 def _run(script_name: str, fakebin: Path, cwd: Path, **env_over) -> subprocess.CompletedProcess:
     env = dict(os.environ)
     env["PATH"] = str(fakebin) + os.pathsep + env["PATH"]
+    # deploy-on-push.sh retente sa sonde /health (HEALTH_CHECK_RETRIES fois,
+    # HEALTH_CHECK_DELAY s d'écart) — sans ça un test sur le chemin d'échec
+    # dormirait réellement 30 s. Sans effet sur les autres scripts (lus,
+    # jamais consultés). Un test qui veut vérifier une vraie retentative
+    # peut toujours surcharger ces clés via env_over.
+    env["HEALTH_CHECK_RETRIES"] = "1"
+    env["HEALTH_CHECK_DELAY"] = "0"
     env.update(env_over)
     return subprocess.run(
         [BASH, str(SHARED_SCRIPTS / script_name)],
