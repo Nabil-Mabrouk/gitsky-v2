@@ -294,6 +294,15 @@ def test_initial_commit_contains_no_artifacts():
         assert [f for f in suivis if f.endswith(".pyc")] == []
         assert [f for f in suivis if "__pycache__" in f] == []
         assert [f for f in suivis if f.endswith(".db")] == []
+        # Bug de prod réel : sans .gitignore dans le template, .env (SECRET_KEY,
+        # mot de passe Postgres, et pour le fleet dashboard FLEET_GITHUB_TOKEN/
+        # SMTP_PASSWORD) entrait dans le commit initial — resté invisible tant
+        # qu'aucun projet n'avait jamais été poussé vers un dépôt distant.
+        assert ".env" not in suivis
+        assert (dst / ".env").is_file(), ".env doit exister sur disque, juste pas être suivi"
+        # Le gabarit .env.backup.example, lui, DOIT être committé (Chap 23) —
+        # vérifie que l'exception du .gitignore ne sur-exclut pas.
+        assert ".env.backup.example" in suivis
     finally:
         _rmtree_robuste(tmp)
 
