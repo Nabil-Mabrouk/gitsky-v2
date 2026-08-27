@@ -396,6 +396,80 @@ def test_fleet_restore_skips_reporting_without_fleet_url(tmp_path):
     assert not curl_log.exists()
 
 
+# --- fleet-health.sh ---------------------------------------------------------
+
+
+def _fake_docker_health(fakebin: Path, *, probe_ok: bool = True) -> None:
+    # ps -> un backend "pain-scraper_backend" ; exec -> simule le VRAI
+    # conteneur (image sans curl, Chap 21) : toute invocation contenant
+    # "curl" échoue en 127 ("not found"), le reste (la sonde Python
+    # attendue) réussit selon probe_ok.
+    _fake_docker(fakebin, rf"""
+        case "$1" in
+          ps)   echo "pain-scraper_backend" ;;
+          exec)
+            case "$*" in
+              *curl*) exit 127 ;;
+              *) {"exit 0" if probe_ok else "exit 1"} ;;
+            esac
+            ;;
+        esac
+    """)
+
+
+def test_fleet_health_updates_state_via_python_probe_not_curl(tmp_path):
+    # Bug réel de prod (trouvé en vérifiant le monitoring après un
+    # redéploiement de flotte) : les images backend GitSky n'ont pas curl
+    # (Chap 21, le HEALTHCHECK du Dockerfile sonde déjà en Python) — un
+    # `docker exec ... curl` échouait TOUJOURS en silence (127), l'état ne
+    # se mettait jamais à jour, et chaque projet finissait par être déclaré
+    # deployment_failed après 5 min alors qu'il tournait normalement.
+    fakebin = tmp_path / "bin"; fakebin.mkdir()
+    state = tmp_path / "state" / "fleet-health.state"
+    curl_log = tmp_path / "curl_calls.log"
+    _fake_docker_health(fakebin, probe_ok=True)
+    _fake_curl(fakebin, curl_log)
+
+    r = _run("fleet-health.sh", fakebin, tmp_path,
+              FLEET_URL="https://api.example.com", FLEET_REGISTER_TOKEN="tok",
+              STATE_FILE=state.as_posix())
+
+    assert r.returncode == 0, r.stderr
+    assert state.exists() and "pain-scraper=" in state.read_text()
+    call = curl_log.read_text()
+    assert '"last_success":{"pain-scraper"' in call
+
+
+def test_fleet_health_leaves_state_unset_when_probe_fails(tmp_path):
+    fakebin = tmp_path / "bin"; fakebin.mkdir()
+    state = tmp_path / "state" / "fleet-health.state"
+    curl_log = tmp_path / "curl_calls.log"
+    _fake_docker_health(fakebin, probe_ok=False)
+    _fake_curl(fakebin, curl_log)
+
+    r = _run("fleet-health.sh", fakebin, tmp_path,
+              FLEET_URL="https://api.example.com", FLEET_REGISTER_TOKEN="tok",
+              STATE_FILE=state.as_posix())
+
+    assert r.returncode == 0, r.stderr
+    assert state.read_text().strip() == ""
+    assert '"last_success":{}' in curl_log.read_text()
+
+
+def test_fleet_health_probe_never_invokes_curl_inside_container():
+    # Garde-fou statique : la sonde interne au conteneur doit rester en
+    # Python — curl n'existe dans aucune image backend GitSky.
+    body = (SHARED_SCRIPTS / "fleet-health.sh").read_text(encoding="utf-8")
+    # Isole la commande `if docker exec ... python -c '...'` (multiligne) du
+    # reste du script (qui, lui, invoque légitimement curl pour le POST final
+    # vers /api/fleet/projects/health-sweep, et en parle en commentaire) —
+    # ancre sur la forme exacte de l'appel, pas sur "docker exec" seul (qui
+    # apparaît aussi, en toutes lettres, dans le commentaire expliquant le bug).
+    probe = body.split("if docker exec", 1)[1].split("' >/dev/null", 1)[0]
+    assert "curl" not in probe
+    assert "python -c" in body
+
+
 # --- fleet-disk.sh -----------------------------------------------------------
 
 

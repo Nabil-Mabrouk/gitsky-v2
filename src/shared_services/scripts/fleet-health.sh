@@ -34,8 +34,20 @@ CONTAINERS=$(docker ps --format '{{.Names}}' --filter 'name=_backend$')
 # Met à jour l'état : succès -> NOW, sinon on conserve le dernier succès connu.
 for container in $CONTAINERS; do
     project="${container%_backend}"
-    if docker exec "$container" \
-            sh -c 'curl -fsS http://localhost:8000/health >/dev/null 2>&1'; then
+    # Python, pas curl : les images backend GitSky (Chap 21) n'installent
+    # délibérément pas curl (le HEALTHCHECK du Dockerfile sonde déjà en
+    # Python) — un `docker exec ... curl` échoue silencieusement partout
+    # ("curl: not found", code 127), l'état ne se met jamais à jour, et
+    # tout projet finit par être déclaré `deployment_failed` après 5 min
+    # sans qu'aucun ne le soit réellement (bug de prod réel, trouvé en
+    # vérifiant le monitoring après un redéploiement de flotte).
+    if docker exec "$container" python -c '
+import sys, urllib.request
+try:
+    sys.exit(0 if urllib.request.urlopen("http://localhost:8000/health", timeout=4).status == 200 else 1)
+except Exception:
+    sys.exit(1)
+' >/dev/null 2>&1; then
         grep -v "^${project}=" "$STATE_FILE" > "${STATE_FILE}.tmp" 2>/dev/null || true
         echo "${project}=${NOW}" >> "${STATE_FILE}.tmp"
         mv "${STATE_FILE}.tmp" "$STATE_FILE"
