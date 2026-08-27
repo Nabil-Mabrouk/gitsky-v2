@@ -209,6 +209,20 @@ def test_fleet_backend_mounts_generator_and_projects_dir():
     )
 
 
+def test_fleet_backend_mounts_monorepo_gitdir():
+    # Bug de prod réel : src/generator est un sous-module git, son .git n'est
+    # qu'un pointeur ("gitdir: ../../.git/modules/src/generator") vers le
+    # vrai dépôt dans le .git du monorepo parent. Sans CE montage en plus de
+    # GITSKY_GENERATOR_PATH, `copier.run_copy` exécuté dans ce conteneur ne
+    # peut jamais résoudre le commit du template — aucune erreur visible,
+    # juste `_commit` absent de .copier-answers.yml, et donc un projet créé
+    # via le wizard qui ne peut plus jamais recevoir `copier update`.
+    with projet_genere("fleet-dashboard", modules={"fleet": True}) as dst:
+        compose = yaml.safe_load((dst / "docker-compose.yml").read_text(encoding="utf-8"))
+    volumes = compose["services"]["backend"]["volumes"]
+    assert any(v.startswith("${GITSKY_MONOREPO_GITDIR") and v.endswith(":ro") for v in volumes)
+
+
 def test_ordinary_project_has_no_backend_volumes():
     # Un projet sans module fleet n'a aucune raison de monter quoi que ce
     # soit d'hôte dans son backend.

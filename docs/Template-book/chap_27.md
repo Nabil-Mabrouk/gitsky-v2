@@ -34,6 +34,7 @@ Un seul écran (`/admin/fleet/new`, accessible depuis le bouton « + Nouveau pro
 | Variable | Rôle | Défaut |
 |---|---|---|
 | `GITSKY_GENERATOR_PATH` | Chemin vers le dossier du générateur (contient `copier.yml`) | absent — la création de projet échoue en `503` sans lui |
+| `GITSKY_MONOREPO_GITDIR` | Chemin vers le `.git` du monorepo parent (voir note ci-dessous) | `/opt/gitsky/gitsky-v2/.git` |
 | `PROJECTS_DIR` | Racine où les projets sont générés (même variable que `deploy-on-push.sh`, Chap 26) | `/opt/gitsky/projects` |
 | `FLEET_SUBDOMAIN_SUFFIX` | Suffixe attribué à un projet créé sans domaine explicite dans le wizard, et utilisé par `publish.evaluate_promotion` (Chap 24) pour reconnaître un sous-domaine jetable de la flotte | `.mystudio.com` — **l'exemple du livre, pas un domaine réel.** Ne JAMAIS déployer sans le surcharger sur son propre domaine wildcard (ex. `.0-hitl.com`) : sinon tout projet créé sans domaine explicite reçoit un sous-domaine d'un domaine qui n'existe pas — génération et enregistrement réussissent, mais Traefik ne peut obtenir aucun certificat ACME pour lui (bug de prod réel, corrigé le 27/08 : ce défaut était codé en dur dans `publish.py`, pas configurable du tout avant cette date) |
 
@@ -50,6 +51,18 @@ conteneur (`appuser`, jamais root — Chap 21) ; un `docker compose up`
 sans erreur mais une création qui échoue silencieusement sur une permission
 refusée est le symptôme d'un montage dont le propriétaire hôte ne correspond
 pas.
+
+**`GITSKY_MONOREPO_GITDIR` — bug de prod réel, trouvé en essayant de mettre à
+jour un projet créé par le wizard.** `src/generator` est un sous-module git :
+son `.git` n'est pas un vrai dépôt, juste un pointeur (`gitdir: ../../.git/
+modules/src/generator`) vers le dépôt réel dans le `.git` du monorepo parent.
+Sans monter *aussi* ce chemin, `copier.run_copy` exécuté dans le conteneur ne
+peut jamais résoudre le commit du template — **aucune erreur visible** : la
+génération réussit normalement, seul `_commit` manque silencieusement dans
+`.copier-answers.yml`, ce qui rend le projet définitivement incapable de
+recevoir un `copier update` par la suite. Un projet généré en dehors du
+wizard (`copier copy` sur l'hôte, Chap 17) n'est jamais concerné : le
+`.git` s'y résout normalement, sans traverser de montage.
 
 **Deux dépendances manquent volontairement de l'image de base et doivent être
 ajoutées à celle du fleet dashboard, pas au template :**
@@ -90,7 +103,7 @@ modifie de son côté.
 
 ## Checklist du Chapitre
 
-- [ ] `GITSKY_GENERATOR_PATH` et `PROJECTS_DIR` sont configurés sur le fleet dashboard en production, ET montés dans le conteneur `backend` (`docker-compose.yml`, pas seulement `.env`)
+- [ ] `GITSKY_GENERATOR_PATH`, `GITSKY_MONOREPO_GITDIR` et `PROJECTS_DIR` sont configurés sur le fleet dashboard en production, ET montés dans le conteneur `backend` (`docker-compose.yml`, pas seulement `.env`) — sans `GITSKY_MONOREPO_GITDIR`, un projet créé par le wizard perd silencieusement sa capacité à recevoir `copier update`
 - [ ] `FLEET_SUBDOMAIN_SUFFIX` est surchargé sur le vrai domaine wildcard du déploiement (jamais laissé à `.mystudio.com`)
 - [ ] Le répertoire hôte de `PROJECTS_DIR` est accessible en écriture par l'utilisateur `appuser` du conteneur
 - [ ] Les paquets `copier` et `copier-template-extensions` sont installés dans l'image du fleet dashboard (absents du `requirements.txt` de base, par design)
