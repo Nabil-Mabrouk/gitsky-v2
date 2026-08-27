@@ -624,6 +624,53 @@ def test_deploy_reports_failure_when_health_check_fails_after_build(tmp_path):
     assert "health" in call
 
 
+def _fake_docker_deploy_realistic_probe(fakebin: Path) -> None:
+    # compose/git : succès silencieux. exec : simule le VRAI conteneur
+    # backend (Chap 21, sans curl) - toute invocation contenant "curl"
+    # échoue en 127, la sonde Python attendue réussit.
+    _fake_docker(fakebin, r"""
+        case "$1" in
+          compose) exit 0 ;;
+          exec)
+            case "$*" in
+              *curl*) exit 127 ;;
+              *) exit 0 ;;
+            esac
+            ;;
+        esac
+    """)
+
+
+def test_deploy_reports_success_via_python_probe_not_curl(tmp_path):
+    # Bug réel de prod, trouvé en vérifiant un vrai cycle de redeploy bout en
+    # bout : `docker exec ... curl` échoue TOUJOURS en silence (127) contre
+    # les images backend GitSky (pas de curl, Chap 21) - le redeploy
+    # réussissait réellement mais était systématiquement rapporté en échec.
+    fakebin = tmp_path / "bin"; fakebin.mkdir()
+    projects = _make_project_dirs(tmp_path / "projects", "pain-scraper")
+    curl_log = tmp_path / "curl_calls.log"
+    _fake_curl_deploy(fakebin, curl_log, pending="1\tpain-scraper")
+    _fake_git(fakebin)
+    _fake_docker_deploy_realistic_probe(fakebin)
+    state = tmp_path / "state" / "deploy.state"
+
+    r = _run("deploy-on-push.sh", fakebin, tmp_path,
+              FLEET_URL="https://api.example.com", FLEET_REGISTER_TOKEN="tok",
+              PROJECTS_DIR=projects.as_posix(), STATE_FILE=state.as_posix())
+
+    assert r.returncode == 0, r.stderr
+    assert '"status":"success"' in curl_log.read_text()
+
+
+def test_deploy_probe_never_invokes_curl_inside_container():
+    # Garde-fou statique : la sonde interne au conteneur doit rester en
+    # Python — curl n'existe dans aucune image backend GitSky.
+    body = (SHARED_SCRIPTS / "deploy-on-push.sh").read_text(encoding="utf-8")
+    probe = body.split("if docker exec", 1)[1].split("' >/dev/null", 1)[0]
+    assert "curl" not in probe
+    assert "python -c" in body
+
+
 def test_deploy_exits_cleanly_when_nothing_pending(tmp_path):
     fakebin = tmp_path / "bin"; fakebin.mkdir()
     curl_log = tmp_path / "curl_calls.log"

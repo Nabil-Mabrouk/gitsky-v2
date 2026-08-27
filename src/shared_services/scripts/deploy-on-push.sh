@@ -78,7 +78,19 @@ deploy_one() {
     fi
 
     # Convention `{projet}_backend` (compose de prod), même que fleet-health.sh.
-    if docker exec "${project}_backend" sh -c 'curl -fsS http://localhost:8000/health >/dev/null 2>&1'; then
+    # Python, pas curl : les images backend GitSky (Chap 21) n'installent
+    # délibérément pas curl (le HEALTHCHECK du Dockerfile sonde déjà en
+    # Python) — un `docker exec ... curl` échouait donc TOUJOURS en silence
+    # (127, "not found"), quel que soit le succès réel du redeploy. Même bug,
+    # même fix que fleet-health.sh (trouvé indépendamment ici en vérifiant
+    # un vrai cycle de redeploy bout en bout).
+    if docker exec "${project}_backend" python -c '
+import sys, urllib.request
+try:
+    sys.exit(0 if urllib.request.urlopen("http://localhost:8000/health", timeout=4).status == 200 else 1)
+except Exception:
+    sys.exit(1)
+' >/dev/null 2>&1; then
         echo "  ✓ ${project} redéployé, /health répond."
         report "$project" "success" "redeploy ok"
         return 0
