@@ -162,6 +162,29 @@ def test_create_repo_unknown_project_is_404():
     assert r.status_code == 404
 
 
+def test_webhook_url_targets_api_subdomain_not_frontend():
+    # Bug de prod réel : construite depuis settings.site_url (l'origine du
+    # FRONTEND, Chap 10 SEO), l'URL du webhook atterrissait sur le routeur
+    # Traefik du frontend (Host(`0-hitl.com`)) — jamais sur le backend
+    # (Host(`api.0-hitl.com`), seul routeur qui expose réellement cette
+    # route). GitHub rapportait pourtant "200 active" : le frontend renvoie
+    # son index.html (SPA fallback) pour toute route inconnue, un faux
+    # positif silencieux — même classe de bug que l'incident /leads (Chap 18).
+    # `app.modules.fleet.__init__` fait `from .router import router` : ça
+    # réécrit l'ATTRIBUT `app.modules.fleet.router` avec l'instance APIRouter
+    # (même nom que le sous-module) — `import ... as` normal retombe donc
+    # dessus. sys.modules, lui, garde la vraie référence au module (déjà
+    # importé plus haut dans ce fichier via `from app.modules.fleet import
+    # router as fleet_router`, qui importe le sous-module avant l'attribut).
+    _router_module = sys.modules["app.modules.fleet.router"]
+
+    class _FakeSettings:
+        site_url = "https://0-hitl.com"
+
+    url = _router_module._webhook_url(_FakeSettings(), "politique-ia")
+    assert url == "https://api.0-hitl.com/api/fleet/webhooks/github/politique-ia"
+
+
 def test_create_repo_success_installs_webhook_and_updates_project(monkeypatch):
     _register("with-webhook")
     monkeypatch.setattr(
