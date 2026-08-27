@@ -64,8 +64,8 @@ recevoir un `copier update` par la suite. Un projet généré en dehors du
 wizard (`copier copy` sur l'hôte, Chap 17) n'est jamais concerné : le
 `.git` s'y résout normalement, sans traverser de montage.
 
-**Deux dépendances manquent volontairement de l'image de base et doivent être
-ajoutées à celle du fleet dashboard, pas au template :**
+**Trois personnalisations manquent volontairement de l'image de base et
+doivent être ajoutées à celle du fleet dashboard, pas au template :**
 
 - **Le paquet `copier`** (et `copier-template-extensions` — le générateur
   déclare `ModuleResolver` comme extension Jinja dans `copier.yml`, Chap 17 :
@@ -87,9 +87,20 @@ ajoutées à celle du fleet dashboard, pas au template :**
   elle-même. Même raisonnement que `copier` : ajouté au `Dockerfile` du fleet
   dashboard, pas au `Dockerfile` du template (une capacité que seul le fleet
   dashboard utilise).
+- **`git config --global --add safe.directory "*"`, exécuté en `RUN` juste
+  après `USER appuser`.** Bug de prod réel, trouvé en creusant pourquoi
+  `_commit` restait absent même une fois `GITSKY_MONOREPO_GITDIR` monté
+  (ci-dessus) : les dépôts montés depuis l'hôte appartiennent à `root`, mais
+  `copier.run_copy` tourne comme `appuser` (Chap 21) — UID différent, donc
+  git refuse toute opération dessus (« detected dubious ownership »).
+  Symptôme identique au précédent : **aucune erreur visible**, juste
+  `_commit` qui ne se résout jamais. Doit s'exécuter APRÈS `USER appuser`
+  (`git config --global` écrit dans le `$HOME` de l'utilisateur qui l'appelle)
+  — une capacité utile seulement là où `git` tourne contre un dépôt monté
+  depuis l'hôte, donc encore une fois propre au fleet dashboard.
 
-Ces deux personnalisations (paquets Python, paquet système) vivent dans les
-fichiers du projet fleet-dashboard lui-même (`requirements.txt`,
+Ces trois personnalisations (deux paquets, une ligne de config git) vivent
+dans les fichiers du projet fleet-dashboard lui-même (`requirements.txt`,
 `Dockerfile`) — comme la vitrine art-dirigée (Chap 24), elles survivent à un
 `copier update` tant qu'elles ne recouvrent pas une ligne que le template
 modifie de son côté.
@@ -108,6 +119,7 @@ modifie de son côté.
 - [ ] Le répertoire hôte de `PROJECTS_DIR` est accessible en écriture par l'utilisateur `appuser` du conteneur
 - [ ] Les paquets `copier` et `copier-template-extensions` sont installés dans l'image du fleet dashboard (absents du `requirements.txt` de base, par design)
 - [ ] Le binaire `git` est installé dans le `Dockerfile` du fleet dashboard (absent de l'image `python:3.12-slim` de base, par design)
+- [ ] `git config --global --add safe.directory "*"` est exécuté APRÈS `USER appuser` dans le `Dockerfile` du fleet dashboard — sinon `_commit` ne se résout jamais pour un projet créé par le wizard, sans aucune erreur visible
 - [ ] Je sais lire un résultat de création : `generated`/`github_repo`/`webhook_installed`/`pushed`/`deploy_triggered` et la liste `warnings`
 - [ ] Je sais qu'un warning n'est jamais une raison de relancer toute la création — les endpoints `create-repo`/`link-repo` (Chap 26) reprennent la main sur un projet déjà généré
 - [ ] Je sais que la provision de base réelle et le câblage DNS restent hors périmètre de ce wizard
