@@ -33,6 +33,7 @@ from sqlalchemy.ext.asyncio import (  # noqa: E402
 import app.core.models  # noqa: E402,F401
 import app.modules.fleet.models  # noqa: E402,F401
 from app.core.auth.security import create_access_token, hash_password  # noqa: E402
+from app.core.config import get_settings  # noqa: E402
 from app.core.database import Base, get_db  # noqa: E402
 from app.core.models import User, UserRole  # noqa: E402
 from app.modules.fleet import generator_client, git_client, github_client  # noqa: E402
@@ -219,6 +220,27 @@ def test_create_project_skip_github_registers_with_fleet_subdomain(monkeypatch, 
     assert body["warnings"] == []
     assert body["project"]["domain"] == "skip-github.mystudio.com"
     assert body["project"]["status"] == "active"
+
+
+def test_create_project_without_domain_uses_configured_subdomain_suffix(monkeypatch, tmp_path):
+    # Régression (27/08, prod) : le suffixe par défaut était codé en dur
+    # (publish.FLEET_SUBDOMAIN_SUFFIX) — un déploiement réel qui règle
+    # FLEET_SUBDOMAIN_SUFFIX dans son .env doit voir ce réglage EFFECTIVEMENT
+    # utilisé par le wizard, pas seulement par publish.evaluate_promotion.
+    monkeypatch.setattr(generator_client, "generate_project", _fake_generate(tmp_path))
+    monkeypatch.setenv("FLEET_SUBDOMAIN_SUFFIX", ".0-hitl.com")
+    get_settings.cache_clear()
+    try:
+        r = client.post(
+            "/api/fleet/projects",
+            json={"name": "real-domain", "modules": {}},
+            headers=_auth(SEED["admin_id"]),
+        )
+        assert r.status_code == 201
+        assert r.json()["project"]["domain"] == "real-domain.0-hitl.com"
+    finally:
+        monkeypatch.undo()
+        get_settings.cache_clear()
 
 
 def test_create_project_with_github_create_and_successful_push(monkeypatch, tmp_path):

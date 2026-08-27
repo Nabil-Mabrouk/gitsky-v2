@@ -35,6 +35,7 @@ Un seul écran (`/admin/fleet/new`, accessible depuis le bouton « + Nouveau pro
 |---|---|---|
 | `GITSKY_GENERATOR_PATH` | Chemin vers le dossier du générateur (contient `copier.yml`) | absent — la création de projet échoue en `503` sans lui |
 | `PROJECTS_DIR` | Racine où les projets sont générés (même variable que `deploy-on-push.sh`, Chap 26) | `/opt/gitsky/projects` |
+| `FLEET_SUBDOMAIN_SUFFIX` | Suffixe attribué à un projet créé sans domaine explicite dans le wizard, et utilisé par `publish.evaluate_promotion` (Chap 24) pour reconnaître un sous-domaine jetable de la flotte | `.mystudio.com` — **l'exemple du livre, pas un domaine réel.** Ne JAMAIS déployer sans le surcharger sur son propre domaine wildcard (ex. `.0-hitl.com`) : sinon tout projet créé sans domaine explicite reçoit un sous-domaine d'un domaine qui n'existe pas — génération et enregistrement réussissent, mais Traefik ne peut obtenir aucun certificat ACME pour lui (bug de prod réel, corrigé le 27/08 : ce défaut était codé en dur dans `publish.py`, pas configurable du tout avant cette date) |
 
 Poser ces deux variables dans le `.env` du fleet dashboard ne suffit pas : ce
 sont des chemins **hôte**, et le backend tourne dans un conteneur avec son
@@ -90,6 +91,7 @@ modifie de son côté.
 ## Checklist du Chapitre
 
 - [ ] `GITSKY_GENERATOR_PATH` et `PROJECTS_DIR` sont configurés sur le fleet dashboard en production, ET montés dans le conteneur `backend` (`docker-compose.yml`, pas seulement `.env`)
+- [ ] `FLEET_SUBDOMAIN_SUFFIX` est surchargé sur le vrai domaine wildcard du déploiement (jamais laissé à `.mystudio.com`)
 - [ ] Le répertoire hôte de `PROJECTS_DIR` est accessible en écriture par l'utilisateur `appuser` du conteneur
 - [ ] Les paquets `copier` et `copier-template-extensions` sont installés dans l'image du fleet dashboard (absents du `requirements.txt` de base, par design)
 - [ ] Le binaire `git` est installé dans le `Dockerfile` du fleet dashboard (absent de l'image `python:3.12-slim` de base, par design)
