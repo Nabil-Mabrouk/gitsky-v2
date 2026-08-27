@@ -36,7 +36,49 @@ Un seul écran (`/admin/fleet/new`, accessible depuis le bouton « + Nouveau pro
 | `GITSKY_GENERATOR_PATH` | Chemin vers le dossier du générateur (contient `copier.yml`) | absent — la création de projet échoue en `503` sans lui |
 | `PROJECTS_DIR` | Racine où les projets sont générés (même variable que `deploy-on-push.sh`, Chap 26) | `/opt/gitsky/projects` |
 
-**Le paquet `copier` n'est pas dans `requirements.txt` du template**, par le même raisonnement que le SDK Stripe (Chap 16) : c'est une dépendance propre au module `fleet`, pas à tout projet généré — l'ajouter inconditionnellement gonflerait l'image de chaque projet pour une capacité que seul le fleet dashboard utilise. Une image de fleet dashboard doit l'installer en plus. L'import est paresseux (`import copier` à l'intérieur de la fonction, pas en tête de module) : un projet qui n'active pas `module_fleet` ne charge jamais ce code, et un fleet dashboard sans `copier` installé démarre quand même — la création de projet échoue seulement au moment où elle est tentée, pas au démarrage du process.
+Poser ces deux variables dans le `.env` du fleet dashboard ne suffit pas : ce
+sont des chemins **hôte**, et le backend tourne dans un conteneur avec son
+propre filesystem isolé. `docker-compose.yml` (généré, module `fleet`
+uniquement) monte donc les deux chemins dans le conteneur `backend`, hôte ==
+conteneur (même principe que `SHARED_SERVICES_NETWORK` ci-dessus) :
+`GITSKY_GENERATOR_PATH`/`PROJECTS_DIR` lus depuis l'intérieur du conteneur
+restent valides, sans traduction. Le générateur est monté en lecture seule ;
+`PROJECTS_DIR` en lecture-écriture — c'est là que chaque génération écrit. Le
+répertoire hôte doit être accessible en écriture par l'utilisateur du
+conteneur (`appuser`, jamais root — Chap 21) ; un `docker compose up`
+sans erreur mais une création qui échoue silencieusement sur une permission
+refusée est le symptôme d'un montage dont le propriétaire hôte ne correspond
+pas.
+
+**Deux dépendances manquent volontairement de l'image de base et doivent être
+ajoutées à celle du fleet dashboard, pas au template :**
+
+- **Le paquet `copier`** (et `copier-template-extensions` — le générateur
+  déclare `ModuleResolver` comme extension Jinja dans `copier.yml`, Chap 17 :
+  sans ce paquet, `copier.run_copy` ne peut pas charger le loader
+  d'extensions, même avec `copier` seul installé), par le même raisonnement
+  que le SDK Stripe (Chap 16) : une dépendance propre au module `fleet`, pas
+  à tout projet généré — l'ajouter inconditionnellement gonflerait l'image de
+  chaque projet pour une capacité que seul le fleet dashboard utilise.
+  L'import est paresseux (`import copier` à l'intérieur de la fonction, pas
+  en tête de module) : un projet qui n'active pas `module_fleet` ne charge
+  jamais ce code, et un fleet dashboard sans `copier` installé démarre quand
+  même — la création de projet échoue seulement au moment où elle est
+  tentée, pas au démarrage du process.
+- **Le binaire `git`**, absent de l'image `python:3.12-slim` (Chap 21). Les
+  `_tasks` de `copier.yml` l'invoquent en subprocess (`git init`, `git add`,
+  `git commit`, Chap 17) lors de toute génération — **sans filet** : à la
+  différence du premier push (`git_client.push_initial_commit`, best-effort,
+  §Ce qui Fonctionne Aujourd'hui), un `git` absent fait échouer la génération
+  elle-même. Même raisonnement que `copier` : ajouté au `Dockerfile` du fleet
+  dashboard, pas au `Dockerfile` du template (une capacité que seul le fleet
+  dashboard utilise).
+
+Ces deux personnalisations (paquets Python, paquet système) vivent dans les
+fichiers du projet fleet-dashboard lui-même (`requirements.txt`,
+`Dockerfile`) — comme la vitrine art-dirigée (Chap 24), elles survivent à un
+`copier update` tant qu'elles ne recouvrent pas une ligne que le template
+modifie de son côté.
 
 ## Ce qui Manque Encore
 
@@ -47,8 +89,10 @@ Un seul écran (`/admin/fleet/new`, accessible depuis le bouton « + Nouveau pro
 
 ## Checklist du Chapitre
 
-- [ ] `GITSKY_GENERATOR_PATH` et `PROJECTS_DIR` sont configurés sur le fleet dashboard en production
-- [ ] Le paquet `copier` est installé dans l'image du fleet dashboard (absent du `requirements.txt` de base, par design)
+- [ ] `GITSKY_GENERATOR_PATH` et `PROJECTS_DIR` sont configurés sur le fleet dashboard en production, ET montés dans le conteneur `backend` (`docker-compose.yml`, pas seulement `.env`)
+- [ ] Le répertoire hôte de `PROJECTS_DIR` est accessible en écriture par l'utilisateur `appuser` du conteneur
+- [ ] Les paquets `copier` et `copier-template-extensions` sont installés dans l'image du fleet dashboard (absents du `requirements.txt` de base, par design)
+- [ ] Le binaire `git` est installé dans le `Dockerfile` du fleet dashboard (absent de l'image `python:3.12-slim` de base, par design)
 - [ ] Je sais lire un résultat de création : `generated`/`github_repo`/`webhook_installed`/`pushed`/`deploy_triggered` et la liste `warnings`
 - [ ] Je sais qu'un warning n'est jamais une raison de relancer toute la création — les endpoints `create-repo`/`link-repo` (Chap 26) reprennent la main sur un projet déjà généré
 - [ ] Je sais que la provision de base réelle et le câblage DNS restent hors périmètre de ce wizard

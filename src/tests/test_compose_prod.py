@@ -191,3 +191,27 @@ def test_ordinary_project_never_touches_shared_services_net():
         compose = yaml.safe_load((dst / "docker-compose.yml").read_text(encoding="utf-8"))
     assert "shared-services-net" not in compose["services"]["backend"]["networks"]
     assert "shared-services-net" not in compose["networks"]
+
+
+# --- volumes du générateur : réservés au module fleet (Chap 27) ------------
+
+
+def test_fleet_backend_mounts_generator_and_projects_dir():
+    # Sans ces montages, `copier.run_copy` (Chap 27) n'a aucun accès
+    # filesystem réel aux chemins hôte désignés par GITSKY_GENERATOR_PATH /
+    # PROJECTS_DIR, quelle que soit leur valeur dans .env.
+    with projet_genere("fleet-dashboard", modules={"fleet": True}) as dst:
+        compose = yaml.safe_load((dst / "docker-compose.yml").read_text(encoding="utf-8"))
+    volumes = compose["services"]["backend"]["volumes"]
+    assert any(v.startswith("${GITSKY_GENERATOR_PATH") and v.endswith(":ro") for v in volumes)
+    assert any(
+        v.startswith("${PROJECTS_DIR") and not v.endswith(":ro") for v in volumes
+    )
+
+
+def test_ordinary_project_has_no_backend_volumes():
+    # Un projet sans module fleet n'a aucune raison de monter quoi que ce
+    # soit d'hôte dans son backend.
+    with projet_genere("pain-scraper") as dst:
+        compose = yaml.safe_load((dst / "docker-compose.yml").read_text(encoding="utf-8"))
+    assert "volumes" not in compose["services"]["backend"]
