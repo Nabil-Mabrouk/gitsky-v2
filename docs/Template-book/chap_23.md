@@ -658,12 +658,14 @@ Vous devez être informé avant vos utilisateurs en cas de panne. Configurez un 
 
 **UptimeRobot (gratuit)** — recommandé pour démarrer :
 1. Créez un compte sur [uptimerobot.com](https://uptimerobot.com)
-2. Ajoutez un monitor HTTP(S) vers `https://votre-domaine.com/api/health`
+2. Ajoutez un monitor HTTP(S) vers `https://api.votre-domaine.com/health`
 3. Configurez les alertes email / Telegram / Slack
 4. Fréquence de vérification : toutes les 5 minutes (plan gratuit)
 
 L'endpoint `/health` est déjà présent dans le template GitSky (dans
-`app/core/main.py`, servi sous `/api/health` derrière Traefik). Le stack étant
+`app/core/main.py`, monté à la racine — sans préfixe `/api/` — et servi sur le
+sous-domaine `api.` du projet derrière Traefik, comme tout le reste du
+backend). Le stack étant
 **asynchrone** (SQLAlchemy async), la vérification base l'est aussi — et
 l'endpoint conserve sa charge utile existante (modules activés) en plus du
 statut base :

@@ -112,8 +112,8 @@ injoignable — le `HEALTHCHECK` Docker s'en sert, et Traefik n'envoie du trafic
 qu'à un conteneur sain (Chap 21/23) :
 
 ```bash
-curl https://api.pain-scraper.mystudio.com/api/health
-# {"status":"ok","database":"ok","modules":{"auth":true,...}}
+curl https://api.pain-scraper.mystudio.com/health
+# {"status":"ok","database":"ok","project":"pain-scraper","modules":{"auth":true,...}}
 ```
 
 Le projet apparaît alors dans le fleet dashboard, où l'opérateur suit son statut
