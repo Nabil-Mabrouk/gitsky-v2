@@ -121,6 +121,22 @@ async def _broken_create_webhook(repo_full_name: str, webhook_url: str, secret: 
     )
 
 
+async def _unconfigured_create_repo(project_name: str, private: bool = True) -> dict:
+    # Contrat fail-closed réel de github_client.create_repo (FLEET_GITHUB_TOKEN
+    # absent + ENVIRONMENT=production) : RuntimeError, pas httpx.HTTPError.
+    raise RuntimeError(
+        "FLEET_GITHUB_TOKEN manquant alors que ENVIRONMENT=production — "
+        "refus du mode stub (fail-closed)"
+    )
+
+
+async def _unconfigured_create_webhook(repo_full_name: str, webhook_url: str, secret: str) -> dict:
+    raise RuntimeError(
+        "FLEET_GITHUB_TOKEN manquant alors que ENVIRONMENT=production — "
+        "refus du mode stub (fail-closed)"
+    )
+
+
 def test_create_repo_requires_admin():
     _register("no-auth-project")
     assert (
@@ -197,6 +213,42 @@ def test_create_repo_webhook_failure_still_links_repo_with_message(monkeypatch):
     project = next(p for p in grid if p["name"] == "webhook-fails")
     assert project["github_repo"] == "acme-fleet/webhook-fails"
     assert project["github_webhook_installed"] is False
+
+
+def test_create_repo_not_configured_is_a_clean_503_not_a_500(monkeypatch):
+    # Régression (27/08, prod) : cet endpoint n'attrapait rien du tout autour
+    # de create_repo — un FLEET_GITHUB_TOKEN absent en production faisait
+    # planter la requête en 500 non géré plutôt qu'un 503 explicite (même
+    # famille de fail-closed que generator_client.GeneratorNotConfigured,
+    # Chap 27).
+    _register("token-missing")
+    monkeypatch.setattr(github_client, "create_repo", _unconfigured_create_repo)
+
+    r = client.post(
+        "/api/fleet/projects/token-missing/github/create-repo",
+        json={},
+        headers=_auth(SEED["admin_id"]),
+    )
+    assert r.status_code == 503
+    assert "FLEET_GITHUB_TOKEN" in r.json()["detail"]
+
+
+def test_link_repo_webhook_not_configured_still_links_with_message(monkeypatch):
+    # Même régression que ci-dessus, côté _install_webhook cette fois : un
+    # jeton absent lève RuntimeError, pas httpx.HTTPError.
+    _register("link-webhook-not-configured")
+    monkeypatch.setattr(github_client, "create_webhook", _unconfigured_create_webhook)
+
+    r = client.post(
+        "/api/fleet/projects/link-webhook-not-configured/github/link-repo",
+        json={"repo": "someone/existing-repo"},
+        headers=_auth(SEED["admin_id"]),
+    )
+    assert r.status_code == 200
+    body = r.json()
+    assert body["repo"] == "someone/existing-repo"
+    assert body["webhook_installed"] is False
+    assert "FLEET_GITHUB_TOKEN" in body["message"]
 
 
 def test_link_repo_requires_admin():

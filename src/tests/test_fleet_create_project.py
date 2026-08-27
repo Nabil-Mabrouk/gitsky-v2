@@ -121,6 +121,17 @@ async def _broken_create_repo(name: str, private: bool = True) -> dict:
     )
 
 
+async def _unconfigured_create_repo(name: str, private: bool = True) -> dict:
+    # Reproduit le contrat fail-closed réel de github_client.create_repo
+    # (FLEET_GITHUB_TOKEN absent + ENVIRONMENT=production) : RuntimeError, pas
+    # httpx.HTTPError — bug de prod du 27/08 (Chap 27) où ce cas n'était pas
+    # attrapé et faisait 500 toute la requête au lieu d'un warning.
+    raise RuntimeError(
+        "FLEET_GITHUB_TOKEN manquant alors que ENVIRONMENT=production — "
+        "refus du mode stub (fail-closed)"
+    )
+
+
 def test_module_catalog_requires_admin_and_lists_short_flags():
     assert client.get("/api/fleet/module-catalog").status_code == 401
     r = client.get("/api/fleet/module-catalog", headers=_auth(SEED["admin_id"]))
@@ -300,3 +311,25 @@ def test_create_project_github_repo_creation_failure_is_a_warning_not_a_failure(
     assert body["github_repo"] is None
     assert body["pushed"] is False
     assert len(body["warnings"]) == 1
+
+
+def test_create_project_github_not_configured_is_a_warning_not_a_500(monkeypatch, tmp_path):
+    # Régression (27/08, prod) : FLEET_GITHUB_TOKEN absent en production fait
+    # lever RuntimeError (fail-closed) à github_client.create_repo, pas
+    # httpx.HTTPError — un except trop étroit laissait ça remonter en 500 non
+    # attrapé, alors que Chap 27 promet qu'à partir de l'étape 3 (génération +
+    # enregistrement faits), plus rien n'est fatal.
+    monkeypatch.setattr(generator_client, "generate_project", _fake_generate(tmp_path))
+    monkeypatch.setattr(github_client, "create_repo", _unconfigured_create_repo)
+
+    r = client.post(
+        "/api/fleet/projects",
+        json={"name": "github-token-missing", "modules": {}, "github_mode": "create"},
+        headers=_auth(SEED["admin_id"]),
+    )
+    assert r.status_code == 201
+    body = r.json()
+    assert body["generated"] is True
+    assert body["github_repo"] is None
+    assert body["pushed"] is False
+    assert any("FLEET_GITHUB_TOKEN" in w for w in body["warnings"])
