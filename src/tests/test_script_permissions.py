@@ -38,6 +38,9 @@ DIRECTLY_INVOKED_SCRIPTS = [
     "src/generator/template/scripts/check_security.sh",
     "src/generator/template/scripts/emergency_restore.sh",
     "src/generator/template/scripts/test_restore.sh",
+    "src/generator/template/scripts/rotate_secret_key.sh",
+    "src/generator/template/scripts/rotate_postgres_password.sh",
+    "src/generator/template/scripts/rotate_fleet_tokens.sh",
 ]
 
 

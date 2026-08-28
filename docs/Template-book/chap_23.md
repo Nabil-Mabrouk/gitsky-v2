@@ -361,15 +361,20 @@ La rotation régulière des secrets limite la fenêtre d'exposition en cas de fu
 ┌─────────────────────────────────────┬────────────┬────────────────────────┐
 │ SECRET                              │ FRÉQUENCE  │ COMMENT FAIRE          │
 ├─────────────────────────────────────┼────────────┼────────────────────────┤
-│ SECRET_KEY (JWT)                    │ 6 mois     │ Tous les tokens        │
-│                                     │            │ existants sont         │
-│                                     │            │ invalidés → re-login   │
+│ SECRET_KEY (JWT)                    │ 6 mois     │ scripts/rotate_secret_ │
+│                                     │            │ key.sh                 │
 ├─────────────────────────────────────┼────────────┼────────────────────────┤
-│ POSTGRES_PASSWORD                   │ 6 mois     │ Changer dans Postgres  │
-│                                     │            │ + .env + redéployer    │
+│ POSTGRES_PASSWORD                   │ 6 mois     │ scripts/rotate_postgre │
+│                                     │            │ s_password.sh          │
+├─────────────────────────────────────┼────────────┼────────────────────────┤
+│ FLEET_REGISTER_TOKEN /              │ Si soupçon │ scripts/rotate_fleet_  │
+│ COLLECTOR_STATS_TOKEN (fleet only)  │ de fuite   │ tokens.sh              │
 ├─────────────────────────────────────┼────────────┼────────────────────────┤
 │ SMTP_PASSWORD                       │ 1 an       │ Via interface du       │
 │                                     │            │ fournisseur email      │
+├─────────────────────────────────────┼────────────┼────────────────────────┤
+│ FLEET_GITHUB_TOKEN /                │ Si compromis│ Via GitHub, manuel   │
+│ FLEET_GITHUB_WEBHOOK_SECRET         │ uniquement │ (Chap 26)              │
 ├─────────────────────────────────────┼────────────┼────────────────────────┤
 │ STRIPE_SECRET_KEY                   │ Si compromis│ Via Stripe Dashboard  │
 │ STRIPE_WEBHOOK_SECRET               │ uniquement │ Révoquer l'ancien      │
@@ -379,14 +384,49 @@ La rotation régulière des secrets limite la fenêtre d'exposition en cas de fu
 └─────────────────────────────────────┴────────────┴────────────────────────┘
 ```
 
-Générer une nouvelle `SECRET_KEY` :
+> **Écart au livre (round sécurisation)** : les trois premières lignes du
+> tableau ont désormais un vrai script (`template/scripts/rotate_*.sh`,
+> livré dans chaque projet généré), pas juste une procédure documentée. Les
+> lignes suivantes (SMTP, GitHub, Stripe, SSH) restent volontairement des
+> **runbooks manuels** — ce sont des credentials émis par un service
+> externe ; une automatisation mal calibrée risque de nous verrouiller
+> nous-mêmes hors du service, un risque qui n'existe pas pour les secrets
+> que GitSky génère lui-même.
+>
+> `rotate_secret_key.sh` génère une nouvelle valeur, l'écrit dans `.env`,
+> redémarre le backend — un événement **"tout le monde se reconnecte"**,
+> sans période de grâce à double clé. Le paragraphe ci-dessous décrivait
+> auparavant un mécanisme à double clé (`SECRET_KEY`/`SECRET_KEY_OLD`) en
+> pseudo-code pour éviter cette déconnexion brutale ; il n'a jamais été
+> implémenté, et le construire maintenant serait disproportionné à
+> l'échelle actuelle du projet — conservé ci-dessous comme piste future,
+> pas comme description du comportement réel.
+>
+> `rotate_postgres_password.sh` fait les DEUX étapes requises dans l'ordre
+> (`ALTER USER` sur le rôle *vivant*, puis `.env`) — l'image `postgres`
+> officielle n'applique `POSTGRES_PASSWORD` qu'au tout premier `initdb` sur
+> un volume vide (§2.3), donc changer `.env` seul ne change rien pour un
+> rôle déjà initialisé. Bug de prod réel, vécu deux fois en une journée
+> avant que ce script n'existe : le rôle live et `.env` divergeaient
+> silencieusement après un `docker compose up`, le backend échouait en
+> `password authentication failed` sans que rien dans `.env` ne semble
+> faux.
+>
+> `rotate_fleet_tokens.sh` n'a de sens que sur le fleet dashboard
+> (`MODULE_FLEET=true`) — sort proprement sinon. `FLEET_REGISTER_TOKEN` est
+> aussi utilisé par `crontab.fleet` sur l'hôte (Chap 26/27) : le script ne
+> le met pas à jour là-bas (hors de la portée d'un script par-projet) et
+> affiche la nouvelle valeur avec un rappel explicite à la place.
+
+Générer une nouvelle `SECRET_KEY` à la main (ce que `rotate_secret_key.sh`
+fait pour vous) :
 ```bash
 python -c "import secrets; print(secrets.token_hex(64))"
 ```
 
-Procédure de rotation sans interruption pour `SECRET_KEY` :
+Piste future, non implémentée — rotation sans interruption pour `SECRET_KEY` :
 ```python
-# Dans config.py, vous pouvez temporairement accepter deux clés
+# Dans config.py, on pourrait temporairement accepter deux clés
 # pendant une période de transition (ex: 24h) :
 
 SECRET_KEY = "nouvelle_clé_principale"
