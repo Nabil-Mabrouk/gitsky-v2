@@ -229,3 +229,51 @@ def test_ordinary_project_has_no_backend_volumes():
     with projet_genere("pain-scraper") as dst:
         compose = yaml.safe_load((dst / "docker-compose.yml").read_text(encoding="utf-8"))
     assert "volumes" not in compose["services"]["backend"]
+
+
+# --- docker-compose.maintenance.yml (Chap 20/23, round sécurisation) -------
+
+
+def test_maintenance_compose_ships_for_every_project_not_just_fleet():
+    # Le mode maintenance est un besoin générique (n'importe quel projet peut
+    # y passer), contrairement aux montages fleet ci-dessus — généré pour
+    # tout projet, pas seulement module_fleet.
+    with projet_genere("pain-scraper") as dst:
+        assert (dst / "docker-compose.maintenance.yml").is_file()
+        assert (dst / "maintenance" / "index.html").is_file()
+
+
+def test_maintenance_service_claims_the_same_traefik_routes_as_the_real_app():
+    # C'est le point critique : la page de maintenance doit prendre le relais
+    # sur EXACTEMENT les mêmes domaines que le frontend/backend réels
+    # (Host() du docker-compose.yml principal), sinon lifecycle-fleet.sh
+    # bascule en maintenance sans que Traefik ne route jamais vers elle.
+    with projet_genere("pain-scraper") as dst:
+        main_compose = yaml.safe_load((dst / "docker-compose.yml").read_text(encoding="utf-8"))
+        maint_compose = yaml.safe_load(
+            (dst / "docker-compose.maintenance.yml").read_text(encoding="utf-8")
+        )
+
+    def _host_rules(labels: list[str]) -> set[str]:
+        return {l.split("=", 1)[1] for l in labels if ".rule=" in l and "Host(" in l}
+
+    frontend_rules = _host_rules(main_compose["services"]["frontend"]["labels"])
+    backend_rules = _host_rules(main_compose["services"]["backend"]["labels"])
+    maint_labels = maint_compose["services"]["maintenance"]["labels"]
+    maint_rules = _host_rules(maint_labels)
+
+    # Domaine par défaut sans surcharge (Chap 1) : {nom}.mystudio.com.
+    assert any("Host(`pain-scraper.mystudio.com`)" in r for r in frontend_rules)
+    assert any("Host(`api.pain-scraper.mystudio.com`)" in r for r in backend_rules)
+    assert any("Host(`pain-scraper.mystudio.com`)" in r for r in maint_rules)
+    assert any("Host(`api.pain-scraper.mystudio.com`)" in r for r in maint_rules)
+
+
+def test_maintenance_service_uses_the_shared_proxy_net_not_internal_net():
+    # La page de maintenance n'a besoin d'aucun accès à la base/au réseau
+    # interne (Chap 23 §2.3) — seulement d'être visible de Traefik.
+    with projet_genere("pain-scraper") as dst:
+        maint_compose = yaml.safe_load(
+            (dst / "docker-compose.maintenance.yml").read_text(encoding="utf-8")
+        )
+    assert maint_compose["services"]["maintenance"]["networks"] == ["proxy-net"]

@@ -33,6 +33,13 @@ FLEET_REGISTER_TOKEN=
 # conteneur dashboard n'a lui jamais.
 */2 * * * * /opt/gitsky/shared_services/scripts/deploy-on-push.sh >> /var/log/gitsky_deploy.log 2>&1
 
+# ── Cycle de vie (stop/start/maintenance) ───────────────────────────────────
+# Exécute les intentions journalisées par le dashboard (boutons Stop/Start/
+# Maintenance de la fiche projet, Chap 20/23 round sécurisation) — même
+# raisonnement que le déploiement continu ci-dessus : le dashboard n'a aucun
+# accès Docker, ce script tourne sur l'hôte et l'a réellement.
+*/2 * * * * /opt/gitsky/shared_services/scripts/lifecycle-fleet.sh >> /var/log/gitsky_lifecycle.log 2>&1
+
 # ── Sauvegardes ──────────────────────────────────────────────────────────────
 # Sauvegarde 3-2-1 de toutes les bases projet à 02:00.
 0 2 * * * /opt/gitsky/shared_services/scripts/backup-fleet.sh >> /var/log/gitsky_backup.log 2>&1

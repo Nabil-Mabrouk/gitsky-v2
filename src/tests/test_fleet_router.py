@@ -197,6 +197,131 @@ def test_archive_unknown_project_is_404():
     assert r.status_code == 404
 
 
+async def _event_count(project: str, event_type: str) -> int:
+    async with factory() as db:
+        result = await db.execute(
+            select(func.count())
+            .select_from(FleetLifecycleEvent)
+            .where(
+                FleetLifecycleEvent.project_name == project,
+                FleetLifecycleEvent.event_type == event_type,
+            )
+        )
+        return result.scalar_one()
+
+
+def test_archive_also_journals_stop_requested():
+    # Round sécurisation (Chap 20) : l'archivage doit désormais aussi
+    # déclencher un arrêt réel via lifecycle-fleet.sh, pas seulement
+    # basculer le flag DB — même événement que stop_project ci-dessous,
+    # consommé par le même /lifecycle/pending.
+    client.post(
+        "/api/fleet/projects/register",
+        json={"name": "archive-stops-too", "domain": "archive-stops-too.mystudio.com"},
+    )
+    r = client.post(
+        "/api/fleet/projects/archive-stops-too/archive", headers=_auth(SEED["admin_id"])
+    )
+    assert r.status_code == 200
+    assert r.json()["lifecycle_state"] == "stopped"
+    assert asyncio.run(_event_count("archive-stops-too", "stop_requested")) == 1
+
+
+def test_stop_start_maintenance_require_admin():
+    client.post(
+        "/api/fleet/projects/register",
+        json={"name": "lifecycle-auth", "domain": "lifecycle-auth.mystudio.com"},
+    )
+    for method, path in (
+        ("post", "/api/fleet/projects/lifecycle-auth/stop"),
+        ("post", "/api/fleet/projects/lifecycle-auth/start"),
+        ("post", "/api/fleet/projects/lifecycle-auth/maintenance"),
+        ("delete", "/api/fleet/projects/lifecycle-auth/maintenance"),
+    ):
+        assert getattr(client, method)(path).status_code == 401
+        assert (
+            getattr(client, method)(path, headers=_auth(SEED["user_id"])).status_code
+            == 403
+        )
+
+
+def test_stop_project_journals_event_and_reports_stopped_state():
+    client.post(
+        "/api/fleet/projects/register",
+        json={"name": "stop-me", "domain": "stop-me.mystudio.com"},
+    )
+    r = client.post("/api/fleet/projects/stop-me/stop", headers=_auth(SEED["admin_id"]))
+    assert r.status_code == 200
+    assert r.json()["lifecycle_state"] == "stopped"
+    assert asyncio.run(_event_count("stop-me", "stop_requested")) == 1
+
+    # Pas idempotent comme archive : chaque appel journalise un événement —
+    # un opérateur qui reclique doit pouvoir forcer un nouveau passage du
+    # poller (même principe que deploy_triggered, qui ne déduplique jamais).
+    client.post("/api/fleet/projects/stop-me/stop", headers=_auth(SEED["admin_id"]))
+    assert asyncio.run(_event_count("stop-me", "stop_requested")) == 2
+
+
+def test_start_project_journals_event_and_reports_normal_state():
+    client.post(
+        "/api/fleet/projects/register",
+        json={"name": "start-me", "domain": "start-me.mystudio.com"},
+    )
+    r = client.post("/api/fleet/projects/start-me/start", headers=_auth(SEED["admin_id"]))
+    assert r.status_code == 200
+    assert r.json()["lifecycle_state"] == "normal"
+    assert asyncio.run(_event_count("start-me", "start_requested")) == 1
+
+
+def test_maintenance_set_and_clear_journal_events_and_report_states():
+    client.post(
+        "/api/fleet/projects/register",
+        json={"name": "maint-me", "domain": "maint-me.mystudio.com"},
+    )
+    r1 = client.post(
+        "/api/fleet/projects/maint-me/maintenance", headers=_auth(SEED["admin_id"])
+    )
+    assert r1.status_code == 200
+    assert r1.json()["lifecycle_state"] == "maintenance"
+    assert asyncio.run(_event_count("maint-me", "maintenance_requested")) == 1
+
+    r2 = client.delete(
+        "/api/fleet/projects/maint-me/maintenance", headers=_auth(SEED["admin_id"])
+    )
+    assert r2.status_code == 200
+    assert r2.json()["lifecycle_state"] == "normal"
+    assert asyncio.run(_event_count("maint-me", "maintenance_cleared")) == 1
+
+
+def test_stop_unknown_project_is_404():
+    r = client.post(
+        "/api/fleet/projects/does-not-exist/stop", headers=_auth(SEED["admin_id"])
+    )
+    assert r.status_code == 404
+
+
+def test_projects_grid_reports_lifecycle_state_from_latest_event():
+    client.post(
+        "/api/fleet/projects/register",
+        json={"name": "grid-lifecycle", "domain": "grid-lifecycle.mystudio.com"},
+    )
+    client.post(
+        "/api/fleet/projects/grid-lifecycle/maintenance", headers=_auth(SEED["admin_id"])
+    )
+    r = client.get("/api/fleet/projects", headers=_auth(SEED["admin_id"]))
+    project = next(p for p in r.json() if p["name"] == "grid-lifecycle")
+    assert project["lifecycle_state"] == "maintenance"
+
+    # L'événement le plus récent gagne — sortir de maintenance doit se
+    # refléter dans la grille sans registre séparé à maintenir.
+    client.delete(
+        "/api/fleet/projects/grid-lifecycle/maintenance", headers=_auth(SEED["admin_id"])
+    )
+    r2 = client.get("/api/fleet/projects", headers=_auth(SEED["admin_id"]))
+    project2 = next(p for p in r2.json() if p["name"] == "grid-lifecycle")
+    assert project2["lifecycle_state"] == "normal"
+
+
 def test_project_leads_requires_admin_and_proxies_landing_collector(monkeypatch):
     assert client.get("/api/fleet/projects/pain-scraper/leads").status_code == 401
     assert (

@@ -38,11 +38,26 @@ Ces deux axes sont journalisés indépendamment dans `fleet_lifecycle_events` (v
 
 Un projet s'archive **uniquement sur décision d'un opérateur**, depuis le fleet dashboard (`POST /api/fleet/projects/{name}/archive`, réservé aux comptes admin). L'action est idempotente : réarchiver un projet déjà archivé ne journalise pas d'événement supplémentaire.
 
-**Ce que l'archivage fait aujourd'hui :** marque le projet `archived`, exclu dès lors du monitoring de disponibilité (`health_monitor.py` ignore les projets archivés — une archive n'est pas une panne) et de la grille par défaut.
+**Ce que l'archivage fait aujourd'hui :** marque le projet `archived`, exclu dès lors du monitoring de disponibilité (`health_monitor.py` ignore les projets archivés — une archive n'est pas une panne) et de la grille par défaut. **Depuis le round sécurisation (Chap 23)**, il journalise aussi `stop_requested` : `lifecycle-fleet.sh` (shared_services), qui tourne sur l'hôte avec un accès Docker réel, exécute alors un vrai `docker compose down` pour ce projet — les conteneurs s'arrêtent réellement, plus seulement le flag DB.
 
-**Ce que l'archivage ne fait pas (encore) :** il n'arrête aucun conteneur, ne retire aucun label Traefik, ne libère aucun domaine, ne déclenche aucune sauvegarde froide dédiée. L'arrêt effectif de l'infrastructure reste, pour l'instant, une action manuelle séparée de l'opérateur (`docker compose down` dans le dossier du projet, retrait des labels, DNS). Documenter cet écart plutôt que le taire est volontaire — un opérateur qui archive un projet en pensant que les conteneurs s'arrêtent avec pourrait avoir une mauvaise surprise sur sa facture VPS. Automatiser cette partie est un chantier ouvert, pas encore planifié.
+**Ce que l'archivage ne fait toujours pas :** il ne retire aucun label Traefik (inutile : `docker compose down` retire déjà les conteneurs, donc leurs labels — Traefik ne peut plus router vers rien), ne libère aucun domaine (DNS reste entièrement manuel, hors du périmètre de GitSky), ne déclenche aucune sauvegarde froide dédiée. Documenter cet écart plutôt que le taire reste volontaire.
 
-Il n'existe pas non plus, à ce stade, d'action « réactiver » dédiée dans le dashboard — un projet archivé par erreur se corrige en repassant son statut à `active` directement en base, en attendant qu'un endpoint dédié existe.
+Il n'existe pas non plus, à ce stade, d'action « réactiver » dédiée qui repasserait le statut à `active` — mais `POST /api/fleet/projects/{name}/start` (voir section suivante) redémarre bien les conteneurs d'un projet archivé ; seul le flag `status` en base reste à corriger à la main en attendant qu'un endpoint combine les deux.
+
+## Cycle de vie opérationnel : arrêt, démarrage, maintenance
+
+Round sécurisation (Chap 23) : au-delà de l'archivage (une décision définitive), la fiche projet du dashboard offre trois actions réversibles, réservées aux comptes admin :
+
+| Endpoint | Effet réel |
+|---|---|
+| `POST /projects/{name}/stop` | `docker compose down` — conteneurs arrêtés, image conservée |
+| `POST /projects/{name}/start` | `docker compose up -d` — redémarrage à l'identique, pas de rebuild |
+| `POST /projects/{name}/maintenance` | `docker compose down` PUIS démarre `docker-compose.maintenance.yml` (une page statique nginx, aucune dépendance backend) sur les MÊMES routes Traefik que le frontend/backend réels |
+| `DELETE /projects/{name}/maintenance` | l'inverse : arrête la page de maintenance, redémarre l'app réelle |
+
+Même architecture que le déploiement continu (Chap 26) : le dashboard n'a **aucun accès Docker** (conteneur public-facing, surface d'attaque minimale) — ces quatre endpoints ne font que journaliser l'intention dans `fleet_lifecycle_events`. C'est `shared_services/scripts/lifecycle-fleet.sh`, un cron hôte (`crontab.fleet`, toutes les 2 minutes) avec un accès Docker réel, qui exécute l'action via `GET /api/fleet/lifecycle/pending` — même contrat texte brut, même curseur local que `/deploys/pending`.
+
+L'état affiché sur la fiche projet et la grille (`lifecycle_state` : `normal`/`stopped`/`maintenance`) est calculé à la volée depuis le dernier événement pertinent journalisé — pas une colonne DB séparée, même principe que `health` (`health_monitor.bulk_health_status`, Chap 28).
 
 ## Migration Sous-Domaine → Domaine Premier
 

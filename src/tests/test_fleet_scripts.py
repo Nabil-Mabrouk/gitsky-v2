@@ -25,6 +25,7 @@ FLEET_SCRIPTS = [
     "fleet-health.sh",
     "test-restore-fleet.sh",
     "deploy-on-push.sh",
+    "lifecycle-fleet.sh",
 ]
 
 BASH = shutil.which("bash") or ""
@@ -730,3 +731,188 @@ def test_fleet_scripts_pass_bash_syntax(name):
 def test_fleet_scripts_have_unix_line_endings(name):
     # Exécutés sur l'Ubuntu partagé (Chap 22) : un CRLF casse bash.
     assert b"\r" not in (SHARED_SCRIPTS / name).read_bytes()
+
+
+# --- lifecycle-fleet.sh (Chap 20/23, round sécurisation) --------------------
+
+
+def _fake_curl_lifecycle(fakebin: Path, log: Path, *, pending: str = "") -> None:
+    # Même patron que _fake_curl_deploy : GET (pas de "-X POST") -> répond
+    # `pending` (simule /api/fleet/lifecycle/pending). POST -> journalise.
+    c = fakebin / "curl"
+    _write_lf(
+        c,
+        "#!/usr/bin/env bash\n"
+        f'echo "$@" >> "{log.as_posix()}"\n'
+        'if [[ "$*" == *"-X POST"* ]]; then\n'
+        "  exit 0\n"
+        "fi\n"
+        f'printf %s "{pending}"\n',
+    )
+    c.chmod(0o755)
+
+
+def _fake_docker_lifecycle(fakebin: Path, *, fails: bool = False) -> None:
+    # Journalise chaque invocation (args complets) pour vérifier la bonne
+    # commande par action, sans jamais toucher un vrai Docker.
+    arglog = (fakebin / "docker_calls.log").as_posix()
+    _fake_docker(fakebin, rf"""
+        echo "$@" >> "{arglog}"
+        case "$1" in
+          compose) {"exit 1" if fails else "exit 0"} ;;
+        esac
+    """)
+
+
+def test_lifecycle_stop_runs_compose_down(tmp_path):
+    fakebin = tmp_path / "bin"; fakebin.mkdir()
+    projects = _make_project_dirs(tmp_path / "projects", "pain-scraper")
+    curl_log = tmp_path / "curl_calls.log"
+    _fake_curl_lifecycle(fakebin, curl_log, pending="1\tpain-scraper\tstop")
+    _fake_docker_lifecycle(fakebin)
+    state = tmp_path / "state" / "lifecycle.state"
+
+    r = _run("lifecycle-fleet.sh", fakebin, tmp_path,
+              FLEET_URL="https://api.example.com", FLEET_REGISTER_TOKEN="tok",
+              PROJECTS_DIR=projects.as_posix(), STATE_FILE=state.as_posix())
+
+    assert r.returncode == 0, r.stderr
+    calls = (fakebin / "docker_calls.log").read_text(encoding="utf-8")
+    assert "compose down" in calls
+    assert "compose up" not in calls
+    assert '"status":"success"' in curl_log.read_text()
+    assert state.read_text().strip() == "1"
+
+
+def test_lifecycle_start_runs_compose_up_without_build(tmp_path):
+    fakebin = tmp_path / "bin"; fakebin.mkdir()
+    projects = _make_project_dirs(tmp_path / "projects", "pain-scraper")
+    curl_log = tmp_path / "curl_calls.log"
+    _fake_curl_lifecycle(fakebin, curl_log, pending="2\tpain-scraper\tstart")
+    _fake_docker_lifecycle(fakebin)
+    state = tmp_path / "state" / "lifecycle.state"
+
+    r = _run("lifecycle-fleet.sh", fakebin, tmp_path,
+              FLEET_URL="https://api.example.com", FLEET_REGISTER_TOKEN="tok",
+              PROJECTS_DIR=projects.as_posix(), STATE_FILE=state.as_posix())
+
+    assert r.returncode == 0, r.stderr
+    calls = (fakebin / "docker_calls.log").read_text(encoding="utf-8")
+    # Pas de --build : l'image existe déjà, seul un redéploiement en
+    # rebuild une (deploy-on-push.sh), pas un simple redémarrage.
+    assert "compose up -d" in calls
+    assert "--build" not in calls
+
+
+def test_lifecycle_maintenance_stops_real_app_then_starts_maintenance_compose(tmp_path):
+    fakebin = tmp_path / "bin"; fakebin.mkdir()
+    projects = _make_project_dirs(tmp_path / "projects", "pain-scraper")
+    curl_log = tmp_path / "curl_calls.log"
+    _fake_curl_lifecycle(fakebin, curl_log, pending="3\tpain-scraper\tmaintenance")
+    _fake_docker_lifecycle(fakebin)
+    state = tmp_path / "state" / "lifecycle.state"
+
+    r = _run("lifecycle-fleet.sh", fakebin, tmp_path,
+              FLEET_URL="https://api.example.com", FLEET_REGISTER_TOKEN="tok",
+              PROJECTS_DIR=projects.as_posix(), STATE_FILE=state.as_posix())
+
+    assert r.returncode == 0, r.stderr
+    calls = (fakebin / "docker_calls.log").read_text(encoding="utf-8").splitlines()
+    down_idx = next(i for i, c in enumerate(calls) if c == "compose down")
+    up_idx = next(
+        i for i, c in enumerate(calls)
+        if c == "compose -f docker-compose.maintenance.yml up -d"
+    )
+    assert down_idx < up_idx, "le compose réel doit être arrêté AVANT que la maintenance démarre"
+
+
+def test_lifecycle_maintenance_clear_reverses_the_swap(tmp_path):
+    fakebin = tmp_path / "bin"; fakebin.mkdir()
+    projects = _make_project_dirs(tmp_path / "projects", "pain-scraper")
+    curl_log = tmp_path / "curl_calls.log"
+    _fake_curl_lifecycle(fakebin, curl_log, pending="4\tpain-scraper\tmaintenance-clear")
+    _fake_docker_lifecycle(fakebin)
+    state = tmp_path / "state" / "lifecycle.state"
+
+    r = _run("lifecycle-fleet.sh", fakebin, tmp_path,
+              FLEET_URL="https://api.example.com", FLEET_REGISTER_TOKEN="tok",
+              PROJECTS_DIR=projects.as_posix(), STATE_FILE=state.as_posix())
+
+    assert r.returncode == 0, r.stderr
+    calls = (fakebin / "docker_calls.log").read_text(encoding="utf-8").splitlines()
+    down_idx = next(
+        i for i, c in enumerate(calls)
+        if c == "compose -f docker-compose.maintenance.yml down"
+    )
+    up_idx = next(i for i, c in enumerate(calls) if c == "compose up -d")
+    assert down_idx < up_idx, "la maintenance doit être arrêtée AVANT que l'app réelle redémarre"
+
+
+def test_lifecycle_reports_failure_for_unknown_action(tmp_path):
+    fakebin = tmp_path / "bin"; fakebin.mkdir()
+    projects = _make_project_dirs(tmp_path / "projects", "pain-scraper")
+    curl_log = tmp_path / "curl_calls.log"
+    _fake_curl_lifecycle(fakebin, curl_log, pending="5\tpain-scraper\tsomething-else")
+    _fake_docker_lifecycle(fakebin)
+    state = tmp_path / "state" / "lifecycle.state"
+
+    r = _run("lifecycle-fleet.sh", fakebin, tmp_path,
+              FLEET_URL="https://api.example.com", FLEET_REGISTER_TOKEN="tok",
+              PROJECTS_DIR=projects.as_posix(), STATE_FILE=state.as_posix())
+
+    assert r.returncode == 1
+    assert '"status":"failure"' in curl_log.read_text()
+    # Le curseur avance quand même — même logique que deploy-on-push.sh.
+    assert state.read_text().strip() == "5"
+
+
+def test_lifecycle_reports_failure_when_project_directory_missing(tmp_path):
+    fakebin = tmp_path / "bin"; fakebin.mkdir()
+    projects = tmp_path / "projects"; projects.mkdir()  # "ghost" n'existe pas dedans
+    curl_log = tmp_path / "curl_calls.log"
+    _fake_curl_lifecycle(fakebin, curl_log, pending="6\tghost\tstop")
+    _fake_docker_lifecycle(fakebin)
+    state = tmp_path / "state" / "lifecycle.state"
+
+    r = _run("lifecycle-fleet.sh", fakebin, tmp_path,
+              FLEET_URL="https://api.example.com", FLEET_REGISTER_TOKEN="tok",
+              PROJECTS_DIR=projects.as_posix(), STATE_FILE=state.as_posix())
+
+    assert r.returncode == 1
+    assert '"status":"failure"' in curl_log.read_text()
+    assert '"project":"ghost"' in curl_log.read_text()
+
+
+def test_lifecycle_exits_cleanly_when_nothing_pending(tmp_path):
+    fakebin = tmp_path / "bin"; fakebin.mkdir()
+    curl_log = tmp_path / "curl_calls.log"
+    _fake_curl_lifecycle(fakebin, curl_log, pending="")
+    _fake_docker_lifecycle(fakebin)
+    state = tmp_path / "state" / "lifecycle.state"
+
+    r = _run("lifecycle-fleet.sh", fakebin, tmp_path,
+              FLEET_URL="https://api.example.com", FLEET_REGISTER_TOKEN="tok",
+              PROJECTS_DIR=(tmp_path / "projects").as_posix(), STATE_FILE=state.as_posix())
+
+    assert r.returncode == 0, r.stderr
+    assert "-X POST" not in curl_log.read_text()
+
+
+def test_lifecycle_processes_multiple_pending_actions_and_advances_cursor(tmp_path):
+    fakebin = tmp_path / "bin"; fakebin.mkdir()
+    projects = _make_project_dirs(tmp_path / "projects", "pain-scraper", "launch-me")
+    curl_log = tmp_path / "curl_calls.log"
+    _fake_curl_lifecycle(
+        fakebin, curl_log, pending="7\tpain-scraper\tstop\n8\tlaunch-me\tstart"
+    )
+    _fake_docker_lifecycle(fakebin)
+    state = tmp_path / "state" / "lifecycle.state"
+
+    r = _run("lifecycle-fleet.sh", fakebin, tmp_path,
+              FLEET_URL="https://api.example.com", FLEET_REGISTER_TOKEN="tok",
+              PROJECTS_DIR=projects.as_posix(), STATE_FILE=state.as_posix())
+
+    assert r.returncode == 0, r.stderr
+    assert state.read_text().strip() == "8"
+    calls = curl_log.read_text()
+    assert calls.count('"status":"success"') == 2

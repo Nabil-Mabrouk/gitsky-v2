@@ -11,6 +11,7 @@ faire depuis le fleet dashboard.
 |---|---|---|
 | 60 s | Poll `/health` de la flotte → alerte `deployment_failed` | `fleet-health.sh` |
 | Toutes les 2 min | Redeploy des projets avec un push GitHub en attente sur la branche de déploiement (Chap 26) | `deploy-on-push.sh` |
+| Toutes les 2 min | Exécute les actions stop/start/maintenance journalisées depuis la fiche projet du dashboard (Chap 20/23) | `lifecycle-fleet.sh` |
 | Quotidien 02:00 | Sauvegarde 3-2-1 de toutes les bases projet | `backup-fleet.sh` |
 | Horaire | Jauge disque consolidée | `fleet-disk.sh` |
 | Hebdo (dim 05:00) | Purge des images Docker orphelines | `docker image prune` |
