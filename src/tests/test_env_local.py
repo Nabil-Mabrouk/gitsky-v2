@@ -52,3 +52,17 @@ def test_env_local_example_lists_fleet_vars_only_when_module_fleet_active():
         example = (dst / ".env.local.example").read_text(encoding="utf-8")
     assert "FLEET_GITHUB_TOKEN=" in example
     assert "SMTP_PASSWORD=" in example
+    # GITSKY_GENERATOR_PATH/GITSKY_MONOREPO_GITDIR/PROJECTS_DIR restent dans
+    # .env : docker-compose.yml les lit en ${VAR:-défaut} pour ses montages,
+    # et Compose ne lit QUE .env pour sa propre substitution, jamais
+    # .env.local — les y mettre les rendrait invisibles à Compose (Chap 27).
+    assert "GITSKY_GENERATOR_PATH=" not in example
+    assert "GITSKY_MONOREPO_GITDIR=" not in example
+    assert "PROJECTS_DIR=" not in example
+
+
+def test_compose_backend_loads_env_local_as_optional():
+    with projet_genere("fleet-dashboard", modules={"fleet": True}) as dst:
+        compose = (dst / "docker-compose.yml").read_text(encoding="utf-8")
+    assert "path: .env.local" in compose
+    assert "required: false" in compose

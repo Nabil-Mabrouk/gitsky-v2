@@ -38,13 +38,23 @@ Un seul écran (`/admin/fleet/new`, accessible depuis le bouton « + Nouveau pro
 | `PROJECTS_DIR` | Racine où les projets sont générés (même variable que `deploy-on-push.sh`, Chap 26) | `/opt/gitsky/projects` |
 | `FLEET_SUBDOMAIN_SUFFIX` | Suffixe attribué à un projet créé sans domaine explicite dans le wizard, et utilisé par `publish.evaluate_promotion` (Chap 24) pour reconnaître un sous-domaine jetable de la flotte | `.mystudio.com` — **l'exemple du livre, pas un domaine réel.** Ne JAMAIS déployer sans le surcharger sur son propre domaine wildcard (ex. `.0-hitl.com`) : sinon tout projet créé sans domaine explicite reçoit un sous-domaine d'un domaine qui n'existe pas — génération et enregistrement réussissent, mais Traefik ne peut obtenir aucun certificat ACME pour lui (bug de prod réel, corrigé le 27/08 : ce défaut était codé en dur dans `publish.py`, pas configurable du tout avant cette date) |
 
-> **Écart au livre (round sécurisation, Chap 23)** : ces quatre variables,
-> ainsi que `FLEET_GITHUB_TOKEN`/`FLEET_GITHUB_WEBHOOK_SECRET`/`SMTP_*`
-> (Chap 26/9), vont désormais dans **`.env.local`**, pas `.env` — un fichier
-> jamais généré depuis un `.jinja`, donc structurellement à l'abri d'un
-> `copier update` (contrairement à `.env`, qui a déjà perdu ces mêmes
-> valeurs une fois sans cause précisément identifiée). Le gabarit
-> `.env.local.example` généré pour un projet `fleet` liste déjà ces clés.
+> **Écart au livre (round sécurisation, Chap 23)** : `FLEET_SUBDOMAIN_SUFFIX`,
+> `FLEET_GITHUB_TOKEN`/`FLEET_GITHUB_WEBHOOK_SECRET`/`FLEET_REGISTER_TOKEN`/
+> `COLLECTOR_STATS_TOKEN`/`SMTP_*` (Chap 26/9) vont désormais dans
+> **`.env.local`**, pas `.env` — un fichier jamais généré depuis un `.jinja`,
+> donc structurellement à l'abri d'un `copier update` (contrairement à
+> `.env`, qui a déjà perdu ces mêmes valeurs une fois sans cause précisément
+> identifiée). `docker-compose.yml` charge `.env.local` en plus de `.env`
+> pour le service `backend` (`env_file:`, `required: false` — absent pour
+> tout projet sans credential opérateur). Le gabarit `.env.local.example`
+> généré pour un projet `fleet` liste déjà ces clés.
+>
+> `GITSKY_GENERATOR_PATH`/`GITSKY_MONOREPO_GITDIR`/`PROJECTS_DIR`, eux,
+> **restent dans `.env`** — `docker-compose.yml` les consomme via
+> `${VAR:-défaut}` pour ses montages (juste au-dessus), et Compose ne lit QUE
+> `.env` pour cette substitution au moment où il parse le fichier, jamais
+> `.env.local` : les y déplacer les rendrait invisibles à Compose lui-même,
+> pas seulement à l'app.
 
 Poser ces deux variables dans le `.env` du fleet dashboard ne suffit pas : ce
 sont des chemins **hôte**, et le backend tourne dans un conteneur avec son
