@@ -6,6 +6,8 @@ Le dashboard admin de GitSky suit le même principe modulaire que le backend : l
 
 Le shell est disponible dès que `MODULE_ADMIN=true` est activé dans le bloc `modules:` de `config.yaml` — un choix indépendant fait à la création du projet, comme pour tout autre module optionnel. Un projet qui n'active pas ce module n'a simplement pas de shell admin : pas de route `/admin`, pas de rôle `admin` à attribuer.
 
+> **Amorçage du premier compte admin (round outillage)** : `POST /api/auth/register` (Chap 7) crée toujours un compte avec le rôle `user` par défaut — il n'existe aucun flux self-service pour créer directement un compte `admin`, volontairement (un endpoint public qui distribuerait des rôles admin serait une faille). Le premier compte admin d'un projet s'amorce donc en dehors du shell : `scripts/create_admin.sh <email> [mot de passe]`, livré dans chaque projet généré, inscrit le compte (ou promeut un compte déjà inscrit) puis passe son rôle à `admin` directement en base. Sans mot de passe fourni, le script en génère un et l'affiche une seule fois. Une fois ce premier compte créé, la gestion des rôles suivants se fait normalement depuis l'onglet Utilisateurs ci-dessous.
+
 ## Architecture du Shell
 
 Le dashboard est structuré autour d'un `AdminLayout` qui compose une barre latérale et un espace principal. La barre latérale est **peuplée dynamiquement** selon les modules activés :

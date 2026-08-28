@@ -94,6 +94,8 @@ Activer ou désactiver un module n'est jamais une réécriture — c'est une **m
 
 Chaque changement est **réversible** tant qu'on ne détruit pas de données — un retour au `.env` précédent suivi d'un Alembic downgrade suffit à revenir en arrière.
 
+> **Outillage (round outillage)** : `scripts/toggle_module.sh <module> <on|off>`, livré dans chaque projet généré, fait les trois étapes ci-dessus en une seule commande — flag `.env`, `docker compose run --rm migrate`, redémarrage du backend — et vérifie via `/health` que le nouvel état est bien pris en compte avant de déclarer la réussite. `module_fleet` en est explicitement exclu : `docker-compose.yml` a besoin de montages hôte dédiés (Chap 27) qu'un simple changement de `.env` ne peut pas ajouter — seul `copier update` avec `modules: {fleet: true}` régénère le compose correctement pour ce module-là.
+
 Publier un projet (`draft` → `preview` → `live`) est une décision séparée du choix de modules — elle est couverte au Chap 19 (fleet dashboard) et Chap 24 (Studio), et gérée par domaine plutôt que par palier : un sous-domaine mutualisé de la flotte peut passer en ligne automatiquement si les guardrails passent, un domaine dédié exige toujours une approbation humaine (blast radius plus élevé).
 
 ## 7. Principes de Sélection des Modules

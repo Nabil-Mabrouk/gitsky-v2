@@ -42,6 +42,8 @@ DIRECTLY_INVOKED_SCRIPTS = [
     "src/generator/template/scripts/rotate_secret_key.sh",
     "src/generator/template/scripts/rotate_postgres_password.sh",
     "src/generator/template/scripts/rotate_fleet_tokens.sh",
+    "src/generator/template/scripts/toggle_module.sh",
+    "src/generator/template/scripts/create_admin.sh",
 ]
 
 
