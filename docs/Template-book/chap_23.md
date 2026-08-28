@@ -336,6 +336,23 @@ DATABASE_URL=postgresql+asyncpg://gitsky_app:mot_de_passe_fort@postgres/gitsky
 DATABASE_URL_MIGRATE=postgresql+asyncpg://gitsky_migrate:autre_mdp@postgres/gitsky
 ```
 
+> **Écart au livre (round sécurisation)** : `SITE_URL` était auparavant une
+> valeur à configurer manuellement dans `.env` après génération — un oubli a
+> cassé la création de webhook GitHub en production (retombait sur le défaut
+> `localhost` de `config.py`). `SITE_URL` est désormais dérivé de
+> `project_domain` directement dans `.env.jinja`, comme `FRONTEND_URL` : plus
+> jamais un réglage manuel oublié. Un second fichier, **`.env.local`**
+> (gabarit `.env.local.example`, généré à côté de `.env.backup.example`),
+> accueille les credentials qui n'ont, eux, aucune valeur dérivable à la
+> génération (jeton GitHub, secret webhook, SMTP — typiquement le fleet
+> dashboard). Contrairement à `.env`, `.env.local` n'est **jamais** un
+> fichier `.jinja` du template : il ne peut donc structurellement jamais être
+> réécrit ou perdre des valeurs lors d'un `copier update`, quel que soit
+> l'algorithme de fusion de copier — utile après qu'un `.env` de production a
+> perdu des ajouts manuels sans qu'aucune cause précise n'ait pu être isolée.
+> `app/core/config.py` charge les deux (`.env` puis `.env.local`, ce dernier
+> prioritaire pour une même clé).
+
 ### 2.2 Calendrier de Rotation des Secrets
 
 La rotation régulière des secrets limite la fenêtre d'exposition en cas de fuite silencieuse (credential stuffing, ancien développeur, log accidentel).

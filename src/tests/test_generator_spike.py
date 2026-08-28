@@ -60,6 +60,10 @@ def test_generator_no_modules_active_by_default():
         # navigateur bloque silencieusement /api/auth/login (pas d'erreur
         # visible côté UI, juste un fetch qui échoue).
         assert "FRONTEND_URL=https://landing-x.mystudio.com" in lines
+        # SITE_URL doit être templaté comme FRONTEND_URL, jamais laissé à une
+        # configuration manuelle (bug de prod réel : webhook GitHub cassé
+        # faute de cette valeur, round sécurisation Chap 23).
+        assert "SITE_URL=https://landing-x.mystudio.com" in lines
 
 
 def test_generator_modules_override_activates_only_what_is_listed():
@@ -303,6 +307,13 @@ def test_initial_commit_contains_no_artifacts():
         # Le gabarit .env.backup.example, lui, DOIT être committé (Chap 23) —
         # vérifie que l'exception du .gitignore ne sur-exclut pas.
         assert ".env.backup.example" in suivis
+        # Même famille de bug que .env, pour les credentials opérateur sans
+        # valeur dérivable à la génération (Chap 23, round sécurisation) :
+        # .env.local ne doit jamais être suivi, .env.local.example DOIT
+        # l'être (gabarit).
+        assert ".env.local" not in suivis
+        assert (dst / ".env.local.example").is_file()
+        assert ".env.local.example" in suivis
     finally:
         _rmtree_robuste(tmp)
 
