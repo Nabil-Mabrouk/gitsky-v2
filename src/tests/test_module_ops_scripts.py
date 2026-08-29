@@ -70,6 +70,14 @@ def _write_env(project: Path, **kv) -> None:
     _write_lf(project / ".env", "\n".join(f"{k}={v}" for k, v in kv.items()) + "\n")
 
 
+def _write_answers(project: Path, modules: str = "{}") -> None:
+    _write_lf(
+        project / ".copier-answers.yml",
+        f"_src_path: gitsky-template\nmodules: {modules}\n"
+        "project:\n    domain: pain-scraper.mystudio.com\n    name: pain-scraper\n",
+    )
+
+
 def _base_env(**over) -> dict:
     base = {
         "PROJECT_NAME": "pain-scraper",
@@ -133,6 +141,7 @@ def _fake_docker_toggle(fakebin: Path, *, probe_result: str = "on") -> None:
 
 def test_toggle_flips_flag_migrates_recreates_and_confirms(project, fakebin):
     _write_env(project, **_base_env(MODULE_ADMIN="false"))
+    _write_answers(project)
     _fake_docker_toggle(fakebin, probe_result="on")
 
     r = _run(SCRIPTS / "toggle_module.sh", project, fakebin, "admin", "on")
@@ -145,8 +154,40 @@ def test_toggle_flips_flag_migrates_recreates_and_confirms(project, fakebin):
     assert "confirmé via /health" in r.stdout
 
 
+def test_toggle_also_updates_copier_answers_so_the_flag_survives_copier_update(project, fakebin):
+    # Bug de prod réel : sans cette étape, un copier update ultérieur re-rend
+    # .env.jinja depuis la réponse `modules:` STOCKÉE (jamais depuis .env) et
+    # écrase silencieusement le flag tout juste basculé — trouvé en
+    # retrouvant MODULE_ADMIN=false sur politique-ia le lendemain d'un
+    # `toggle_module.sh admin on` réussi, un copier update entre les deux.
+    _write_env(project, **_base_env(MODULE_ADMIN="false"))
+    _write_answers(project, modules="{}")
+    _fake_docker_toggle(fakebin, probe_result="on")
+
+    r = _run(SCRIPTS / "toggle_module.sh", project, fakebin, "admin", "on")
+
+    assert r.returncode == 0, r.stderr
+    answers = (project / ".copier-answers.yml").read_text(encoding="utf-8")
+    assert "modules: {admin: true}" in answers
+    assert "écrit dans .copier-answers.yml" in r.stdout
+
+
+def test_toggle_preserves_other_modules_already_in_copier_answers(project, fakebin):
+    _write_env(project, **_base_env(MODULE_ADMIN="false", MODULE_FLEET="true"))
+    _write_answers(project, modules="{fleet: true}")
+    _fake_docker_toggle(fakebin, probe_result="on")
+
+    r = _run(SCRIPTS / "toggle_module.sh", project, fakebin, "admin", "on")
+
+    assert r.returncode == 0, r.stderr
+    answers = (project / ".copier-answers.yml").read_text(encoding="utf-8")
+    assert "fleet: true" in answers
+    assert "admin: true" in answers
+
+
 def test_toggle_reports_failure_when_health_never_confirms(project, fakebin):
     _write_env(project, **_base_env(MODULE_ADMIN="false"))
+    _write_answers(project)
     _fake_docker_toggle(fakebin, probe_result="off")  # jamais "on", même après le flip
 
     r = _run(SCRIPTS / "toggle_module.sh", project, fakebin, "admin", "on")
@@ -160,12 +201,14 @@ def test_toggle_reports_failure_when_health_never_confirms(project, fakebin):
 
 def test_toggle_off_flips_flag_the_other_way(project, fakebin):
     _write_env(project, **_base_env(MODULE_ADMIN="true"))
+    _write_answers(project, modules="{admin: true}")
     _fake_docker_toggle(fakebin, probe_result="off")
 
     r = _run(SCRIPTS / "toggle_module.sh", project, fakebin, "admin", "off")
 
     assert r.returncode == 0, r.stderr
     assert "MODULE_ADMIN=false" in (project / ".env").read_text(encoding="utf-8")
+    assert "modules: {admin: false}" in (project / ".copier-answers.yml").read_text(encoding="utf-8")
 
 
 # --- create_admin.sh -----------------------------------------------------
