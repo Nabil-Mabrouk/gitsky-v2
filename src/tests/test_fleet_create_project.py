@@ -266,6 +266,42 @@ def test_create_project_with_github_create_and_successful_push(monkeypatch, tmp_
     assert body["warnings"] == []
 
 
+def test_create_project_push_url_embeds_the_github_token(monkeypatch, tmp_path):
+    # Bug de prod réel (cryptokilla, 2026-08-29) : clone_url (API GitHub en
+    # mode create, ou construit nu en mode link) n'embarque jamais
+    # d'identifiants — git push tombait alors sur un prompt username/
+    # password interactif, jamais satisfiable sur un serveur. L'URL
+    # utilisée pour LE PUSH doit embarquer FLEET_GITHUB_TOKEN, distincte de
+    # clone_url/github_repo (stockés/affichés tels quels ailleurs).
+    monkeypatch.setattr(generator_client, "generate_project", _fake_generate(tmp_path))
+    monkeypatch.setattr(github_client, "create_webhook", _ok_create_webhook)
+    monkeypatch.setenv("FLEET_GITHUB_TOKEN", "ghp_test123")
+
+    captured: dict[str, str] = {}
+
+    def _record_push(project_dir, remote_url, branch):
+        captured["remote_url"] = remote_url
+
+    monkeypatch.setattr(git_client, "push_initial_commit", _record_push)
+
+    r = client.post(
+        "/api/fleet/projects",
+        json={
+            "name": "link-with-token",
+            "modules": {},
+            "github_mode": "link",
+            "github_repo": "third-party/existing-repo",
+        },
+        headers=_auth(SEED["admin_id"]),
+    )
+    assert r.status_code == 201
+    assert r.json()["pushed"] is True
+    assert captured["remote_url"] == "https://ghp_test123@github.com/third-party/existing-repo.git"
+    # github_repo affiché à l'opérateur reste l'identifiant propre, jamais
+    # le jeton — seule l'URL passée à push_initial_commit l'embarque.
+    assert r.json()["github_repo"] == "third-party/existing-repo"
+
+
 def test_create_project_bootstraps_deploy_triggered_when_webhook_install_fails(
     monkeypatch, tmp_path
 ):

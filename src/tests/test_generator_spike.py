@@ -241,6 +241,17 @@ def test_tasks_provision_register_and_git_init():
         assert fleet["registered"] == "skipped_no_fleet_url"
         # Task git init + commit initial (RÉELLE).
         assert (dst / ".git").is_dir()
+        # Bug de prod réel (cryptokilla, 2026-08-29) : sans `-b main` sur
+        # `git init`, la branche retombe sur `init.defaultBranch` de
+        # l'installation git locale ("master" sur le serveur réel) — le
+        # webhook GitHub filtre sur `fleet_github_deploy_branch` (défaut
+        # "main"), donc tout push vers "master" était silencieusement
+        # ignoré, sans jamais déclencher le premier déploiement.
+        branch = subprocess.run(
+            ["git", "-C", str(dst), "branch", "--show-current"],
+            capture_output=True, text=True, check=True,
+        ).stdout.strip()
+        assert branch == "main"
     finally:
         _rmtree_robuste(tmp)
 
