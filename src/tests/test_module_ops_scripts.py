@@ -172,6 +172,28 @@ def test_toggle_also_updates_copier_answers_so_the_flag_survives_copier_update(p
     assert "écrit dans .copier-answers.yml" in r.stdout
 
 
+def test_toggle_reads_block_style_modules_without_duplicating_the_key(project, fakebin):
+    # copier réécrit lui-même .copier-answers.yml en style bloc au fil des
+    # `copier update` (constaté sur politique-ia, pas documenté) — le style
+    # flow n'est garanti qu'à la création. Sans ce test, une régression ici
+    # dupliquerait silencieusement la clé `modules:` au lieu de la fusionner.
+    _write_env(project, **_base_env(MODULE_ADMIN="false", MODULE_FLEET="true"))
+    _write_lf(
+        project / ".copier-answers.yml",
+        "_src_path: gitsky-template\nmodules:\n    fleet: true\nproject:\n"
+        "    domain: pain-scraper.mystudio.com\n    name: pain-scraper\n",
+    )
+    _fake_docker_toggle(fakebin, probe_result="on")
+
+    r = _run(SCRIPTS / "toggle_module.sh", project, fakebin, "admin", "on")
+
+    assert r.returncode == 0, r.stderr
+    answers = (project / ".copier-answers.yml").read_text(encoding="utf-8")
+    assert answers.count("modules:") == 1
+    assert "fleet: true" in answers
+    assert "admin: true" in answers
+
+
 def test_toggle_preserves_other_modules_already_in_copier_answers(project, fakebin):
     _write_env(project, **_base_env(MODULE_ADMIN="false", MODULE_FLEET="true"))
     _write_answers(project, modules="{fleet: true}")
