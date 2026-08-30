@@ -238,11 +238,18 @@ def test_toggle_off_flips_flag_the_other_way(project, fakebin):
 
 def _fake_docker_admin(fakebin: Path, *, register_result: str = "created") -> None:
     arglog = (fakebin / "args.log").as_posix()
+    stdinlog = (fakebin / "stdin.log").as_posix()
     _fake_docker(fakebin, rf"""
         echo "$@" >> "{arglog}"
         case "$*" in
           *_backend*) echo "{register_result}" ;;
-          *_db*) exit 0 ;;
+          # Bug de prod réel (cryptokilla, 2026-08-30) : le script réel passe
+          # désormais le SQL par stdin (`docker exec -i ... <<< "..."`), pas
+          # par `-c` — psql n'interpole `:'email'` que pour un script lu sur
+          # stdin/-f, jamais pour -c. Le faux docker capture donc stdin ici
+          # pour que le test puisse vérifier CE que psql recevrait réellement,
+          # pas seulement les arguments de la ligne de commande.
+          *_db*) cat > "{stdinlog}"; exit 0 ;;
         esac
     """)
 
@@ -262,8 +269,12 @@ def test_create_admin_registers_and_promotes(project, fakebin):
     calls = (fakebin / "args.log").read_text(encoding="utf-8")
     assert "REGISTER_EMAIL=ops@example.com" in calls
     assert "pain-scraper_backend" in calls
-    assert "UPDATE users SET role = 'admin'" in calls
     assert "email=ops@example.com" in calls  # -v email=... (psql, jamais interpolé dans le SQL)
+    db_call = next(line for line in calls.splitlines() if "_db" in line)
+    assert "exec -i" in db_call  # stdin requis pour que le SQL ci-dessous soit lu par psql
+    assert " -c " not in db_call  # bug réel : -c n'interpole jamais :'email' (cryptokilla, 2026-08-30)
+    stdin = (fakebin / "stdin.log").read_text(encoding="utf-8")
+    assert "UPDATE users SET role = 'admin'" in stdin
 
 
 def test_create_admin_generates_and_displays_password_once(project, fakebin):
@@ -286,8 +297,8 @@ def test_create_admin_promotes_existing_account_without_changing_password(projec
     assert "existe déjà" in r.stdout
     assert "mot de passe inchangé" in r.stdout
     assert "Mot de passe généré" not in r.stdout
-    calls = (fakebin / "args.log").read_text(encoding="utf-8")
-    assert "UPDATE users SET role = 'admin'" in calls
+    stdin = (fakebin / "stdin.log").read_text(encoding="utf-8")
+    assert "UPDATE users SET role = 'admin'" in stdin
 
 
 def test_create_admin_fails_on_registration_error_without_promoting(project, fakebin):
@@ -297,8 +308,7 @@ def test_create_admin_fails_on_registration_error_without_promoting(project, fak
     r = _run(SCRIPTS / "create_admin.sh", project, fakebin, "not-an-email")
 
     assert r.returncode == 1
-    calls = (fakebin / "args.log").read_text(encoding="utf-8")
-    assert "UPDATE users" not in calls
+    assert not (fakebin / "stdin.log").exists()
 
 
 def test_create_admin_fails_cleanly_without_postgres_project(project, fakebin):
