@@ -16,7 +16,7 @@ def test_no_active_modules_shows_fallback_message_only():
     body = _modules_md()
     assert "Aucun module optionnel n'est actif" in body
     # Aucune section de module ne doit apparaître.
-    for heading in ("## Admin", "## Framework agentic", "## Fleet"):
+    for heading in ("## Admin", "## Framework agentic", "## Fleet", "## Worker"):
         assert heading not in body
 
 
@@ -33,6 +33,7 @@ def test_only_active_modules_get_a_section():
         "## SecurityMiddleware",
         "## Monétisation",
         "## Fleet",
+        "## Worker",
     ):
         assert heading not in body
 
@@ -68,6 +69,13 @@ def test_fleet_section_warns_it_is_dashboard_only():
     body = _modules_md(fleet=True)
     assert "## Fleet (`MODULE_FLEET`)" in body
     assert "jamais pour un projet métier ordinaire" in body
+
+
+def test_worker_section_documents_the_extension_point():
+    body = _modules_md(worker=True)
+    assert "## Worker (`MODULE_WORKER`)" in body
+    assert "app/domain/worker_cycle.py" in body
+    assert "run_cycle(db, stop_requested)" in body
 
 
 def test_readme_links_to_modules_md():

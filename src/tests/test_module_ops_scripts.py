@@ -101,6 +101,16 @@ def test_toggle_rejects_fleet_module(project, fakebin):
     assert "copier update" in r.stderr
 
 
+def test_toggle_rejects_worker_module(project, fakebin):
+    # Meme refus structurel que fleet (round worker) : basculer .env seul ne
+    # fait ni apparaitre ni disparaitre le service worker: dans
+    # docker-compose.yml.
+    _write_env(project, **_base_env())
+    r = _run(SCRIPTS / "toggle_module.sh", project, fakebin, "worker", "on")
+    assert r.returncode == 1
+    assert "copier update" in r.stderr
+
+
 def test_toggle_rejects_invalid_state(project, fakebin):
     _write_env(project, **_base_env())
     r = _run(SCRIPTS / "toggle_module.sh", project, fakebin, "admin", "maybe")

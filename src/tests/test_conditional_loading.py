@@ -27,9 +27,11 @@ print(json.dumps({
     "health": health.json(),
     "analytics_status": c.get("/api/admin/analytics/world").status_code,
     "agentic_status": c.get("/api/agent-services/services").status_code,
+    "worker_status": c.get("/api/worker/status").status_code,
     "analytics_imported": "app.modules.analytics" in sys.modules,
     "agentic_imported": "app.modules.agentic" in sys.modules,
     "security_imported": "app.modules.security" in sys.modules,
+    "worker_imported": "app.modules.worker" in sys.modules,
 }))
 """
 
@@ -50,10 +52,12 @@ def test_no_modules_active_by_default():
     # Endpoints des modules absents.
     assert r["analytics_status"] == 404  # /api/admin/analytics non monté
     assert r["agentic_status"] == 404
+    assert r["worker_status"] == 404
     # Preuve clé : le code des modules désactivés n'est jamais importé.
     assert r["analytics_imported"] is False
     assert r["agentic_imported"] is False
     assert r["security_imported"] is False
+    assert r["worker_imported"] is False
 
 
 def test_all_flags_active_loads_every_module():
@@ -66,13 +70,16 @@ def test_all_flags_active_loads_every_module():
         MODULE_ONBOARDING="true",
         MODULE_MONETIZATION_SHOP="true",
         MODULE_MONETIZATION_SUBSCRIPTION="true",
+        MODULE_WORKER="true",
     )
     assert r["health"]["modules"]["analytics"] is True
     assert r["analytics_status"] == 401  # monté mais protégé (require_admin)
     assert r["agentic_status"] == 200
+    assert r["worker_status"] == 401  # monté mais protégé (require_admin)
     assert r["analytics_imported"] is True
     assert r["agentic_imported"] is True
     assert r["security_imported"] is True
+    assert r["worker_imported"] is True
 
 
 def test_a_single_flag_activates_only_that_module():

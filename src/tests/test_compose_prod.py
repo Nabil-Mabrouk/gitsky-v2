@@ -277,3 +277,50 @@ def test_maintenance_service_uses_the_shared_proxy_net_not_internal_net():
             (dst / "docker-compose.maintenance.yml").read_text(encoding="utf-8")
         )
     assert maint_compose["services"]["maintenance"]["networks"] == ["proxy-net"]
+
+
+# --- service worker : réservé au module worker (round worker) --------------
+
+
+def test_worker_service_appears_when_module_active():
+    with projet_genere("pain-scraper", modules={"worker": True}) as dst:
+        compose = yaml.safe_load((dst / "docker-compose.yml").read_text(encoding="utf-8"))
+    worker = compose["services"]["worker"]
+    assert worker["command"] == "python -m app.modules.worker.runner"
+    assert worker["restart"] == "unless-stopped"
+    assert worker["container_name"] == "pain-scraper_worker"
+    assert worker["depends_on"]["db"]["condition"] == "service_healthy"
+
+
+def test_worker_service_absent_by_default():
+    # Un projet sans module worker (le cas normal) ne doit avoir aucune trace
+    # d'un service qui ne lui sert à rien.
+    with projet_genere("pain-scraper") as dst:
+        compose = yaml.safe_load((dst / "docker-compose.yml").read_text(encoding="utf-8"))
+    assert "worker" not in compose["services"]
+
+
+def test_worker_healthcheck_is_disabled():
+    # Le Dockerfile sonde localhost:8000/health (process gunicorn) — worker
+    # ne sert aucun port HTTP, cette sonde échouerait toujours sans ce
+    # disable (piège trouvé en concevant ce module).
+    with projet_genere("pain-scraper", modules={"worker": True}) as dst:
+        compose = yaml.safe_load((dst / "docker-compose.yml").read_text(encoding="utf-8"))
+    assert compose["services"]["worker"]["healthcheck"]["disable"] is True
+
+
+def test_worker_stop_grace_period_gives_cycles_time_to_exit():
+    # Défaut Docker (10s, jamais overridé ailleurs dans ce fichier) trop
+    # court pour un cycle avec I/O externe (exchange, LLM du bulletin).
+    with projet_genere("pain-scraper", modules={"worker": True}) as dst:
+        compose = yaml.safe_load((dst / "docker-compose.yml").read_text(encoding="utf-8"))
+    assert compose["services"]["worker"]["stop_grace_period"] == "90s"
+
+
+def test_worker_never_joins_proxy_net():
+    # Pas HTTP-facing, aucune raison d'être exposé à Traefik.
+    with projet_genere("pain-scraper", modules={"worker": True}) as dst:
+        compose = yaml.safe_load((dst / "docker-compose.yml").read_text(encoding="utf-8"))
+    networks = compose["services"]["worker"]["networks"]
+    assert "internal-net" in networks
+    assert "proxy-net" not in networks

@@ -302,6 +302,28 @@ def test_fleet_chain_applied_when_enabled():
             pass
 
 
+def test_worker_chain_applied_when_enabled():
+    fd, path = tempfile.mkstemp(suffix=".db")
+    os.close(fd)
+    db_file = Path(path)
+    try:
+        settings = Settings(module_worker=True)
+        applied = run_migrations(url=_async_url(db_file), settings=settings)
+
+        assert applied == ["core", "worker"]
+        tables = _table_names(db_file)
+        assert "worker_runs" in tables
+        assert "alembic_version_worker" in tables
+        assert {"id", "started_at", "finished_at", "status", "error"} <= _columns(
+            db_file, "worker_runs"
+        )
+    finally:
+        try:
+            db_file.unlink()
+        except OSError:
+            pass
+
+
 def test_fleet_drop_tier_migration_on_a_database_created_before_it_existed():
     # Ce scenario reproduit une base de PRODUCTION deja migree avant le retrait
     # des tiers (Phase 6) : 0001/0002 avaient encore la colonne `tier`. Une
