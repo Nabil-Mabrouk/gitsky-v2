@@ -50,3 +50,15 @@ def test_readme_links_to_agents_and_claude_md():
         readme = (dst / "README.md").read_text(encoding="utf-8")
     assert "[`AGENTS.md`](AGENTS.md)" in readme
     assert "[`CLAUDE.md`](CLAUDE.md)" in readme
+
+
+def test_branding_local_css_generated_and_imported_after_theme():
+    # Round theming (Chap 24) : point d'extension pour personnaliser la
+    # marque après génération, sans toucher theme.css (régénéré par
+    # copier update depuis le branding du Studio).
+    with projet_genere("pain-scraper") as dst:
+        assert (dst / "frontend/src/branding.local.css").exists()
+        index_css = (dst / "frontend/src/index.css").read_text(encoding="utf-8")
+    theme_pos = index_css.index("./theme.css")
+    branding_pos = index_css.index("./branding.local.css")
+    assert theme_pos < branding_pos
