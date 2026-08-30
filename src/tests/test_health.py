@@ -76,3 +76,24 @@ def test_health_still_reports_modules():
     assert "tier" not in body
     assert "modules" in body
     assert body["modules"]["auth"] is True
+
+
+def test_health_reports_i18n_module(monkeypatch):
+    # Bug de prod réel (cryptokilla, 2026-08-30) : le sélecteur de langue de
+    # Navbar.tsx (`{modules.i18n && ...}`, round theming) ne pouvait jamais
+    # s'afficher, sur AUCUN projet — MODULE_I18N=true dans .env, mais /health
+    # ne l'a jamais renvoyé dans `modules`, contrairement à tous les autres
+    # flags. `app/core/main.py` capture `settings = get_settings()` une
+    # seule fois au niveau module (import) — patcher un `get_settings()`
+    # frais est fragile selon l'ordre des tests : si un test antérieur
+    # (ex. test_fleet_create_project.py) a déjà appelé
+    # `get_settings.cache_clear()`, un nouveau `get_settings()` renvoie une
+    # AUTRE instance que celle déjà liée dans main.py, et la mutation
+    # n'atteint jamais le handler (reproduit en combinant les deux fichiers
+    # de test). On patche donc directement l'objet que main.py utilise.
+    from app.core import main as main_module
+
+    monkeypatch.setattr(main_module.settings, "module_i18n", True)
+    session = _FakeSession(fail=False)
+    body = _client_with(session).get("/health").json()
+    assert body["modules"]["i18n"] is True
