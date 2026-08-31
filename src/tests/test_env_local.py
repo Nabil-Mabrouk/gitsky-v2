@@ -87,6 +87,16 @@ def test_env_local_example_lists_leads_token_only_for_module_leads():
     assert "LEADS_COLLECTOR_TOKEN=" in example
 
 
+def test_env_local_example_lists_geoip_url_only_for_module_analytics():
+    with projet_genere("pain-scraper") as dst:
+        example = (dst / ".env.local.example").read_text(encoding="utf-8")
+    assert "GEOIP_URL=" not in example
+
+    with projet_genere("pain-scraper", modules={"analytics": True}) as dst:
+        example = (dst / ".env.local.example").read_text(encoding="utf-8")
+    assert "GEOIP_URL=" in example
+
+
 def test_compose_backend_loads_env_local_as_optional():
     with projet_genere("fleet-dashboard", modules={"fleet": True}) as dst:
         compose = (dst / "docker-compose.yml").read_text(encoding="utf-8")

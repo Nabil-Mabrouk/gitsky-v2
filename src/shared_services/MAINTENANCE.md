@@ -15,6 +15,7 @@ faire depuis le fleet dashboard.
 | Quotidien 02:00 | Sauvegarde 3-2-1 de toutes les bases projet | `backup-fleet.sh` |
 | Horaire | Jauge disque consolidée | `fleet-disk.sh` |
 | Hebdo (dim 05:00) | Purge des images Docker orphelines | `docker image prune` |
+| Mensuel (1er, 03:00) | Rafraîchit la base GeoIP MaxMind (GeoLite2-City) | `update-geoip-db.sh` |
 | Mensuel (1er, 04:00) | Test de restauration d'un projet tiré au hasard | `test-restore-fleet.sh` |
 | Mensuel | Rotation des logs de maintenance (> 30 j) | `find … -delete` |
 

@@ -193,6 +193,17 @@ def test_ordinary_project_never_touches_shared_services_net():
     assert "shared-services-net" not in compose["networks"]
 
 
+def test_analytics_backend_joins_shared_services_net():
+    # module_analytics a besoin de shared-services-net pour joindre le
+    # service geoip partagé (Chap 13) — sans lui, geolocate() ne peut
+    # atteindre que "??" même avec GEOIP_URL renseignée.
+    with projet_genere("pain-scraper", modules={"analytics": True}) as dst:
+        compose = yaml.safe_load((dst / "docker-compose.yml").read_text(encoding="utf-8"))
+    assert "shared-services-net" in compose["services"]["backend"]["networks"]
+    net = compose["networks"]["shared-services-net"]
+    assert net["external"] is True
+
+
 def test_leads_backend_joins_shared_services_net():
     # module_leads a besoin du meme reseau interne que fleet pour joindre
     # landing_collector (GET /leads/{project} n'est jamais expose via

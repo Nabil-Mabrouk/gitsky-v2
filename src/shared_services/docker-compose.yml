@@ -123,18 +123,48 @@ services:
     depends_on:
       - postgres
 
-  # Image placeholder — aucun geoip-service réel n'est encore publié (Chap 18).
-  # Profile "geoip" : exclu d'un `docker compose up -d` normal tant qu'aucune
-  # image n'existe. Démarrer explicitement avec `--profile geoip` une fois
-  # l'image buildée et publiée.
   geoip:
-    image: mystudio/geoip-service:latest
-    profiles:
-      - geoip
+    # Lookup local (Chap 13/18) sur la base MaxMind GeoLite2-City partagée —
+    # jamais d'accès réseau sortant (contrairement à geoipupdate ci-dessous),
+    # donc shared-services-net uniquement, pas egress-net.
+    build:
+      context: ./geoip_service
     volumes:
-      - geoip_data:/data/GeoLite2
+      # Lecture seule : seul geoipupdate (ci-dessous) écrit ici. Chemin
+      # identique à celui qu'il y écrit par défaut (DatabaseDirectory par
+      # défaut de l'image officielle, non surchargé) une fois le premier run
+      # passé : /usr/share/GeoIP/GeoLite2-City.mmdb. Le volume peut être vide
+      # au premier déploiement — geoip_service/main.py démarre quand même,
+      # /resolve répond "??" jusqu'au premier scripts/update-geoip-db.sh.
+      - geoip_data:/usr/share/GeoIP:ro
     networks:
       - shared-services-net
+
+  # One-shot, jamais démarré par un `docker compose up -d` normal (profile
+  # dédié) — invoqué explicitement par scripts/update-geoip-db.sh via
+  # `docker compose --profile geoipupdate run --rm geoipupdate`, lui-même
+  # appelé mensuellement par crontab.fleet. Sans ce profile, CHAQUE
+  # redéploiement de shared_services (git pull + up -d --build) relancerait
+  # aussi un appel MaxMind, pas seulement le cron mensuel voulu.
+  #
+  # Seul service de ce fichier qui a réellement besoin d'Internet (télécharge
+  # la base MaxMind) — egress-net, PAS shared-services-net (internal: true),
+  # même raisonnement de sécurité que llm-proxy plus haut.
+  geoipupdate:
+    image: maxmindinc/geoipupdate
+    profiles:
+      - geoipupdate
+    environment:
+      - GEOIPUPDATE_ACCOUNT_ID=${MAXMIND_ACCOUNT_ID}
+      - GEOIPUPDATE_LICENSE_KEY=${MAXMIND_LICENSE_KEY}
+      - GEOIPUPDATE_EDITION_IDS=GeoLite2-City
+      # GEOIPUPDATE_FREQUENCY volontairement absente : sans elle, l'image
+      # tourne une fois et sort — le comportement one-shot voulu pour
+      # `docker compose run --rm`, pas un démon en boucle.
+    volumes:
+      - geoip_data:/usr/share/GeoIP
+    networks:
+      - egress-net
 
 volumes:
   traefik_acme:

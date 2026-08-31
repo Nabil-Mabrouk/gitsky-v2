@@ -56,6 +56,12 @@ FLEET_REGISTER_TOKEN=
 # (.dump.gz, pg_restore) réellement en production.
 0 4 1 * * BACKUP_DIR=/backups/postgres /opt/gitsky/shared_services/scripts/test-restore-fleet.sh >> /var/log/gitsky_restore_test.log 2>&1
 
+# ── Base GeoIP ───────────────────────────────────────────────────────────────
+# Rafraîchit la base MaxMind GeoLite2-City, le 1er du mois à 03:00 (entre la
+# sauvegarde quotidienne de 02:00 et le test de restauration mensuel de
+# 04:00 — pas de dépendance entre les trois, juste un créneau libre).
+0 3 1 * * /opt/gitsky/shared_services/scripts/update-geoip-db.sh >> /var/log/gitsky_geoip.log 2>&1
+
 # ── Nettoyage ────────────────────────────────────────────────────────────────
 # Images Docker orphelines, chaque dimanche à 05:00.
 0 5 * * 0 docker image prune -f >> /var/log/gitsky_cleanup.log 2>&1

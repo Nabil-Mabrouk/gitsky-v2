@@ -15,6 +15,7 @@ on:
       - "src/generator/template/frontend/package-lock.json"
       - "src/shared_services/landing_collector/requirements.txt"
       - "src/shared_services/studio/requirements.txt"
+      - "src/shared_services/geoip_service/requirements.txt"
   workflow_dispatch:
 
 jobs:
@@ -29,6 +30,7 @@ jobs:
           - src/generator/template/requirements.txt
           - src/shared_services/landing_collector/requirements.txt
           - src/shared_services/studio/requirements.txt
+          - src/shared_services/geoip_service/requirements.txt
     steps:
       - uses: actions/checkout@v4
         with:
