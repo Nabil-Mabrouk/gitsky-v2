@@ -45,6 +45,7 @@ Chaque module est un booléen indépendant, **désactivé par défaut**. Un modu
 | Monétisation abonnements | `MODULE_MONETIZATION_SUBSCRIPTION` | Abonnements récurrents via Stripe | Chap 16 |
 | Fleet (réservé au dashboard) | `MODULE_FLEET` | Registre de projets, cycle de vie, intégration GitHub — n'a de sens que pour l'app fleet dashboard elle-même, jamais pour un projet métier | Chap 19, 20, 26 |
 | Worker | `MODULE_WORKER` | Service long-vivant dédié pour un cycle métier périodique (allocation, décisions, génération…) — scaffolding uniquement, la logique reste projet | ci-dessous |
+| Leads | `MODULE_LEADS` | Vue projet-locale des leads captés par la landing (`EmailCapture.tsx`/`POST /leads`), sans dupliquer la donnée — même source que le Fleet dashboard, accès scopé par jeton dérivé | ci-dessous |
 
 Aucun de ces modules n'est un prérequis d'un autre, à une exception near : certains (onboarding, monétisation abonnement) supposent des comptes utilisateurs — ils s'appuient donc sur l'authentification core, déjà toujours présente.
 
@@ -67,6 +68,24 @@ Aucun de ces modules n'est un prérequis d'un autre, à une exception near : cer
 > `MODULES.md`/`AGENTS.md` de chaque projet généré, pas dans ce livre : pas
 > assez de matière pour un chapitre dédié, contrairement aux autres modules
 > du tableau.
+
+> **Round leads — accès admin-projet sans dupliquer la donnée.** Motivé par
+> une vraie question : l'admin d'un projet ordinaire (ex. cryptokilla) ne
+> pouvait voir aucun des emails captés sur SA propre landing — seul le Fleet
+> dashboard le pouvait (Chap 19), via un jeton `COLLECTOR_STATS_TOKEN`
+> **unique pour toute la flotte**. Le donner tel quel à chaque projet aurait
+> permis à n'importe lequel de lire les leads de tous les autres — fixé par
+> un jeton **dérivé** par projet (`HMAC-SHA256(COLLECTOR_STATS_TOKEN,
+> project_name)`), calculable sans nouvelle table ni nouveau secret stocké
+> côté collector. Réseau inchangé par ailleurs : `GET /leads/{project}` reste
+> délibérément hors d'atteinte d'Internet (Chap 18), `module_leads` rejoint
+> seulement `shared-services-net`, comme `module_fleet` déjà. La donnée
+> elle-même ne bouge jamais — `landing_collector` reste l'unique source de
+> vérité, `module_leads` ne fait qu'y lire au nom de son propre projet, plus
+> une action de conversion en compte (réutilise l'invitation Waitlist
+> existante, Chap 9). Campagnes email groupées et octroi d'abonnement,
+> explicitement hors périmètre — à scoper plus tard une fois l'usage réel
+> connu.
 
 Le fichier `.env` d'un projet minimal (landing + capture de leads, rien d'autre) :
 
@@ -115,7 +134,7 @@ Activer ou désactiver un module n'est jamais une réécriture — c'est une **m
 
 Chaque changement est **réversible** tant qu'on ne détruit pas de données — un retour au `.env` précédent suivi d'un Alembic downgrade suffit à revenir en arrière.
 
-> **Outillage (round outillage)** : `scripts/toggle_module.sh <module> <on|off>`, livré dans chaque projet généré, fait les étapes ci-dessus en une seule commande — flag `.env`, **flag `.copier-answers.yml`**, `docker compose run --rm migrate`, redémarrage du backend — et vérifie via `/health` que le nouvel état est bien pris en compte avant de déclarer la réussite. `module_fleet` **et `module_worker`** en sont explicitement exclus : `docker-compose.yml` a besoin d'un changement structurel (montages hôte dédiés pour fleet, Chap 27 ; un service `worker` entier pour worker) qu'un simple changement de `.env` ne peut pas produire — seul `copier update` avec `modules: {fleet: true}`/`{worker: true}` régénère le compose correctement pour ces deux modules-là.
+> **Outillage (round outillage)** : `scripts/toggle_module.sh <module> <on|off>`, livré dans chaque projet généré, fait les étapes ci-dessus en une seule commande — flag `.env`, **flag `.copier-answers.yml`**, `docker compose run --rm migrate`, redémarrage du backend — et vérifie via `/health` que le nouvel état est bien pris en compte avant de déclarer la réussite. `module_fleet`, `module_worker` **et `module_leads`** en sont explicitement exclus : `docker-compose.yml` a besoin d'un changement structurel (montages hôte dédiés pour fleet, Chap 27 ; un service `worker` entier pour worker ; rejoindre `shared-services-net` pour leads) qu'un simple changement de `.env` ne peut pas produire — seul `copier update` avec `modules: {fleet: true}`/`{worker: true}`/`{leads: true}` régénère le compose correctement pour ces trois modules-là.
 >
 > **Bug de prod réel, corrigé le jour même où trouvé** : la première version de ce script ne touchait que `.env`. `copier update` re-rend `.env.jinja` depuis la réponse `modules:` **stockée** dans `.copier-answers.yml` — jamais depuis le contenu actuel de `.env` — donc un `copier update` ultérieur (même pour une tout autre raison, ex. un round sans rapport) écrasait silencieusement le flag tout juste basculé. Trouvé le lendemain sur politique-ia : `MODULE_ADMIN` était repassé à `false` après un `copier update` du round suivant. Le script met désormais à jour les deux fichiers dans le même geste.
 

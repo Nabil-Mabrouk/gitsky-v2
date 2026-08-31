@@ -101,3 +101,43 @@ def test_list_open_in_dev_without_token(monkeypatch):
     monkeypatch.delenv("COLLECTOR_STATS_TOKEN", raising=False)
     monkeypatch.delenv("ENVIRONMENT", raising=False)
     assert client.get("/leads/p").status_code == 200
+
+
+# Jeton dérivé par projet (round leads, module_leads) : un projet ordinaire
+# ne détient jamais le jeton maître (fuite inter-projets), seulement un
+# HMAC-SHA256(maître, son propre nom de projet).
+
+
+def _derived(master: str, project: str) -> str:
+    import hashlib
+    import hmac
+
+    return hmac.new(master.encode(), project.encode(), hashlib.sha256).hexdigest()
+
+
+def test_master_token_still_works_unscoped(monkeypatch):
+    # Comportement fleet-dashboard inchangé : le jeton maître lit n'importe
+    # quel projet.
+    monkeypatch.setenv("COLLECTOR_STATS_TOKEN", "master-token")
+    r = client.get("/leads/any-project", headers={"X-Collector-Token": "master-token"})
+    assert r.status_code == 200
+
+
+def test_derived_token_rejected_for_a_different_project(monkeypatch):
+    monkeypatch.setenv("COLLECTOR_STATS_TOKEN", "master-token")
+    token_for_a = _derived("master-token", "project-a")
+    r = client.get("/leads/project-b", headers={"X-Collector-Token": token_for_a})
+    assert r.status_code == 401
+
+
+def test_derived_token_accepted_for_its_own_project(monkeypatch):
+    monkeypatch.setenv("COLLECTOR_STATS_TOKEN", "master-token")
+    token_for_a = _derived("master-token", "project-a")
+
+    r = client.get("/leads/project-a", headers={"X-Collector-Token": token_for_a})
+    assert r.status_code == 200
+
+    r_stats = client.get(
+        "/leads/project-a/stats", headers={"X-Collector-Token": token_for_a}
+    )
+    assert r_stats.status_code == 200

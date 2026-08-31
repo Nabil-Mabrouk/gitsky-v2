@@ -61,6 +61,32 @@ def test_env_local_example_lists_fleet_vars_only_when_module_fleet_active():
     assert "PROJECTS_DIR=" not in example
 
 
+def test_env_local_example_lists_landing_collector_url_for_fleet_and_leads():
+    # Gap réel trouvé au round leads : LANDING_COLLECTOR_URL n'était déclaré
+    # nulle part, même pour module_fleet qui en a pourtant toujours eu besoin.
+    with projet_genere("pain-scraper") as dst:
+        example = (dst / ".env.local.example").read_text(encoding="utf-8")
+    assert "LANDING_COLLECTOR_URL=" not in example
+
+    with projet_genere("fleet-dashboard", modules={"fleet": True}) as dst:
+        example = (dst / ".env.local.example").read_text(encoding="utf-8")
+    assert "LANDING_COLLECTOR_URL=" in example
+
+    with projet_genere("pain-scraper", modules={"leads": True}) as dst:
+        example = (dst / ".env.local.example").read_text(encoding="utf-8")
+    assert "LANDING_COLLECTOR_URL=" in example
+
+
+def test_env_local_example_lists_leads_token_only_for_module_leads():
+    with projet_genere("fleet-dashboard", modules={"fleet": True}) as dst:
+        example = (dst / ".env.local.example").read_text(encoding="utf-8")
+    assert "LEADS_COLLECTOR_TOKEN=" not in example
+
+    with projet_genere("pain-scraper", modules={"leads": True}) as dst:
+        example = (dst / ".env.local.example").read_text(encoding="utf-8")
+    assert "LEADS_COLLECTOR_TOKEN=" in example
+
+
 def test_compose_backend_loads_env_local_as_optional():
     with projet_genere("fleet-dashboard", modules={"fleet": True}) as dst:
         compose = (dst / "docker-compose.yml").read_text(encoding="utf-8")

@@ -97,3 +97,14 @@ def test_health_reports_i18n_module(monkeypatch):
     session = _FakeSession(fail=False)
     body = _client_with(session).get("/health").json()
     assert body["modules"]["i18n"] is True
+
+
+def test_health_reports_leads_module(monkeypatch):
+    # Meme classe de bug que i18n ci-dessus (round leads) : verrouille
+    # l'entree /health pour chaque nouveau flag des sa creation.
+    from app.core import main as main_module
+
+    monkeypatch.setattr(main_module.settings, "module_leads", True)
+    session = _FakeSession(fail=False)
+    body = _client_with(session).get("/health").json()
+    assert body["modules"]["leads"] is True

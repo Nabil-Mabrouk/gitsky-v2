@@ -185,12 +185,24 @@ def test_fleet_backend_joins_shared_services_net():
 
 
 def test_ordinary_project_never_touches_shared_services_net():
-    # Un projet sans module fleet (le cas normal) ne doit pas se retrouver à
-    # dépendre d'un réseau externe dont il n'a jamais besoin.
+    # Un projet sans module fleet ni leads (le cas normal) ne doit pas se
+    # retrouver à dépendre d'un réseau externe dont il n'a jamais besoin.
     with projet_genere("pain-scraper") as dst:
         compose = yaml.safe_load((dst / "docker-compose.yml").read_text(encoding="utf-8"))
     assert "shared-services-net" not in compose["services"]["backend"]["networks"]
     assert "shared-services-net" not in compose["networks"]
+
+
+def test_leads_backend_joins_shared_services_net():
+    # module_leads a besoin du meme reseau interne que fleet pour joindre
+    # landing_collector (GET /leads/{project} n'est jamais expose via
+    # Traefik, round leads) — sans monter les volumes fleet-only.
+    with projet_genere("pain-scraper", modules={"leads": True}) as dst:
+        compose = yaml.safe_load((dst / "docker-compose.yml").read_text(encoding="utf-8"))
+    assert "shared-services-net" in compose["services"]["backend"]["networks"]
+    net = compose["networks"]["shared-services-net"]
+    assert net["external"] is True
+    assert "volumes" not in compose["services"]["backend"]
 
 
 # --- volumes du générateur : réservés au module fleet (Chap 27) ------------

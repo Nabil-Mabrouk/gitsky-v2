@@ -8,6 +8,8 @@
 Les tables sont créées au démarrage (service minimal, pas d'Alembic).
 """
 
+import hashlib
+import hmac
 import logging
 import os
 import secrets
@@ -107,14 +109,41 @@ async def verify_lead(token: str, db: AsyncSession = Depends(get_session)) -> HT
     return HTMLResponse(_CONFIRMED_HTML)
 
 
+def _derived_token(master: str, project: str) -> str:
+    """Jeton par-projet dérivé du jeton maître (module_leads, round leads).
+
+    HMAC-SHA256(COLLECTOR_STATS_TOKEN, project) — dupliqué à l'identique dans
+    app/modules/fleet/generator_client.py (calcul automatique à la création
+    d'un projet) et scripts/provision_leads_token.sh (provisioning manuel/
+    retrofit) du générateur. Aucun paquet partagé entre shared_services/ et
+    src/generator/template/ (unités déployées séparément, même doctrine que
+    LeadRead/LeadOut : miroir local plutôt qu'import cross-service) — toute
+    dérive entre les trois casserait silencieusement l'accès d'un projet à
+    ses propres leads ; test_collector_stats_token.py verrouille la formule.
+    """
+    return hmac.new(master.encode(), project.encode(), hashlib.sha256).hexdigest()
+
+
 async def verify_stats_token(
+    project: str,
     x_collector_token: str | None = Header(default=None),
 ) -> None:
-    """Garde de lecture des stats (durcissement, même sémantique que fleet).
+    """Garde de lecture des stats/leads (durcissement, même sémantique que fleet).
 
     La CAPTURE (/leads) reste publique — les landings T0 postent sans secret.
-    La LECTURE du funnel, elle, est réservée au fleet dashboard : token
-    configuré -> header exigé ; absent -> ouvert en dev, refus en production.
+    La LECTURE, elle, accepte SOIT le jeton maître (fleet dashboard, accès
+    fleet-wide inchangé) SOIT le jeton DÉRIVÉ du projet demandé (module_leads
+    d'un projet ordinaire, round leads) : HMAC-SHA256(COLLECTOR_STATS_TOKEN,
+    project). `project` est injecté par FastAPI depuis le paramètre de
+    chemin {project} de la route appelante, comme pour le handler lui-même.
+
+    Sans cette distinction par projet, donner à chaque projet le même jeton
+    que fleet-dashboard lui ouvrirait la lecture des leads de TOUTE la
+    flotte — `project` est un paramètre de chemin libre, sans registre ni
+    scoping par appelant.
+
+    Token absent -> ouvert en dev, refus en production (fail-closed),
+    inchangé.
     """
     expected = os.environ.get("COLLECTOR_STATS_TOKEN", "")
     if not expected:
@@ -124,12 +153,12 @@ async def verify_stats_token(
                 detail="COLLECTOR_STATS_TOKEN non configuré",
             )
         return
-    if x_collector_token is None or not secrets.compare_digest(
-        x_collector_token, expected
+    if x_collector_token is not None and (
+        secrets.compare_digest(x_collector_token, expected)
+        or secrets.compare_digest(x_collector_token, _derived_token(expected, project))
     ):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED, detail="Token invalide"
-        )
+        return
+    raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token invalide")
 
 
 @app.get(

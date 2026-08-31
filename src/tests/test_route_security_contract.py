@@ -90,6 +90,11 @@ def _all_routes() -> list[dict]:
         "MODULE_MONETIZATION_SHOP": "true",
         "MODULE_MONETIZATION_SUBSCRIPTION": "true",
         "MODULE_FLEET": "true",
+        # MODULE_WORKER/MODULE_LEADS manquaient ici depuis leur ajout
+        # respectif — leurs routeurs (/api/worker, /api/leads) n'étaient
+        # jamais réellement inspectés par ce contrat (trouvé au round leads).
+        "MODULE_WORKER": "true",
+        "MODULE_LEADS": "true",
         "PYTHONPATH": str(BACKEND),
     }
     out = subprocess.check_output(
