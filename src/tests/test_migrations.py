@@ -20,7 +20,7 @@ from pathlib import Path
 
 from alembic import command
 from alembic.config import Config
-from sqlalchemy import create_engine, inspect
+from sqlalchemy import create_engine, inspect, text
 
 BACKEND = Path(__file__).resolve().parents[1] / "generator" / "template"
 sys.path.insert(0, str(BACKEND))
@@ -317,6 +317,43 @@ def test_worker_chain_applied_when_enabled():
         assert {"id", "started_at", "finished_at", "status", "error"} <= _columns(
             db_file, "worker_runs"
         )
+    finally:
+        try:
+            db_file.unlink()
+        except OSError:
+            pass
+
+
+def test_worker_runs_started_at_gets_server_default_on_bare_insert():
+    # Bug de prod réel (2026-09-07, cryptokilla) : `runner.py::_start_run()`
+    # insère un WorkerRun sans jamais fixer `started_at` lui-même, comptant
+    # sur un défaut côté base pour le remplir. La migration 0001 créait la
+    # colonne `nullable=False` sans aucun défaut — chaque insertion violait
+    # la contrainte, faisant crasher le worker en boucle dès son premier
+    # cycle. `test_worker_chain_applied_when_enabled` ne pouvait pas le
+    # révéler (il vérifie la présence des colonnes, jamais leur défaut), et
+    # `test_worker_module.py` non plus (son schéma vient de
+    # `Base.metadata.create_all`, qui lit le modèle actuel — jamais la vraie
+    # chaîne Alembic). Celui-ci fait un INSERT SQL brut omettant
+    # `started_at`, exactement comme le code de production, contre le
+    # schéma réellement produit par les migrations.
+    fd, path = tempfile.mkstemp(suffix=".db")
+    os.close(fd)
+    db_file = Path(path)
+    try:
+        settings = Settings(module_worker=True)
+        run_migrations(url=_async_url(db_file), settings=settings)
+
+        engine = create_engine(f"sqlite:///{db_file.as_posix()}")
+        try:
+            with engine.begin() as conn:
+                conn.execute(text("INSERT INTO worker_runs (status) VALUES ('running')"))
+                started_at = conn.execute(
+                    text("SELECT started_at FROM worker_runs")
+                ).scalar_one()
+            assert started_at is not None
+        finally:
+            engine.dispose()
     finally:
         try:
             db_file.unlink()
