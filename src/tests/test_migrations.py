@@ -92,6 +92,9 @@ def test_core_chain_upgrade_and_downgrade():
             "role",
             "is_active",
             "token_version",  # 0002 : révocation des refresh tokens (Chap 7)
+            "invite_token",  # 0003 : invitations Waitlist (Chap 9)
+            "must_change_password",  # 0004 : mot de passe imposé (Chap 7bis)
+            "reset_token",  # 0004 : mot de passe oublié (Chap 7bis)
             "created_at",
         } <= _user_columns(db_file)
 

@@ -50,6 +50,40 @@ Un JWT est *stateless* : une fois émis, le serveur lui fait confiance jusqu'à 
 
 Le **rate limiting du login** (5 req/min) n'est pas dans l'application : conformément à la doctrine du Chap 14, il est porté par un routeur Traefik dédié généré dans le `docker-compose.yml` de production (voir Chap 21) — chaque essai coûtant un hachage argon2, un login illimité serait à la fois du credential stuffing et un DoS CPU à bas coût.
 
+## Mot de passe imposé et réinitialisation
+
+> **Écart au livre** : ce chapitre ne couvrait à l'origine que la création
+> de compte par le titulaire lui-même (`register`, `accept-invite`) — un
+> compte créé par un opérateur (`create_admin.sh`, Chap 9) recevait un mot
+> de passe généré sans jamais être obligé de le changer, et aucun compte ne
+> pouvait récupérer un mot de passe oublié. Trouvé en conditions réelles
+> (mot de passe généré perdu, aucun moyen de le récupérer sans intervention
+> serveur) — comblé ci-dessous, additif au reste du chapitre.
+
+**`User.must_change_password`** distingue un compte dont le mot de passe
+initial a été choisi par un tiers de celui où le titulaire l'a choisi
+lui-même : `register` et `accept-invite` le laissent à `false` (le titulaire
+vient de choisir son propre mot de passe) ; seul `create_admin.sh`, pour un
+compte **nouvellement créé** (jamais pour une simple promotion d'un compte
+existant), le pose à `true`. `POST /login` porte ce flag dans sa réponse ;
+côté frontend, un garde `PasswordGate` (au-dessus de `<Routes>`, pas dans un
+guard par route) redirige vers `/change-password` tant qu'il est vrai —
+protection UX seulement, comme les autres guards de ce chapitre.
+
+**Trois endpoints supplémentaires**, tous dans `app/core/auth/router.py` :
+
+| Endpoint | Auth | Rôle |
+|---|---|---|
+| `POST /api/auth/forgot-password` | Public | Toujours `202`, que l'email corresponde à un compte ou non (jamais de fuite d'existence). Génère un jeton (`type=reset`, expiration **1h** — bien plus court que les 7j de l'invitation), le stocke dans `User.reset_token`, envoie le lien par email (même `mailer.send_email` que les invitations Waitlist). |
+| `POST /api/auth/reset-password` | Public (jeton) | Même mécanique que `accept-invite` : comparaison à égalité stricte contre `reset_token` (usage unique, un renvoi invalide l'ancien lien), message d'erreur générique dans tous les cas. Fixe le nouveau mot de passe, efface `must_change_password`, **incrémente `token_version`** (une session ouverte avec l'ancien mot de passe compromis ne doit pas survivre au reset), connecte directement. |
+| `PATCH /api/auth/change-password` | Bearer | Sert à la fois le changement forcé et le changement volontaire — même formulaire, `current_password` toujours requis même avec un access token valide (défense en profondeur). Incrémente aussi `token_version`. |
+
+❌ Un jeton de reset avec la même durée de vie que l'invitation (7j) — une
+fenêtre d'attaque bien plus large pour un mécanisme que n'importe qui
+peut déclencher en connaissant un email.
+✅ Reset à 1h, invitation à 7j — la seconde est déclenchée par un admin de
+confiance, la première par quiconque tape une adresse email.
+
 ## Protection des Routes (Guards)
 
 Toutes les pages ne sont pas accessibles à tout le monde. Trois composants "Guards" encapsulent la logique d'accès :

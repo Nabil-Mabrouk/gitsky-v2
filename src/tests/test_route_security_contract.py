@@ -38,6 +38,8 @@ AUTH_DEPS = {
 PUBLIC_MUTATING_ALLOWLIST = {
     ("POST", "/api/auth/register"): "création de compte : pas encore de session",
     ("POST", "/api/auth/accept-invite"): "activation d'un compte waitlist : pas encore de session, sécurisé par le jeton d'invitation lui-même",
+    ("POST", "/api/auth/forgot-password"): "déclenché par quiconque connaît un email, pas encore de session — toujours 202, jamais de fuite d'existence (Chap 7bis)",
+    ("POST", "/api/auth/reset-password"): "pas encore de session valide (l'ancienne est révoquée par ce même appel) — sécurisé par le jeton de reset lui-même, même motif qu'accept-invite (Chap 7bis)",
     ("POST", "/api/auth/login"): "ouverture de session : pas encore de token",
     ("POST", "/api/auth/refresh"): "auth par cookie HttpOnly, pas par Bearer",
     ("POST", "/api/auth/logout"): "doit fonctionner même avec un token expiré",

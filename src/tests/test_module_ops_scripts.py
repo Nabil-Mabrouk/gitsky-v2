@@ -294,6 +294,9 @@ def test_create_admin_registers_and_promotes(project, fakebin):
     assert " -c " not in db_call  # bug réel : -c n'interpole jamais :'email' (cryptokilla, 2026-08-30)
     stdin = (fakebin / "stdin.log").read_text(encoding="utf-8")
     assert "UPDATE users SET role = 'admin'" in stdin
+    # Chap 7bis : un compte nouvellement créé doit changer son mot de passe
+    # opérateur à la première connexion.
+    assert "must_change_password = true" in stdin
 
 
 def test_create_admin_generates_and_displays_password_once(project, fakebin):
@@ -318,6 +321,9 @@ def test_create_admin_promotes_existing_account_without_changing_password(projec
     assert "Mot de passe généré" not in r.stdout
     stdin = (fakebin / "stdin.log").read_text(encoding="utf-8")
     assert "UPDATE users SET role = 'admin'" in stdin
+    # Un compte déjà existant a déjà choisi son propre mot de passe par un
+    # autre chemin (register/accept-invite) — jamais forcé à le rechanger.
+    assert "must_change_password" not in stdin
 
 
 def test_create_admin_fails_on_registration_error_without_promoting(project, fakebin):
