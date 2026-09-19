@@ -77,6 +77,28 @@ def test_postgres_has_no_traefik_exposure():
     assert "labels" not in postgres
 
 
+def test_long_running_services_restart_unless_stopped():
+    # Bug de prod réel (2026-09-20) : aucun service de ce fichier n'avait de
+    # politique `restart` — contrairement au gabarit des projets générés, qui
+    # pose `restart: unless-stopped` partout. `docker` (systemd) redémarre
+    # bien tout seul après un reboot du VPS, mais sans cette politique,
+    # Docker ne relance JAMAIS les conteneurs eux-mêmes : les projets
+    # (cryptokilla, f-ynd...) sont remontés tout seuls après un reboot,
+    # Traefik et le reste de shared_services sont restés morts — seul point
+    # d'entrée HTTPS de toute la flotte, donc "le serveur est down" pour
+    # tout le monde tant que quelqu'un ne relance pas `docker compose up -d`
+    # à la main.
+    services = _compose()["services"]
+    for name in ("traefik", "postgres", "landing-collector", "llm-proxy", "geoip"):
+        assert services[name].get("restart") == "unless-stopped", name
+
+    # geoipupdate reste volontairement sans politique de redémarrage : c'est
+    # un one-shot (`docker compose --profile geoipupdate run --rm`), jamais
+    # censé tourner en continu — lui donner `unless-stopped` le ferait
+    # boucler indéfiniment après chaque exécution mensuelle.
+    assert "restart" not in services["geoipupdate"]
+
+
 def test_leads_routers_have_explicit_priority():
     # Bug réel (constaté en prod) : sans priority explicite, Traefik
     # départage par défaut sur la LONGUEUR de la chaîne de règle — le

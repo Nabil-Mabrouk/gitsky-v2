@@ -17,6 +17,7 @@ services:
     # rejete par Docker Engine 29.x qui exige >= 1.44). Corrige en v3.6.1+
     # avec negociation automatique - ne pas redescendre sous v3.6.
     image: traefik:v3.6
+    restart: unless-stopped
     command:
       - --providers.docker=true
       - --providers.docker.exposedbydefault=false
@@ -41,6 +42,7 @@ services:
 
   postgres:
     image: postgres:16-alpine
+    restart: unless-stopped
     environment:
       - POSTGRES_PASSWORD=${POSTGRES_ROOT_PASSWORD}
     volumes:
@@ -51,6 +53,7 @@ services:
   landing-collector:
     build:
       context: ./landing_collector
+    restart: unless-stopped
     environment:
       - LANDING_DB_URL=postgresql+asyncpg://landing:${LANDING_DB_PASSWORD}@postgres/landing
       # Garde de lecture /leads/{project}/stats et /leads/{project} (Chap 19,
@@ -111,6 +114,7 @@ services:
     # ("Invalid model name") — déployé un temps sans ce fichier, jamais
     # remarqué car jamais réellement appelé avant le premier run Studio.
     command: ["--config", "/app/config.yaml"]
+    restart: unless-stopped
     environment:
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
       - OPENAI_API_KEY=${OPENAI_API_KEY}
@@ -129,6 +133,7 @@ services:
     # donc shared-services-net uniquement, pas egress-net.
     build:
       context: ./geoip_service
+    restart: unless-stopped
     volumes:
       # Lecture seule : seul geoipupdate (ci-dessous) écrit ici. Chemin
       # identique à celui qu'il y écrit par défaut (DatabaseDirectory par
