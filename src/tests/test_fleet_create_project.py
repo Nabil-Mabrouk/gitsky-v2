@@ -248,7 +248,9 @@ def test_create_project_with_github_create_and_successful_push(monkeypatch, tmp_
     monkeypatch.setattr(github_client, "create_repo", _fake_create_repo)
     monkeypatch.setattr(github_client, "create_webhook", _ok_create_webhook)
     monkeypatch.setattr(
-        git_client, "push_initial_commit", lambda project_dir, remote_url, branch: None
+        git_client,
+        "push_initial_commit",
+        lambda project_dir, remote_url, branch, **kwargs: None,
     )
 
     r = client.post(
@@ -277,10 +279,11 @@ def test_create_project_push_url_embeds_the_github_token(monkeypatch, tmp_path):
     monkeypatch.setattr(github_client, "create_webhook", _ok_create_webhook)
     monkeypatch.setenv("FLEET_GITHUB_TOKEN", "ghp_test123")
 
-    captured: dict[str, str] = {}
+    captured: dict[str, str | None] = {}
 
-    def _record_push(project_dir, remote_url, branch):
+    def _record_push(project_dir, remote_url, branch, *, clean_url=None):
         captured["remote_url"] = remote_url
+        captured["clean_url"] = clean_url
 
     monkeypatch.setattr(git_client, "push_initial_commit", _record_push)
 
@@ -297,6 +300,10 @@ def test_create_project_push_url_embeds_the_github_token(monkeypatch, tmp_path):
     assert r.status_code == 201
     assert r.json()["pushed"] is True
     assert captured["remote_url"] == "https://ghp_test123@github.com/third-party/existing-repo.git"
+    # Bug de prod réel (ai-qube, 2026-09-23) : sans clean_url, le jeton
+    # embarqué dans remote_url restait stocké en clair, de façon
+    # permanente, dans .git/config du projet généré.
+    assert captured["clean_url"] == "https://github.com/third-party/existing-repo.git"
     # github_repo affiché à l'opérateur reste l'identifiant propre, jamais
     # le jeton — seule l'URL passée à push_initial_commit l'embarque.
     assert r.json()["github_repo"] == "third-party/existing-repo"
@@ -309,7 +316,9 @@ def test_create_project_bootstraps_deploy_triggered_when_webhook_install_fails(
     monkeypatch.setattr(github_client, "create_repo", _fake_create_repo)
     monkeypatch.setattr(github_client, "create_webhook", _broken_create_webhook)
     monkeypatch.setattr(
-        git_client, "push_initial_commit", lambda project_dir, remote_url, branch: None
+        git_client,
+        "push_initial_commit",
+        lambda project_dir, remote_url, branch, **kwargs: None,
     )
 
     r = client.post(
@@ -329,7 +338,7 @@ def test_create_project_push_failure_is_a_warning_not_a_failure(monkeypatch, tmp
     monkeypatch.setattr(generator_client, "generate_project", _fake_generate(tmp_path))
     monkeypatch.setattr(github_client, "create_webhook", _ok_create_webhook)
 
-    def _broken_push(project_dir, remote_url, branch):
+    def _broken_push(project_dir, remote_url, branch, **kwargs):
         raise RuntimeError("no network")
 
     monkeypatch.setattr(git_client, "push_initial_commit", _broken_push)
