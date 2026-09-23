@@ -28,6 +28,7 @@ FLEET_SCRIPTS = [
     "lifecycle-fleet.sh",
     "harden-server.sh",
     "bootstrap-fleet.sh",
+    "setup-deploy-key.sh",
 ]
 
 BASH = shutil.which("bash") or ""

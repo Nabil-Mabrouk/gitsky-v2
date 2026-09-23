@@ -36,6 +36,7 @@ DIRECTLY_INVOKED_SCRIPTS = [
     "src/shared_services/scripts/update-geoip-db.sh",
     "src/shared_services/scripts/harden-server.sh",
     "src/shared_services/scripts/bootstrap-fleet.sh",
+    "src/shared_services/scripts/setup-deploy-key.sh",
     "src/generator/template/scripts/backup_db.sh",
     "src/generator/template/scripts/check_disk.sh",
     "src/generator/template/scripts/check_errors.sh",

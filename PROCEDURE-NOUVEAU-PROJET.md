@@ -56,9 +56,12 @@ la stack levée :
   le générateur. `docker compose up -d --build` (ou un simple `restart` du
   service concerné) après ajout pour qu'elles soient prises en compte.
 - **Compte admin** — si `MODULE_ADMIN` est actif, personne n'a de compte
-  tant qu'on n'a pas lancé, sur le serveur :
+  tant qu'on n'a pas lancé, **sur l'hôte** (pas via `docker exec` dans le
+  conteneur — le script lit `.env` sur disque à côté de lui, absent à
+  l'intérieur du conteneur par construction, `.dockerignore` l'exclut du
+  build ; bug de prod réel, round f-ynd) :
   ```bash
-  docker exec -it <projet>_backend ./scripts/create_admin.sh <email> [password]
+  cd /opt/gitsky/projects/<nom> && ./scripts/create_admin.sh <email> [password]
   ```
   Sans mot de passe fourni, le script en génère un — **le noter tout de
   suite** (déjà vu un cas où le script plante juste après l'avoir affiché
@@ -69,6 +72,15 @@ la stack levée :
   réelle (déjà vu : `monetization_shop` resté actif alors que le projet ne
   devait pas l'avoir). `GET /health` du nouveau projet donne l'état réel en
   un coup d'œil.
+- **Dépôt GitHub privé** — le premier push fonctionne déjà tel quel, mais
+  le redeploy **continu** (chaque push suivant) échoue tant qu'aucune
+  authentification persistante n'existe (`git pull` nu, sans jeton, marche
+  sur un dépôt public mais jamais sur un privé). Une fois :
+  ```bash
+  cd /opt/gitsky/shared_services/scripts && ./setup-deploy-key.sh <nom> <owner>/<repo>
+  ```
+  (affiche la clé publique à ajouter comme Deploy Key lecture seule sur
+  GitHub si pas encore fait — relancer le script une fois ajoutée).
 
 ## 4. Cloner en local et ouvrir une session de développement
 

@@ -772,10 +772,10 @@ rejouable sans casser un état déjà en place :
   fonctionnel — générer/déposer la clé et désactiver le mot de passe
   restent manuels (section précédente), l'erreur possible (verrouillage
   hors d'un VPS tout juste loué) ne vaut pas l'économie de deux minutes.
-- **`bootstrap-fleet.sh <domaine> <email-acme>`** — clone le monorepo
-  (nécessite une clé de déploiement GitHub déjà ajoutée, même raison :
-  action UI ponctuelle plutôt qu'un jeton à portée plus large), pose la
-  structure de répertoires, amorce `shared_services/.env` (secrets
+- **`bootstrap-fleet.sh <domaine> <email-acme>`** (9 étapes) — clone le
+  monorepo (nécessite une clé de déploiement GitHub déjà ajoutée, même
+  raison : action UI ponctuelle plutôt qu'un jeton à portée plus large),
+  pose la structure de répertoires, amorce `shared_services/.env` (secrets
   structurels générés — mots de passe internes ; secrets tiers comme
   `ANTHROPIC_API_KEY` laissés à l'opérateur, ce sont de vrais choix, pas
   du mécanique), démarre Traefik + Postgres, installe l'environnement du
@@ -783,14 +783,34 @@ rejouable sans casser un état déjà en place :
   `src/generator/requirements.txt`** (jamais recopiées en dur — un vrai
   bug de prod trouvé en écrivant ce script : une install manuelle sans
   version épinglée avait oublié `httpx`, requis par les tâches du
-  générateur mais invisible tant qu'on ne génère pas un vrai projet), puis
-  génère et démarre `fleet-dashboard`.
+  générateur mais invisible tant qu'on ne génère pas un vrai projet),
+  génère `fleet-dashboard`, lui applique automatiquement les trois
+  personnalisations du Chap 27 (`copier`/`git`/`safe.directory` — toujours
+  nécessaires, jamais optionnelles pour un fleet-dashboard, donc plus
+  "à faire à la main" comme pour un projet ordinaire), le démarre, corrige
+  le propriétaire de `PROJECTS_DIR` sur l'UID réel de `appuser` **lu dans
+  l'image construite** (jamais supposé — bug de prod réel : sans ça, toute
+  génération de projet via le wizard échouait en `PermissionError`), puis
+  installe `crontab.fleet` (sans lui, un projet créé via le wizard ne
+  démarre jamais tout seul — bug de prod réel, trouvé en créant le tout
+  premier projet via le wizard sur un serveur fraîchement bootstrappé).
+- **`setup-deploy-key.sh <projet> <owner>/<repo>`** — à lancer une fois
+  par projet **privé** créé via le wizard, après coup. Le premier push
+  fonctionne déjà (jeton embarqué le temps du push seulement, jamais
+  stocké, Chap 26) mais le redeploy **continu** (`deploy-on-push.sh`, ce
+  même cron) ne fait qu'un `git pull` nu — qui marche tel quel sur un
+  dépôt public (lecture anonyme) mais échoue toujours sur un dépôt privé
+  tant qu'aucune authentification persistante n'existe. Une clé de
+  déploiement SSH dédiée (lecture seule, scopée à ce seul dépôt — jamais
+  `FLEET_GITHUB_TOKEN`, dont la portée `repo` complète est bien plus large
+  que nécessaire pour un simple pull) est la bonne réponse.
 
-Ce que ces deux scripts n'automatisent délibérément pas — secrets tiers,
-choix des services partagés à activer, DNS, `create_admin.sh` — reste
-listé explicitement en fin d'exécution de `bootstrap-fleet.sh` : le but
-est d'éliminer le travail mécanique et répétitif, pas les décisions qui
-appartiennent à l'opérateur.
+Ce que ces trois scripts n'automatisent délibérément pas — secrets tiers,
+choix des services partagés à activer, DNS, `create_admin.sh`, l'ajout de
+la clé de déploiement elle-même sur GitHub (action UI, jamais scriptable
+sans un jeton à portée plus large que nécessaire) — reste listé
+explicitement en fin d'exécution : le but est d'éliminer le travail
+mécanique et répétitif, pas les décisions qui appartiennent à l'opérateur.
 
 ### Répertoire de Travail sur le Serveur
 
