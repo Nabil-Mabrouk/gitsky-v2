@@ -26,6 +26,8 @@ FLEET_SCRIPTS = [
     "test-restore-fleet.sh",
     "deploy-on-push.sh",
     "lifecycle-fleet.sh",
+    "harden-server.sh",
+    "bootstrap-fleet.sh",
 ]
 
 BASH = shutil.which("bash") or ""

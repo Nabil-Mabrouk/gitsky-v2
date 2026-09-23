@@ -746,64 +746,67 @@ quelques minutes sans HTTPS lors du renouvellement.
 
 ## Bootstrap des Services Partagés pour une Flotte
 
+> **Écart au livre, corrigé le 2026-09-23** : les versions précédentes de
+> cette section décrivaient un script `scripts/bootstrap-fleet.sh` et une
+> arborescence `/opt/mystudio/shared-services/<service>/` (un
+> sous-dossier par service) — pure esquisse, jamais implémentée, jamais
+> testée contre un vrai serveur. Trouvé et corrigé en bootstrapant pour de
+> vrai un deuxième serveur, from scratch, pour la première fois depuis le
+> début du projet. La vraie structure diffère sur deux points : un SEUL
+> `docker-compose.yml` porte les 5 services partagés (`shared_services/`,
+> Chap 18), et la racine est `/opt/gitsky/`, pas `/opt/mystudio/`.
+
 Sur ce serveur Ubuntu durci, l'installation de la flotte GitSky consiste à
-déployer une fois pour toutes les services partagés décrits au Chap 18,
-puis à laisser le générateur (Chap 17) déployer les projets individuellement.
+cloner le monorepo, déployer une fois pour toutes les services partagés
+décrits au Chap 18, puis générer le premier projet — `fleet-dashboard`
+lui-même — pour piloter le reste de la flotte via son wizard (Chap 27).
 
-### Le Script `bootstrap-fleet.sh`
+### Deux scripts, pas un seul
 
-Un unique script d'orchestration installe l'ensemble des services partagés :
+`src/shared_services/scripts/` porte deux scripts idempotents, chacun
+rejouable sans casser un état déjà en place :
 
-```bash
-# scripts/bootstrap-fleet.sh
-#!/usr/bin/env bash
-set -euo pipefail
+- **`harden-server.sh`** — la partie de ce chapitre jusqu'à l'installation
+  de Docker (mise à jour système, paquets de base, UFW, fail2ban, Docker).
+  Précondition volontairement NON automatisée : un accès SSH par clé déjà
+  fonctionnel — générer/déposer la clé et désactiver le mot de passe
+  restent manuels (section précédente), l'erreur possible (verrouillage
+  hors d'un VPS tout juste loué) ne vaut pas l'économie de deux minutes.
+- **`bootstrap-fleet.sh <domaine> <email-acme>`** — clone le monorepo
+  (nécessite une clé de déploiement GitHub déjà ajoutée, même raison :
+  action UI ponctuelle plutôt qu'un jeton à portée plus large), pose la
+  structure de répertoires, amorce `shared_services/.env` (secrets
+  structurels générés — mots de passe internes ; secrets tiers comme
+  `ANTHROPIC_API_KEY` laissés à l'opérateur, ce sont de vrais choix, pas
+  du mécanique), démarre Traefik + Postgres, installe l'environnement du
+  générateur en lisant les versions **directement depuis
+  `src/generator/requirements.txt`** (jamais recopiées en dur — un vrai
+  bug de prod trouvé en écrivant ce script : une install manuelle sans
+  version épinglée avait oublié `httpx`, requis par les tâches du
+  générateur mais invisible tant qu'on ne génère pas un vrai projet), puis
+  génère et démarre `fleet-dashboard`.
 
-echo "1/6 Création des réseaux Docker partagés..."
-docker network create proxy-net || true
-docker network create shared-services-net || true
-
-echo "2/6 Démarrage de Traefik (wildcard SSL)..."
-(cd shared-services/traefik && docker compose up -d)
-
-echo "3/6 Démarrage de PostgreSQL partagé..."
-(cd shared-services/postgres && docker compose up -d)
-
-echo "4/6 Démarrage du landing-collector, GeoIP, SMTP relay..."
-(cd shared-services/landing-collector && docker compose up -d)
-(cd shared-services/geoip && docker compose up -d)
-(cd shared-services/smtp-relay && docker compose up -d)
-
-echo "5/6 Démarrage du LLM proxy..."
-(cd shared-services/llm-proxy && docker compose up -d)
-
-echo "6/6 Démarrage du fleet dashboard..."
-(cd shared-services/fleet-dashboard && docker compose up -d)
-
-echo "Flotte prête. Les projets peuvent être générés."
-```
-
-Ce script est idempotent — il peut être ré-exécuté pour redémarrer les
-services après un reboot.
+Ce que ces deux scripts n'automatisent délibérément pas — secrets tiers,
+choix des services partagés à activer, DNS, `create_admin.sh` — reste
+listé explicitement en fin d'exécution de `bootstrap-fleet.sh` : le but
+est d'éliminer le travail mécanique et répétitif, pas les décisions qui
+appartiennent à l'opérateur.
 
 ### Répertoire de Travail sur le Serveur
 
-L'organisation recommandée du système de fichiers :
+L'organisation réelle du système de fichiers (vérifiée en conditions
+réelles, pas aspirationnelle) :
 
 ```text
-/opt/mystudio/
-├── shared-services/         # Services partagés du VPS (versionné)
-│   ├── traefik/
-│   ├── postgres/
-│   ├── llm-proxy/
-│   └── …
-├── projects/                # Un dossier par projet généré
-│   ├── pain-scraper/
-│   ├── code-reviewer-pro/
-│   └── …
-├── configs/                 # Fichiers config.yaml (repo startup-factory-configs)
-│   └── projects/
-└── backups/                 # Voir Chap 23
+/opt/gitsky/
+├── gitsky-v2/                # Clone du monorepo (submodule src/generator inclus)
+├── shared_services/          # Lien symbolique -> gitsky-v2/src/shared_services
+│                              # (en dur : crontab.fleet le référence sans variable)
+├── .venv-generator/          # venv dédié à copier (jamais le Python système)
+└── projects/                 # Un dossier par projet généré
+    ├── fleet-dashboard/
+    ├── pain-scraper/
+    └── …
 ```
 
 Chaque dossier de projet est un clone du template GitSky avec les
