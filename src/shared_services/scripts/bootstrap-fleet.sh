@@ -39,7 +39,16 @@ if ! command -v docker &> /dev/null; then
 fi
 
 echo "1/9 Accès GitHub (clé de déploiement)..."
-if ! ssh -o BatchMode=yes -T git@github.com 2>&1 | grep -q "successfully authenticated"; then
+# `|| true` + variable intermédiaire, jamais un pipe direct vers grep : avec
+# `pipefail` (ligne 23), `ssh -T` vers GitHub retourne TOUJOURS un code non
+# nul même en cas de succès ("GitHub does not provide shell access") — un
+# `ssh ... | grep -q ...` ferait alors échouer le pipeline entier à cause du
+# code de sortie de ssh, PEU IMPORTE que grep ait trouvé la chaîne. Bug de
+# prod réel (setup-deploy-key.sh, même pattern, cryptazy 2026-09-26) :
+# l'authentification réussissait bel et bien, mais le script rapportait
+# toujours un échec.
+SSH_TEST="$(ssh -o BatchMode=yes -T git@github.com 2>&1 || true)"
+if ! grep -q "successfully authenticated" <<< "$SSH_TEST"; then
     echo "✗ Pas d'accès SSH authentifié à GitHub." >&2
     echo "  Génère une clé dédiée, ajoute-la comme Deploy Key (lecture seule)" >&2
     echo "  sur le dépôt, puis relance ce script :" >&2

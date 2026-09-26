@@ -720,6 +720,104 @@ def test_deploy_resumes_from_existing_state_file_cursor(tmp_path):
     assert state.read_text().strip() == "42"
 
 
+# --- setup-deploy-key.sh (Chap 26/27, round ai-qube/cryptazy) --------------
+
+
+def _fake_ssh_github_style(fakebin: Path, *, authenticated: bool) -> None:
+    # Bug de prod réel (cryptazy, 2026-09-26) : `ssh -T git@github.com`
+    # renvoie un code de sortie NON NUL même en cas de succès ("GitHub does
+    # not provide shell access") — ce faux ssh reproduit exactement ce
+    # comportement pour que le test puisse démasquer un `ssh | grep` cassé
+    # par `pipefail` (le pipeline hérite du code de sortie de ssh, pas de
+    # grep, même si grep a bien trouvé la chaîne).
+    d = fakebin / "ssh"
+    if authenticated:
+        body = (
+            '>&2 echo "Hi someone/somewhere! You'"'"'ve successfully '
+            'authenticated, but GitHub does not provide shell access."\n'
+            "exit 1\n"
+        )
+    else:
+        body = '>&2 echo "Permission denied (publickey)."\nexit 255\n'
+    _write_lf(d, "#!/usr/bin/env bash\n" + body)
+    d.chmod(0o755)
+
+
+def _fake_git_capture(fakebin: Path, log: Path) -> None:
+    g = fakebin / "git"
+    _write_lf(
+        g,
+        "#!/usr/bin/env bash\n"
+        f'echo "$@" >> "{log.as_posix()}"\n'
+        'if [[ "$2" == ".git" || "$1" == "-C" ]]; then exit 0; fi\n'
+        "exit 0\n",
+    )
+    g.chmod(0o755)
+
+
+def test_setup_deploy_key_succeeds_when_ssh_authenticates_despite_nonzero_exit(tmp_path):
+    # C'est LE test qui aurait attrapé le bug : ssh "réussit" au sens GitHub
+    # (message authenticated) mais sort avec un code non nul — sans le fix
+    # (variable intermédiaire + `|| true`, pas un pipe direct sous
+    # pipefail), le script conclut à tort à un échec d'authentification.
+    fakebin = tmp_path / "bin"
+    fakebin.mkdir()
+    _fake_ssh_github_style(fakebin, authenticated=True)
+    git_log = tmp_path / "git_calls.log"
+    _fake_git_capture(fakebin, git_log)
+
+    project_dir = tmp_path / "projects" / "demo-project"
+    project_dir.mkdir(parents=True)
+    (project_dir / ".git").mkdir()
+
+    ssh_home = tmp_path / "home"
+    (ssh_home / ".ssh").mkdir(parents=True)
+
+    env = dict(os.environ)
+    env["PATH"] = str(fakebin) + os.pathsep + env["PATH"]
+    env["HOME"] = str(ssh_home)
+    env["GITSKY_ROOT"] = str(tmp_path)
+
+    r = subprocess.run(
+        [BASH, str(SHARED_SCRIPTS / "setup-deploy-key.sh"), "demo-project", "acme/demo-project"],
+        capture_output=True, text=True, encoding="utf-8", errors="replace",
+        env=env, cwd=str(tmp_path),
+    )
+
+    assert r.returncode == 0, r.stderr
+    assert "redeploy continu opérationnel" in r.stdout
+    calls = git_log.read_text(encoding="utf-8")
+    assert "remote" in calls and "set-url" in calls
+    assert "pull" in calls and "--ff-only" in calls
+
+
+def test_setup_deploy_key_reports_failure_when_ssh_truly_rejects_the_key(tmp_path):
+    fakebin = tmp_path / "bin"
+    fakebin.mkdir()
+    _fake_ssh_github_style(fakebin, authenticated=False)
+
+    project_dir = tmp_path / "projects" / "demo-project"
+    project_dir.mkdir(parents=True)
+    (project_dir / ".git").mkdir()
+
+    ssh_home = tmp_path / "home"
+    (ssh_home / ".ssh").mkdir(parents=True)
+
+    env = dict(os.environ)
+    env["PATH"] = str(fakebin) + os.pathsep + env["PATH"]
+    env["HOME"] = str(ssh_home)
+    env["GITSKY_ROOT"] = str(tmp_path)
+
+    r = subprocess.run(
+        [BASH, str(SHARED_SCRIPTS / "setup-deploy-key.sh"), "demo-project", "acme/demo-project"],
+        capture_output=True, text=True, encoding="utf-8", errors="replace",
+        env=env, cwd=str(tmp_path),
+    )
+
+    assert r.returncode == 1
+    assert "pas encore autorisée" in r.stderr
+
+
 # --- Qualité des scripts livrés --------------------------------------------
 
 

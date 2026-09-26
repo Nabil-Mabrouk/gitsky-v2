@@ -51,7 +51,16 @@ EOF
     chmod 600 ~/.ssh/config
 fi
 
-if ! ssh -o BatchMode=yes -T "git@${HOST_ALIAS}" 2>&1 | grep -q "successfully authenticated"; then
+# `|| true` + variable intermédiaire, jamais un pipe direct vers grep : avec
+# `pipefail` (ligne 24), `ssh -T` vers GitHub retourne TOUJOURS un code non
+# nul même en cas de succès ("GitHub does not provide shell access") — un
+# `ssh ... | grep -q ...` ferait alors échouer le pipeline entier à cause du
+# code de sortie de ssh, PEU IMPORTE que grep ait trouvé la chaîne. Bug de
+# prod réel (cryptazy, 2026-09-26) : la clé était pourtant bien autorisée et
+# l'authentification réussissait (vérifié manuellement), mais le script
+# rapportait toujours un échec.
+SSH_TEST="$(ssh -o BatchMode=yes -T "git@${HOST_ALIAS}" 2>&1 || true)"
+if ! grep -q "successfully authenticated" <<< "$SSH_TEST"; then
     echo "✗ Clé pas encore autorisée sur GitHub." >&2
     echo "  Ajoute-la comme Deploy Key (lecture seule) sur ${GITHUB_REPO} :" >&2
     echo "  github.com/${GITHUB_REPO} -> Settings -> Deploy keys -> Add deploy key" >&2
