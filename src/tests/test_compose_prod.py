@@ -84,6 +84,20 @@ def test_login_rate_limit_always_declared():
     assert any("authlimit-pain-scraper.priority=100" in lab for lab in labels)
 
 
+def test_password_reset_rate_limit_always_declared():
+    # Même raisonnement que authlimit ci-dessus (round sécurité ai-qube,
+    # 2026-10-30) : forgot-password/reset-password coûtent aussi un
+    # hachage/l'envoi d'un email, sans limite c'est de l'énumération de
+    # comptes et un abus d'envoi à bas coût.
+    labels = _compose()["services"]["backend"]["labels"]
+    assert any(
+        "pwresetlimit-pain-scraper.ratelimit.average=5" in lab for lab in labels
+    )
+    assert any("Path(`/api/auth/forgot-password`)" in lab for lab in labels)
+    assert any("Path(`/api/auth/reset-password`)" in lab for lab in labels)
+    assert any("pwresetlimit-pain-scraper.priority=100" in lab for lab in labels)
+
+
 def test_has_a_migrate_service():
     migrate = _compose()["services"]["migrate"]
     assert migrate["command"] == "python -m scripts.migrate"

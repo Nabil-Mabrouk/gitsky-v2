@@ -172,3 +172,22 @@ def test_frontend_dockerfile_is_identical_across_module_combinations():
     # Le frontend n'embarque aucun MODULE_* au build : le Dockerfile ne doit
     # pas varier selon les modules backend activés.
     assert _render() == _render(modules={"admin": True, "agentic": True})
+
+
+# --- En-têtes de sécurité HTTP (round sécurité ai-qube, 2026-10-30) --------
+
+
+def test_serve_json_carries_the_security_headers():
+    # Vite copie public/* vers dist/ au build : serve.json atterrit à la
+    # racine de dist, où `serve -s dist` le trouve automatiquement, sans
+    # changement de Dockerfile. Protège l'origine frontend (clickjacking) —
+    # le backend a son propre middleware pour ses réponses API (app.core).
+    with projet_genere("pain-scraper") as dst:
+        config = json.loads(
+            (dst / "frontend" / "public" / "serve.json").read_text(encoding="utf-8")
+        )
+    headers = {h["key"]: h["value"] for h in config["headers"][0]["headers"]}
+    assert headers["X-Content-Type-Options"] == "nosniff"
+    assert headers["X-Frame-Options"] == "DENY"
+    assert headers["Referrer-Policy"] == "strict-origin-when-cross-origin"
+    assert headers["Strict-Transport-Security"] == "max-age=63072000; includeSubDomains"
