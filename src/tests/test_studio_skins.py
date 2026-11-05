@@ -85,3 +85,13 @@ def test_no_hardcoded_surface_colors_outside_root_tokens():
     without_roots = re.sub(r":root\s*\{[^}]*\}", "", _CSS)
     for literal in ("#111", "#eee", "#ddd", "background: #fff", "border: 3px solid #111"):
         assert literal not in without_roots, literal
+
+
+def test_shared_navbar_and_footer_are_styled_outside_the_landing_too():
+    # Bug réel (fleet-dashboard, 2026-11-05) : Navbar/Footer sont des
+    # composants PARTAGÉS (App.tsx::AppShell, voir Navbar.tsx) rendus aussi
+    # bien dans .landing que dans .site-shell (Login, Learn, Admin...), mais
+    # toutes leurs règles de mise en page ne ciblaient QUE .landing — liens de
+    # nav collés, sans sticky/flex/fond sur toute page hors landing.
+    for selector in (".site-shell .site-nav", ".site-shell .site-nav-links", ".site-shell .site-footer"):
+        assert selector in _CSS, selector
