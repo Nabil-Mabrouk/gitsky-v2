@@ -115,9 +115,23 @@ def _auth(user_id: int) -> dict:
     return {"Authorization": f"Bearer {create_access_token(user_id)}"}
 
 
-def test_catalog_lists_tutorials_by_lang():
+def test_catalog_hides_tutorials_the_caller_cannot_access():
+    # Round visibilité (2026-11-07) : avant, le catalogue listait TOUS les
+    # tutoriels d'une langue peu importe le rôle appelant — seule la leçon
+    # elle-même était protégée. "advanced" (premium) ne doit plus apparaître
+    # pour un appel anonyme, seulement "intro" (anonymous).
     r = client.get("/api/content/tutorials?lang=fr")
     assert r.status_code == 200
+    assert {t["slug"] for t in r.json()} == {"intro"}
+
+
+def test_catalog_still_hides_premium_tutorial_for_plain_user():
+    r = client.get("/api/content/tutorials?lang=fr", headers=_auth(SEED["user_id"]))
+    assert {t["slug"] for t in r.json()} == {"intro"}
+
+
+def test_catalog_shows_premium_tutorial_to_premium_user():
+    r = client.get("/api/content/tutorials?lang=fr", headers=_auth(SEED["premium_id"]))
     assert {t["slug"] for t in r.json()} == {"intro", "advanced"}
 
 
