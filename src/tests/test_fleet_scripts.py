@@ -68,6 +68,10 @@ def _run(script_name: str, fakebin: Path, cwd: Path, **env_over) -> subprocess.C
     # peut toujours surcharger ces clés via env_over.
     env["HEALTH_CHECK_RETRIES"] = "1"
     env["HEALTH_CHECK_DELAY"] = "0"
+    # Défaut écrit sous tmp_path : le vrai défaut (/var/lib/gitsky/...) exige
+    # un accès root en prod, inaccessible ici — même raisonnement que
+    # STATE_FILE, déjà toujours surchargé explicitement par chaque test.
+    env.setdefault("LOCK_FILE", str(cwd / "deploy-on-push.lock"))
     env.update(env_over)
     return subprocess.run(
         [BASH, str(SHARED_SCRIPTS / script_name)],
@@ -536,6 +540,15 @@ def _fake_curl_deploy(fakebin: Path, log: Path, *, pending: str = "") -> None:
     c.chmod(0o755)
 
 
+def _fake_flock(fakebin: Path) -> None:
+    # "Verrou toujours acquis" — ces tests exercent le reste du script (git
+    # pull, build, sonde /health, curseur), pas le verrou lui-même. Le vrai
+    # comportement de contention est couvert séparément, avec le vrai binaire.
+    f = fakebin / "flock"
+    _write_lf(f, "#!/usr/bin/env bash\nexit 0\n")
+    f.chmod(0o755)
+
+
 def _fake_git(fakebin: Path, *, fail: bool = False) -> None:
     g = fakebin / "git"
     _write_lf(g, "#!/usr/bin/env bash\n" + ("exit 1\n" if fail else "exit 0\n"))
@@ -563,6 +576,7 @@ def test_deploy_redeploys_every_pending_project_and_advances_cursor(tmp_path):
     curl_log = tmp_path / "curl_calls.log"
     _fake_curl_deploy(fakebin, curl_log, pending="5\tpain-scraper\n6\tlaunch-me")
     _fake_git(fakebin)
+    _fake_flock(fakebin)
     _fake_docker_deploy(fakebin)
     state = tmp_path / "state" / "deploy.state"
 
@@ -584,6 +598,7 @@ def test_deploy_reports_failure_when_project_directory_missing(tmp_path):
     curl_log = tmp_path / "curl_calls.log"
     _fake_curl_deploy(fakebin, curl_log, pending="9\tghost")
     _fake_git(fakebin)
+    _fake_flock(fakebin)
     _fake_docker_deploy(fakebin)
     state = tmp_path / "state" / "deploy.state"
 
@@ -605,6 +620,7 @@ def test_deploy_reports_failure_when_git_pull_diverges(tmp_path):
     curl_log = tmp_path / "curl_calls.log"
     _fake_curl_deploy(fakebin, curl_log, pending="1\tpain-scraper")
     _fake_git(fakebin, fail=True)  # simule un git pull --ff-only refusé
+    _fake_flock(fakebin)
     _fake_docker_deploy(fakebin)
     state = tmp_path / "state" / "deploy.state"
 
@@ -622,6 +638,7 @@ def test_deploy_reports_failure_when_health_check_fails_after_build(tmp_path):
     curl_log = tmp_path / "curl_calls.log"
     _fake_curl_deploy(fakebin, curl_log, pending="1\tpain-scraper")
     _fake_git(fakebin)
+    _fake_flock(fakebin)
     _fake_docker_deploy(fakebin, health_fails=True)
     state = tmp_path / "state" / "deploy.state"
 
@@ -662,6 +679,7 @@ def test_deploy_reports_success_via_python_probe_not_curl(tmp_path):
     curl_log = tmp_path / "curl_calls.log"
     _fake_curl_deploy(fakebin, curl_log, pending="1\tpain-scraper")
     _fake_git(fakebin)
+    _fake_flock(fakebin)
     _fake_docker_deploy_realistic_probe(fakebin)
     state = tmp_path / "state" / "deploy.state"
 
@@ -682,11 +700,46 @@ def test_deploy_probe_never_invokes_curl_inside_container():
     assert "python -c" in body
 
 
+@pytest.mark.skipif(not shutil.which("flock"), reason="flock requis (présent sur le serveur, pas sur Git Bash Windows)")
+def test_deploy_skips_silently_when_another_run_holds_the_lock(tmp_path):
+    # Bug de prod réel (2026-11-04) : ce cron tourne toutes les 2 min, un
+    # redeploy (build de 4 images) dépasse régulièrement ce délai -> 2e
+    # exécution concurrente -> collision sur le ref git distant ET sur les
+    # noms de conteneurs Docker (cryptazy, f-ynd, 4 jours d'échecs en boucle).
+    # Ici : une autre exécution tient déjà le verrou -> sortie immédiate,
+    # AVANT même le premier appel réseau (fetch pending).
+    fakebin = tmp_path / "bin"; fakebin.mkdir()
+    curl_log = tmp_path / "curl_calls.log"
+    _fake_curl_deploy(fakebin, curl_log, pending="1\tpain-scraper")
+    _fake_git(fakebin)
+    _fake_docker_deploy(fakebin)
+    state = tmp_path / "state" / "deploy.state"
+    lock = tmp_path / "state"
+    lock.mkdir(parents=True, exist_ok=True)
+    lock = lock / "deploy.lock"
+
+    holder = subprocess.Popen([BASH, "-c", f'exec 9>"{lock.as_posix()}"; flock 9; sleep 5'])
+    time.sleep(0.3)  # laisse le temps au holder d'acquérir le verrou
+    try:
+        r = _run("deploy-on-push.sh", fakebin, tmp_path,
+                  FLEET_URL="https://api.example.com", FLEET_REGISTER_TOKEN="tok",
+                  PROJECTS_DIR=(tmp_path / "projects").as_posix(), STATE_FILE=state.as_posix(),
+                  LOCK_FILE=lock.as_posix())
+    finally:
+        holder.kill()
+        holder.wait()
+
+    assert r.returncode == 0, r.stderr
+    assert not curl_log.exists()  # sort avant même le fetch /deploys/pending
+    assert not state.exists()  # le curseur n'a pas avancé
+
+
 def test_deploy_exits_cleanly_when_nothing_pending(tmp_path):
     fakebin = tmp_path / "bin"; fakebin.mkdir()
     curl_log = tmp_path / "curl_calls.log"
     _fake_curl_deploy(fakebin, curl_log, pending="")
     _fake_git(fakebin)
+    _fake_flock(fakebin)
     _fake_docker_deploy(fakebin)
     state = tmp_path / "state" / "deploy.state"
 
@@ -705,6 +758,7 @@ def test_deploy_resumes_from_existing_state_file_cursor(tmp_path):
     curl_log = tmp_path / "curl_calls.log"
     _fake_curl_deploy(fakebin, curl_log, pending="42\tlaunch-me")
     _fake_git(fakebin)
+    _fake_flock(fakebin)
     _fake_docker_deploy(fakebin)
     state = tmp_path / "state" / "deploy.state"
     state.parent.mkdir(parents=True)

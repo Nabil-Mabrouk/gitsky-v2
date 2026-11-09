@@ -39,11 +39,30 @@ FLEET_URL="${FLEET_URL:?FLEET_URL requis}"
 FLEET_REGISTER_TOKEN="${FLEET_REGISTER_TOKEN:?FLEET_REGISTER_TOKEN requis}"
 PROJECTS_DIR="${PROJECTS_DIR:-/opt/gitsky/projects}"
 STATE_FILE="${STATE_FILE:-/var/lib/gitsky/deploy-on-push.state}"
+LOCK_FILE="${LOCK_FILE:-/var/lib/gitsky/deploy-on-push.lock}"
 RUN_COPIER_UPDATE="${RUN_COPIER_UPDATE:-0}"
 HEALTH_CHECK_RETRIES="${HEALTH_CHECK_RETRIES:-6}"
 HEALTH_CHECK_DELAY="${HEALTH_CHECK_DELAY:-5}"
 
-mkdir -p "$(dirname "$STATE_FILE")"
+mkdir -p "$(dirname "$STATE_FILE")" "$(dirname "$LOCK_FILE")"
+
+# Verrou non bloquant (bug de prod réel, 2026-11-04) : ce cron tourne toutes
+# les 2 min (crontab.fleet), mais un redeploy (git pull + build de 4 images)
+# dépasse régulièrement ce délai dès qu'un projet accumule plusieurs images à
+# builder. Sans verrou, le tick suivant démarre une SECONDE exécution pendant
+# que la première tourne encore : collision sur le ref git distant
+# ("cannot lock ref refs/remotes/origin/main") et sur les noms de conteneurs
+# Docker (Compose auto-nomme un conteneur en recreate, la 2e exécution choisit
+# le même nom -> "Conflict. The container name ... is already in use").
+# Observé en prod sur cryptazy et f-ynd, bloqués en échec sur CHAQUE webhook
+# reçu pendant 4 jours. `flock -n` : une exécution déjà en cours fait sortir
+# le tick suivant immédiatement (exit 0, pas un échec) plutôt que d'attendre
+# ou de se battre avec elle — le tick d'après reprendra une fois libre.
+exec 9>"$LOCK_FILE"
+if ! flock -n 9; then
+    echo "Une exécution de deploy-on-push.sh est déjà en cours — on sort, le prochain tick reprendra."
+    exit 0
+fi
 LAST_ID=$(cat "$STATE_FILE" 2>/dev/null || echo 0)
 [[ "$LAST_ID" =~ ^[0-9]+$ ]] || LAST_ID=0
 
