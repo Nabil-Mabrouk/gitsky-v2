@@ -11,6 +11,14 @@ model_list:
     litellm_params:
       model: anthropic/claude-sonnet-5
       api_key: os.environ/ANTHROPIC_API_KEY
+  # Round modeles IA politique-ia (Chap 20 de sa propre spec) : plusieurs
+  # roles rapides/peu couteux (turn_analyst, move_planner, moderation...)
+  # recommandent Claude Haiku 5.5, absent du proxy jusqu'ici - aucun projet
+  # n'en avait eu besoin avant.
+  - model_name: claude-haiku-5-5
+    litellm_params:
+      model: anthropic/claude-haiku-5
+      api_key: os.environ/ANTHROPIC_API_KEY
   # Image hero réelle (Round B, Chap 24) — même proxy, même mécanisme que les
   # chat completions ci-dessus, litellm route aussi /v1/images/generations.
   # DALL-E 3 retiré de l'API OpenAI le 12 mai 2026 (trouvé en prod, premier
