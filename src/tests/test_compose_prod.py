@@ -329,6 +329,35 @@ def test_worker_service_appears_when_module_active():
     assert worker["depends_on"]["db"]["condition"] == "service_healthy"
 
 
+def test_worker_has_internet_egress_via_dedicated_network():
+    # Bug réel (0-hl, 2026-11-18) : worker seul sur internal-net (internal:
+    # true) -> aucun accès Internet, alors qu'il existe pour l'I/O externe
+    # (API d'exchange, LLM). Il garde internal-net pour la db.
+    with projet_genere("pain-scraper", modules={"worker": True}) as dst:
+        compose = yaml.safe_load((dst / "docker-compose.yml").read_text(encoding="utf-8"))
+    worker_nets = compose["services"]["worker"]["networks"]
+    assert "egress-net" in worker_nets
+    assert "internal-net" in worker_nets
+    # Jamais proxy-net : partagé par toute la flotte via Traefik, le worker
+    # n'a aucune raison d'y voir les conteneurs des autres projets.
+    assert "proxy-net" not in worker_nets
+    egress = compose["networks"]["egress-net"]
+    assert egress.get("internal") is not True
+    assert "external" not in egress and "name" not in egress  # propre au projet
+
+
+def test_egress_net_is_reserved_to_the_worker():
+    with projet_genere("pain-scraper", modules={"worker": True}) as dst:
+        compose = yaml.safe_load((dst / "docker-compose.yml").read_text(encoding="utf-8"))
+    for name, service in compose["services"].items():
+        if name != "worker":
+            assert "egress-net" not in service.get("networks", []), name
+
+
+def test_no_egress_net_without_worker():
+    assert "egress-net" not in _compose()["networks"]
+
+
 def test_worker_service_absent_by_default():
     # Un projet sans module worker (le cas normal) ne doit avoir aucune trace
     # d'un service qui ne lui sert à rien.

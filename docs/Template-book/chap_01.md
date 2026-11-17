@@ -118,6 +118,27 @@ networks:
     internal: true
 ```
 
+> **Écart assumé : `egress-net`, la sortie Internet du worker.** `internal-net` est déclaré `internal: true`, donc **aucun** conteneur qui n'est branché que sur ce réseau ne peut joindre Internet. Le backend et le frontend y échappent parce qu'ils sont aussi sur `proxy-net`. En revanche, le service `worker` (module `worker`, cycle métier de longue durée) n'était branché que sur `internal-net`, alors qu'il existe précisément pour de l'I/O externe : API d'exchange, appels LLM. Ce bug a été trouvé sur le projet 0-hl (flux Kraken). Quand le module `worker` est actif, le compose déclare donc un troisième réseau, réservé au seul worker :
+>
+> ```yaml
+>   worker:
+>     networks:
+>       - internal-net   # accès à la db
+>       - egress-net     # sortie Internet
+>
+> networks:
+>   egress-net:
+>     driver: bridge     # propre au projet, jamais partagé
+> ```
+>
+> Ce réseau suit trois règles :
+>
+> - **Jamais `proxy-net`** pour cet usage. Ce réseau est partagé par toute la flotte via Traefik, et le worker n'a pas à voir les conteneurs des autres projets.
+> - **Un réseau par projet.** Compose préfixe `egress-net` avec le nom du projet, il n'est donc jamais partagé.
+> - **Rien n'y entre.** Aucun port n'est publié et le worker n'a aucun label Traefik.
+>
+> La db, elle, reste exclusivement sur `internal-net`.
+
 ### 2. L'environnement de Développement : `docker-compose.dev.yml`
 
 En développement, nous activons le rechargement automatique (hot-reload) et exposons les ports pour faciliter le débuggage.
@@ -199,6 +220,7 @@ Traefik gère un certificat wildcard `*.mystudio.com` via Let's Encrypt DNS-01. 
 Chaque projet dispose :
 
 - de son propre réseau `internal-net` (jamais partagé avec un autre projet)
+- si le module `worker` est actif, de son propre réseau `egress-net`, qui sert uniquement à la sortie Internet du worker (jamais partagé non plus)
 - de sa propre base de données PostgreSQL (isolation nette, sauvegarde et restauration indépendantes)
 - de ses propres conteneurs backend et frontend
 - d'un `PROJECT_NAME` unique qui préfixe l'ensemble des ressources Docker
