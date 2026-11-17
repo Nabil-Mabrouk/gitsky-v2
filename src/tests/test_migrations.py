@@ -121,13 +121,55 @@ def test_module_chain_skipped_when_flag_disabled():
         settings = Settings()
         applied = run_migrations(url=_async_url(db_file), settings=settings)
 
-        assert applied == ["core"]
+        assert applied == ["core", "domain"]
         tables = _table_names(db_file)
         assert "users" in tables
         assert "alembic_version_core" in tables
         # La chaîne analytics n'a pas tourné : ni sa table, ni sa version.
         assert "visits" not in tables
         assert "alembic_version_analytics" not in tables
+    finally:
+        try:
+            db_file.unlink()
+        except OSError:
+            pass
+
+
+def test_domain_chain_always_applied_last_with_its_own_version_table():
+    # Bug réel (0-hl, 2026-11-18) : aucune chaîne pour app/domain — les tables
+    # métier n'existaient qu'en dev (create_all), jamais en prod. politique-ia,
+    # f-ynd et ai-qube l'avaient chacun ajoutée à la main, avec des variantes.
+    fd, path = tempfile.mkstemp(suffix=".db")
+    os.close(fd)
+    db_file = Path(path)
+    try:
+        settings = Settings(module_worker=True)
+        applied = run_migrations(url=_async_url(db_file), settings=settings)
+
+        # Dernière : les tables métier peuvent référencer users/modules.
+        assert applied == ["core", "worker", "domain"]
+        assert "alembic_version_domain" in _table_names(db_file)
+    finally:
+        try:
+            db_file.unlink()
+        except OSError:
+            pass
+
+
+def test_domain_version_table_is_configurable():
+    # f-ynd a historiquement nommé sa table alembic_version_fynd : sans ce
+    # réglage, la chaîne châssis rejouerait ses migrations sur des tables
+    # existantes.
+    fd, path = tempfile.mkstemp(suffix=".db")
+    os.close(fd)
+    db_file = Path(path)
+    try:
+        settings = Settings(domain_version_table="alembic_version_fynd")
+        run_migrations(url=_async_url(db_file), settings=settings)
+
+        tables = _table_names(db_file)
+        assert "alembic_version_fynd" in tables
+        assert "alembic_version_domain" not in tables
     finally:
         try:
             db_file.unlink()
@@ -144,7 +186,7 @@ def test_module_chain_applied_when_flag_enabled():
         settings = Settings(module_analytics=True)
         applied = run_migrations(url=_async_url(db_file), settings=settings)
 
-        assert applied == ["core", "analytics"]
+        assert applied == ["core", "analytics", "domain"]
         tables = _table_names(db_file)
         # Les deux chaînes coexistent avec leurs tables de version distinctes.
         assert {"users", "visits"} <= tables
@@ -164,7 +206,7 @@ def test_tutorials_chain_applied_when_enabled():
         settings = Settings(module_tutorials=True)
         applied = run_migrations(url=_async_url(db_file), settings=settings)
 
-        assert applied == ["core", "tutorials"]
+        assert applied == ["core", "tutorials", "domain"]
         tables = _table_names(db_file)
         assert {"tutorials", "lessons"} <= tables
         assert "alembic_version_tutorials" in tables
@@ -185,7 +227,7 @@ def test_security_chain_applied_when_enabled():
         settings = Settings(module_security_middleware=True)
         applied = run_migrations(url=_async_url(db_file), settings=settings)
 
-        assert applied == ["core", "security"]
+        assert applied == ["core", "security", "domain"]
         tables = _table_names(db_file)
         assert "security_events" in tables
         assert "alembic_version_security" in tables
@@ -204,7 +246,7 @@ def test_onboarding_chain_applied_when_enabled():
         settings = Settings(module_onboarding=True)
         applied = run_migrations(url=_async_url(db_file), settings=settings)
 
-        assert applied == ["core", "onboarding"]
+        assert applied == ["core", "onboarding", "domain"]
         tables = _table_names(db_file)
         assert "user_profiles" in tables
         assert "alembic_version_onboarding" in tables
@@ -223,7 +265,7 @@ def test_agentic_chain_applied_when_enabled():
         settings = Settings(module_agentic=True)
         applied = run_migrations(url=_async_url(db_file), settings=settings)
 
-        assert applied == ["core", "agentic"]
+        assert applied == ["core", "agentic", "domain"]
         tables = _table_names(db_file)
         # 0002 : TOUTES les tables des modèles agentic doivent exister — le trou
         # historique (steps/credits sans migration) ne cassait qu'en prod, où
@@ -254,7 +296,7 @@ def test_monetization_chain_applied_when_shop_enabled():
         settings = Settings(module_monetization_shop=True)
         applied = run_migrations(url=_async_url(db_file), settings=settings)
 
-        assert applied == ["core", "monetization"]
+        assert applied == ["core", "monetization", "domain"]
         tables = _table_names(db_file)
         assert {"products", "purchases", "subscriptions"} <= tables
         assert "alembic_version_monetization" in tables
@@ -290,7 +332,7 @@ def test_fleet_chain_applied_when_enabled():
         settings = Settings(module_fleet=True)
         applied = run_migrations(url=_async_url(db_file), settings=settings)
 
-        assert applied == ["core", "fleet"]
+        assert applied == ["core", "fleet", "domain"]
         tables = _table_names(db_file)
         assert {"fleet_projects", "fleet_lifecycle_events"} <= tables
         assert "alembic_version_fleet" in tables
@@ -313,7 +355,7 @@ def test_worker_chain_applied_when_enabled():
         settings = Settings(module_worker=True)
         applied = run_migrations(url=_async_url(db_file), settings=settings)
 
-        assert applied == ["core", "worker"]
+        assert applied == ["core", "worker", "domain"]
         tables = _table_names(db_file)
         assert "worker_runs" in tables
         assert "alembic_version_worker" in tables

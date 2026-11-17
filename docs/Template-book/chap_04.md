@@ -203,6 +203,9 @@ backend/alembic/
 │   ├── analytics/
 │   ├── security/
 │   └── monetization/
+├── domain/                   # Migrations métier du projet (app/domain/)
+│   ├── env.py
+│   └── versions/
 └── alembic.ini               # Configuration multi-chaînes
 ```
 
@@ -227,7 +230,18 @@ def run_migrations() -> None:
     if settings.module_onboarding:
         command.upgrade(_config("onboarding", "alembic/modules/onboarding", "alembic_version_onboarding", url), "head")
     # … idem pour les autres modules
+
+    # Métier (app/domain/) : toujours, et en dernier.
+    command.upgrade(_config("domain", "alembic/domain", settings.domain_version_table, url), "head")
 ```
+
+> **Écart assumé : la chaîne `domain`.** Dans la conception initiale, seules les couches core et modules avaient une chaîne. Les modèles métier du projet (`app/domain/models.py`) n'en avaient aucune : ils n'étaient créés que par le `create_all` du démarrage en développement, et donc **jamais en production**. Ce bug a été trouvé sur le projet 0-hl. Avant cette correction, politique-ia, f-ynd et ai-qube avaient chacun ajouté leur propre chaîne à la main, avec des variantes divergentes. Le châssis fournit désormais `alembic/domain/` (vide à la génération, une chaîne vide n'a aucun effet) et une section `[domain]` dans `alembic.ini`. Le runner l'applique selon trois règles :
+>
+> - **Toujours**, parce que `app/domain/` n'est pas un module optionnel.
+> - **En dernier**, parce que les tables métier peuvent référencer `users` ou les tables des modules.
+> - **Avec une table de version réglable** : `DOMAIN_VERSION_TABLE`, par défaut `alembic_version_domain`. Elle permet de reprendre une chaîne déjà nommée autrement, comme `alembic_version_fynd` pour f-ynd. Sans ce réglage, ces migrations seraient rejouées sur des tables qui existent déjà.
+>
+> Le `env.py` de cette chaîne filtre aussi les tables de la base que les modèles métier ne déclarent pas. Sans ce filtre, `--autogenerate` comparerait les modèles métier à la base réelle et proposerait de **supprimer** `users` et toutes les tables des modules.
 
 Un runner Python (plutôt qu'un script shell) reste portable entre environnements et s'appelle directement dans les tests. La CLI Alembic classique (`alembic --name onboarding upgrade head`) demeure disponible grâce aux sections déclarées dans `alembic.ini`.
 
@@ -245,6 +259,15 @@ Lors de la création d'un nouveau module :
 2. **Générer une migration** : `alembic --name mon_module revision --autogenerate -m "initial"`.
 3. **Vérifier le script généré** avant application.
 4. **Ajouter le flag** correspondant à `Settings`, une section dans `alembic.ini`, et l'appliquer dans le runner `scripts/migrate.py`.
+
+### Workflow Alembic pour les Modèles Métier
+
+La chaîne `domain` existe déjà : il n'y a ni dossier, ni flag, ni section à créer.
+
+1. **Modifier** `app/domain/models.py`.
+2. **Générer une migration** à partir d'une base à jour : `alembic -n domain revision --autogenerate -m "..."`.
+3. **Vérifier le script généré** avant application, en particulier que `upgrade()` ne supprime rien d'inattendu.
+4. **Pousser** : le service `migrate` l'applique au déploiement.
 
 ---
 
