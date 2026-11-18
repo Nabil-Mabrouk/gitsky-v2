@@ -24,12 +24,20 @@ frontend/
 │   ├── lib/            # Utilitaires (cn, apiFetch)
 │   ├── pages/          # Pages principales de l'application
 │   │   └── admin/      # Interface d'administration
+│   ├── domain/         # Pages métier du projet (project-owned)
+│   │   └── routes.tsx  # Leurs routes (export domainRoutes)
 │   ├── App.tsx         # Routage principal (React Router)
 │   ├── main.tsx        # Point d'entrée de l'application
 │   └── i18n.ts         # Configuration multi-langue
 ├── public/             # Fichiers statiques et locales JSON
 └── vite.config.ts      # Configuration de Vite
 ```
+
+> **Écart assumé : `frontend/src/domain/routes.tsx`, le point d'extension des pages métier.** Côté backend, le code métier a toujours eu sa place réservée (`app/domain/routers.py`, monté automatiquement). Côté frontend, rien d'équivalent n'existait : `App.tsx` est un fichier châssis, que `copier update` met à jour dans tous les projets, et c'était pourtant le seul endroit où déclarer une page. Avant cette correction, politique-ia, f-ynd et ai-qube l'avaient chacun modifié à la main (27, 44 et 47 routes), et chaque mise à jour du châssis y produisait un conflit, ou une fusion silencieuse. Le problème a été remonté par l'agent dev de 0-hl.
+>
+> Le châssis génère désormais `frontend/src/domain/routes.tsx` une seule fois. Ce fichier est protégé par `_skip_if_exists`, comme `landing-manifest.json`. Il exporte `domainRoutes`, un fragment de `<Route>` vide par défaut, et `App.tsx` se contente de l'insérer dans le shell du site. Les pages métier ont donc la Navbar et le Footer, comme `/learn` ou `/login`, et passent par la redirection « mot de passe à changer ». Leurs chemins sont relatifs, sans `/` initial.
+>
+> Le nom `domainRoutes` est un contrat : un projet qui a déjà son propre `routes.tsx` le garde à chaque mise à jour, donc renommer l'export dans le châssis casserait son build. Un garde frontend n'étant que de l'UX, une page réservée aux comptes connectés doit aussi être protégée côté serveur.
 
 ## Tailwind CSS 4 et le Design System
 
