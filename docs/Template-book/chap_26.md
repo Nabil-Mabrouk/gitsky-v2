@@ -50,12 +50,14 @@ Pour chaque projet en attente :
 ```text
 git pull --ff-only
   └─ (optionnel, RUN_COPIER_UPDATE=1) copier update --trust --defaults
-docker compose up -d --build
+GIT_SHA=$(git rev-parse --short HEAD) docker compose up -d --build
   └─ vérification /health du conteneur backend
       └─ reporting vers /api/fleet/maintenance/report (job="deploy")
 ```
 
 `git pull --ff-only` refuse tout merge ou rebase automatique — un historique divergent doit faire échouer le script bruyamment, pas être résolu en silence (règle déjà en place pour le dépôt du template lui-même : le serveur ne fait jamais que `pull`, Chap 22). `copier update` reste désactivé par défaut : il peut demander une résolution de conflit interactive, ce qui n'est pas sûr sans supervision sous cron — un projet qui a besoin d'absorber une évolution du template le fait pour l'instant à la main.
+
+**Le commit déployé, visible depuis les conteneurs.** Le poller transmet le SHA court du commit qu'il vient de tirer à `docker compose up`, sous le nom `GIT_SHA`. Le compose généré le passe aux services `backend` et `worker` (`GIT_SHA=${GIT_SHA:-unknown}`). Le code d'un projet peut ainsi citer la version exacte qui tourne : c'est le cas des rapports de backtest de 0-hl, qui l'ont demandé. La valeur est fournie au démarrage et non au build : changer d'étiquette n'impose pas de reconstruire l'image. Elle a une limite assumée. Quand un conteneur est recréé hors de ce poller (`rotate_secret_key.sh`, `toggle_module.sh`, `docker compose up` à la main), `GIT_SHA` vaut `unknown` jusqu'au déploiement suivant. Un SHA calculé à ce moment-là pourrait être faux, par exemple après un `git pull` à la main sans reconstruction, et une version inconnue vaut mieux qu'une version fausse.
 
 Un projet dont le répertoire est introuvable, dont le `git pull` échoue, ou dont le `/health` post-build ne répond pas, journalise un échec via `/api/fleet/maintenance/report` — visible dans l'onglet Maintenance du dashboard (Chap 19) au même titre qu'un échec de sauvegarde. Le curseur avance malgré l'échec : un projet cassé ne doit jamais bloquer indéfiniment les déploiements des projets suivants dans la file.
 

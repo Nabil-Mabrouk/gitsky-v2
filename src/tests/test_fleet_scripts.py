@@ -592,6 +592,33 @@ def test_deploy_redeploys_every_pending_project_and_advances_cursor(tmp_path):
     assert '"project":"launch-me"' in calls
 
 
+def test_deploy_passes_deployed_commit_as_git_sha_to_compose(tmp_path):
+    # Demande 0-hl (2026-11-20) : un rapport de backtest doit citer la version
+    # exacte du code. Le compose généré lit ${GIT_SHA:-unknown} ; c'est ce
+    # pipeline, qui connaît le commit tiré, qui doit le fournir.
+    fakebin = tmp_path / "bin"; fakebin.mkdir()
+    projects = _make_project_dirs(tmp_path / "projects", "zero-hl")
+    _fake_curl_deploy(fakebin, tmp_path / "curl_calls.log", pending="3\tzero-hl")
+    g = fakebin / "git"
+    _write_lf(g, '#!/usr/bin/env bash\n[[ "$1" == "rev-parse" ]] && echo abc1234\nexit 0\n')
+    g.chmod(0o755)
+    _fake_flock(fakebin)
+    seen = tmp_path / "git_sha_seen.log"
+    _fake_docker(fakebin, rf"""
+        case "$1" in
+          compose) echo "GIT_SHA=${{GIT_SHA:-<absent>}}" >> "{seen.as_posix()}" ;;
+        esac
+    """)
+
+    r = _run("deploy-on-push.sh", fakebin, tmp_path,
+             FLEET_URL="https://api.example.com", FLEET_REGISTER_TOKEN="tok",
+             PROJECTS_DIR=projects.as_posix(),
+             STATE_FILE=(tmp_path / "state" / "deploy.state").as_posix())
+
+    assert r.returncode == 0, r.stderr
+    assert seen.read_text().strip() == "GIT_SHA=abc1234"
+
+
 def test_deploy_reports_failure_when_project_directory_missing(tmp_path):
     fakebin = tmp_path / "bin"; fakebin.mkdir()
     projects = tmp_path / "projects"; projects.mkdir()  # "ghost" n'existe pas dedans

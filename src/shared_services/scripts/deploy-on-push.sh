@@ -95,7 +95,7 @@ deploy_one() {
         cd "$dir" \
             && git pull --ff-only \
             && { [[ "$RUN_COPIER_UPDATE" != "1" ]] || copier update --trust --defaults; } \
-            && docker compose up -d --build
+            && GIT_SHA="$(git rev-parse --short HEAD)" docker compose up -d --build
     ); then
         echo "  ✗ ${project} : git pull / copier update / docker compose up a échoué."
         report "$project" "failure" "git pull / docker compose up a échoué"

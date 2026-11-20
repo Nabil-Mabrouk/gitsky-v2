@@ -329,6 +329,15 @@ def test_worker_service_appears_when_module_active():
     assert worker["depends_on"]["db"]["condition"] == "service_healthy"
 
 
+def test_backend_and_worker_receive_deployed_commit_as_git_sha():
+    # Fourni par deploy-on-push.sh (git rev-parse) ; `unknown` sans lui
+    # (rotate_*.sh, compose up manuel) — jamais une valeur fausse.
+    with projet_genere("pain-scraper", modules={"worker": True}) as dst:
+        compose = yaml.safe_load((dst / "docker-compose.yml").read_text(encoding="utf-8"))
+    for name in ("backend", "worker"):
+        assert "GIT_SHA=${GIT_SHA:-unknown}" in compose["services"][name]["environment"], name
+
+
 def test_worker_has_internet_egress_via_dedicated_network():
     # Bug réel (0-hl, 2026-11-18) : worker seul sur internal-net (internal:
     # true) -> aucun accès Internet, alors qu'il existe pour l'I/O externe
