@@ -32,7 +32,9 @@ model_list:
   # tools/tool_choice. Alias préfixés groq- : le nom côté projet reste stable
   # même si Groq renomme/retire un modèle (seule cette ligne change). Liste à
   # revalider par un vrai appel avec outil après chaque changement : le
-  # catalogue Groq évolue vite.
+  # catalogue Groq évolue vite. Validés le 2026-11-21 (tool call réel via le
+  # jeton 0-hl) : les deux gpt-oss. llama-3.3-70b-versatile retiré : 404
+  # model_not_found chez Groq ce jour-là.
   - model_name: groq-gpt-oss-120b
     litellm_params:
       model: groq/openai/gpt-oss-120b
@@ -40,10 +42,6 @@ model_list:
   - model_name: groq-gpt-oss-20b
     litellm_params:
       model: groq/openai/gpt-oss-20b
-      api_key: os.environ/GROQ_API_KEY
-  - model_name: groq-llama-3.3-70b
-    litellm_params:
-      model: groq/llama-3.3-70b-versatile
       api_key: os.environ/GROQ_API_KEY
 
 # Chap 18 §4 — absent jusqu'au 2026-11-21 (écart constaté par l'agent de
