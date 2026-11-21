@@ -28,3 +28,30 @@ model_list:
     litellm_params:
       model: openai/gpt-image-2
       api_key: os.environ/OPENAI_API_KEY
+  # Groq (round 0-hl, 2026-11-21) — modèles open-weight rapides, compatibles
+  # tools/tool_choice. Alias préfixés groq- : le nom côté projet reste stable
+  # même si Groq renomme/retire un modèle (seule cette ligne change). Liste à
+  # revalider par un vrai appel avec outil après chaque changement : le
+  # catalogue Groq évolue vite.
+  - model_name: groq-gpt-oss-120b
+    litellm_params:
+      model: groq/openai/gpt-oss-120b
+      api_key: os.environ/GROQ_API_KEY
+  - model_name: groq-gpt-oss-20b
+    litellm_params:
+      model: groq/openai/gpt-oss-20b
+      api_key: os.environ/GROQ_API_KEY
+  - model_name: groq-llama-3.3-70b
+    litellm_params:
+      model: groq/llama-3.3-70b-versatile
+      api_key: os.environ/GROQ_API_KEY
+
+# Chap 18 §4 — absent jusqu'au 2026-11-21 (écart constaté par l'agent de
+# 0-hl) : sans database_url, LiteLLM n'a ni jetons virtuels, ni budgets, ni
+# spend logs, et la clé maître était le seul jeton possible pour un projet.
+general_settings:
+  master_key: os.environ/LITELLM_MASTER_KEY
+  database_url: os.environ/DATABASE_URL
+  # Spend logs = attribution des coûts par projet (modèle, tokens, coût),
+  # jamais le contenu des prompts/réponses des projets.
+  store_prompts_in_spend_logs: false

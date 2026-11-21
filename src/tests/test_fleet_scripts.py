@@ -29,6 +29,7 @@ FLEET_SCRIPTS = [
     "harden-server.sh",
     "bootstrap-fleet.sh",
     "setup-deploy-key.sh",
+    "llm-proxy-keys.sh",
 ]
 
 BASH = shutil.which("bash") or ""

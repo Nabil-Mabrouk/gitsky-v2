@@ -92,6 +92,14 @@ docker network create proxy-net 2>/dev/null || true
 
 echo "5/9 Traefik + Postgres (services de base, toujours nécessaires)..."
 docker compose up -d traefik postgres
+# Base des jetons/budgets du llm-proxy (Chap 18 §4) — avant tout démarrage
+# du proxy : sans elle, son DATABASE_URL pointe vers une base inexistante.
+# Attente active de postgres (premier démarrage = initdb, quelques secondes).
+for _ in $(seq 1 30); do
+    docker compose exec -T postgres pg_isready -U postgres >/dev/null 2>&1 && break
+    sleep 2
+done
+"${SHARED_SERVICES_SRC}/scripts/llm-proxy-keys.sh" init-db
 
 echo "6/9 Environnement générateur (venv, versions EXACTES de requirements.txt —"
 echo "    jamais codées en dur ici, pour ne jamais diverger du pin réel)..."

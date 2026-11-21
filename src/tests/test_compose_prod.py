@@ -230,6 +230,22 @@ def test_leads_backend_joins_shared_services_net():
     assert "volumes" not in compose["services"]["backend"]
 
 
+def test_agentic_backend_joins_shared_services_net():
+    # Bug trouvé le 2026-11-21 (round proxy LLM, questions de 0-hl) : le
+    # module agentic appelle llm-proxy (LLM_PROXY_URL=http://llm-proxy:4000),
+    # qui n'existe QUE sur shared-services-net — mais ce réseau n'était posé
+    # que pour fleet/leads/analytics. Un projet agentic seul échouait donc en
+    # résolution DNS dès le premier appel LLM en prod.
+    with projet_genere("pain-scraper", modules={"agentic": True}) as dst:
+        compose = yaml.safe_load((dst / "docker-compose.yml").read_text(encoding="utf-8"))
+    assert "shared-services-net" in compose["services"]["backend"]["networks"]
+    assert compose["networks"]["shared-services-net"]["external"] is True
+    # Le worker reste hors de shared-services-net : seul le backend appelle le proxy.
+    worker = compose["services"].get("worker")
+    if worker:
+        assert "shared-services-net" not in worker["networks"]
+
+
 # --- volumes du générateur : réservés au module fleet (Chap 27) ------------
 
 

@@ -62,3 +62,28 @@ def test_branding_local_css_generated_and_imported_after_theme():
     theme_pos = index_css.index("./theme.css")
     branding_pos = index_css.index("./branding.local.css")
     assert theme_pos < branding_pos
+
+
+def test_agents_md_documents_llm_proxy_contract():
+    # Round 2026-11-21 : l'agent de 0-hl a dû poser 9 questions pour savoir
+    # comment appeler le proxy LLM — le contrat n'était documenté nulle part
+    # dans le projet généré.
+    with projet_genere("pain-scraper") as dst:
+        body = (dst / "AGENTS.md").read_text(encoding="utf-8")
+    assert "LLM_PROXY_URL=http://llm-proxy:4000" in body
+    assert "LLM_PROXY_TOKEN" in body
+    assert "llm-proxy-keys.sh create-key" in body
+    assert "/v1/models" in body
+    assert "/key/info" in body
+    assert "budget_exceeded" in body
+    assert "llm_client.py" in body  # ne renvoie que du texte, pas les tool_calls
+
+
+def test_env_local_example_has_llm_vars_only_with_agentic():
+    with projet_genere("pain-scraper", modules={"agentic": True}) as dst:
+        agentic = (dst / ".env.local.example").read_text(encoding="utf-8")
+    with projet_genere("pain-scraper") as dst:
+        plain = (dst / ".env.local.example").read_text(encoding="utf-8")
+    assert "LLM_PROXY_URL=http://llm-proxy:4000" in agentic
+    assert "LLM_PROXY_TOKEN=" in agentic
+    assert "LLM_PROXY_TOKEN" not in plain

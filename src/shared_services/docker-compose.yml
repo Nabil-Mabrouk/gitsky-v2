@@ -119,6 +119,15 @@ services:
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - LITELLM_MASTER_KEY=${LITELLM_MASTER_KEY}
+      # Clé Groq (round 0-hl, 2026-11-21) : posée par l'opérateur directement
+      # dans ce .env sur le serveur — jamais par un dépôt projet ni un agent.
+      - GROQ_API_KEY=${GROQ_API_KEY}
+      # Base LiteLLM (Chap 18 §4) : jetons virtuels par projet, budgets,
+      # /key/info, /spend/logs. Absente jusqu'au 2026-11-21 (écart au livre
+      # constaté par l'agent de 0-hl) : sans elle, la seule authentification
+      # possible était la clé MAÎTRE, distribuée telle quelle aux projets.
+      # Rôle/base créés par scripts/llm-proxy-keys.sh init-db.
+      - DATABASE_URL=postgresql://litellm:${LITELLM_DB_PASSWORD}@postgres:5432/litellm
     volumes:
       - ./litellm-config.yaml:/app/config.yaml:ro
     networks:
