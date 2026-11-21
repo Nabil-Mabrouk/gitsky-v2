@@ -122,6 +122,8 @@ services:
       # Clé Groq (round 0-hl, 2026-11-21) : posée par l'opérateur directement
       # dans ce .env sur le serveur — jamais par un dépôt projet ni un agent.
       - GROQ_API_KEY=${GROQ_API_KEY}
+      # Clé DeepSeek (round politique-ia, 2026-11-21), même règle que Groq.
+      - DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY}
       # Base LiteLLM (Chap 18 §4) : jetons virtuels par projet, budgets,
       # /key/info, /spend/logs. Absente jusqu'au 2026-11-21 (écart au livre
       # constaté par l'agent de 0-hl) : sans elle, la seule authentification

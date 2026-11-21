@@ -294,3 +294,84 @@ def test_unknown_command_fails_with_usage(tmp_path):
     r = _run(ctx, "frobnicate")
     assert r.returncode != 0
     assert "Usage" in r.stderr
+
+
+# --- DeepSeek (round politique-ia, 2026-11-21) -------------------------------
+
+
+def test_llm_proxy_receives_deepseek_key_from_env_only():
+    assert "DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY}" in _env_list(_proxy())
+
+
+def test_deepseek_models_use_official_ids_and_explicit_costs():
+    # IDs lus sur GET https://api.deepseek.com/models le 2026-11-21 (pas de
+    # mémoire / blog : les noms ont changé en juillet 2026).
+    ds = {m["model_name"]: m for m in _config()["model_list"] if m["model_name"].startswith("deepseek-")}
+    assert set(ds) == {"deepseek-flash", "deepseek-v4-pro"}
+    for name, m in ds.items():
+        assert m["litellm_params"]["model"] == f"deepseek/{name}"
+        assert m["litellm_params"]["api_key"] == "os.environ/DEEPSEEK_API_KEY"
+        # Tarifs explicites : sans eux, un modèle absent de la cost map de
+        # LiteLLM coûte 0 et le budget du jeton ne bloque jamais rien.
+        info = m["model_info"]
+        assert info["input_cost_per_token"] > 0
+        assert info["output_cost_per_token"] > 0
+
+
+def test_env_example_declares_deepseek_key_empty():
+    assert "DEEPSEEK_API_KEY=" in ENV_EXAMPLE.read_text(encoding="utf-8").splitlines()
+
+
+@pytestmark_script
+def test_update_key_sends_project_token_via_stdin_never_argv(tmp_path):
+    ctx = _setup(tmp_path)
+    proj = ctx["projects"] / "politique-ia"
+    proj.mkdir()
+    _write_lf(proj / ".env.local", "FOO=1\nLLM_PROXY_TOKEN=sk-projecttoken42\n")
+    r = _run(ctx, "update-key", "politique-ia", "5", "deepseek-flash,deepseek-v4-pro")
+    assert r.returncode == 0, r.stderr
+    args = _read(ctx["args_log"])
+    assert "exec -T llm-proxy python -c" in args
+    assert "5 1d deepseek-flash,deepseek-v4-pro" in args
+    assert "/key/update" in args
+    assert "sk-projecttoken42" not in args
+    assert "sk-projecttoken42" in _read(ctx["stdin_log"])
+    assert "sk-projecttoken42" not in r.stdout + r.stderr
+    # Le jeton du projet ne change pas : .env.local intact.
+    assert _read(proj / ".env.local") == "FOO=1\nLLM_PROXY_TOKEN=sk-projecttoken42\n"
+
+
+@pytestmark_script
+def test_update_key_fails_without_existing_token(tmp_path):
+    ctx = _setup(tmp_path)
+    proj = ctx["projects"] / "p"
+    proj.mkdir()
+    _write_lf(proj / ".env.local", "FOO=1\n")
+    r = _run(ctx, "update-key", "p", "5", "deepseek-flash")
+    assert r.returncode != 0
+    assert _read(ctx["args_log"]) == ""
+
+
+@pytestmark_script
+def test_update_key_requires_models_and_valid_budget(tmp_path):
+    ctx = _setup(tmp_path)
+    proj = ctx["projects"] / "p"
+    proj.mkdir()
+    _write_lf(proj / ".env.local", "LLM_PROXY_TOKEN=sk-x\n")
+    assert _run(ctx, "update-key", "p", "5", "").returncode != 0
+    assert _run(ctx, "update-key", "p", "abc", "deepseek-flash").returncode != 0
+    assert _read(ctx["args_log"]) == ""
+
+
+def test_embedded_python_snippets_compile():
+    # Bug attrapé avant prod (2026-11-21) : un "\n" dans le code python
+    # embarqué de update-key était devenu un vrai saut de ligne (f-string
+    # coupée) — les tests à faux docker ne l'exécutent jamais, seul le vrai
+    # conteneur l'aurait vu échouer.
+    import re
+    text = SCRIPT.read_text(encoding="utf-8")
+    snippets = re.findall(r"<<'PY'\n(.*?)\nPY\n", text, re.S)
+    snippets += re.findall(r"python -c '\n(.*?)\n' ", text, re.S)
+    assert len(snippets) == 2
+    for code in snippets:
+        compile(code, "<llm-proxy-keys.sh>", "exec")

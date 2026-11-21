@@ -17,6 +17,11 @@
 #       $PROJECTS_DIR/<projet>/.env.local (LLM_PROXY_URL + LLM_PROXY_TOKEN),
 #       en remplaçant toute valeur précédente (ex. la clé maître).
 #
+#   llm-proxy-keys.sh update-key <projet> <budget_usd> <modele1,modele2,...>
+#       Change budget + allowlist du jeton EXISTANT du projet (lu dans son
+#       .env.local) via /key/update — le jeton lui-même ne change pas, aucun
+#       redémarrage du projet nécessaire.
+#
 # Garanties de sécurité :
 #   - le jeton émis n'est JAMAIS affiché (ni stdout ni stderr) : il ne doit
 #     transiter ni par un terminal partagé, ni par un chat, ni par un agent ;
@@ -39,6 +44,7 @@ PROXY_URL="${PROXY_URL:-http://llm-proxy:4000}"
 usage() {
     echo "Usage : $0 init-db" >&2
     echo "        $0 create-key <projet> <budget_usd> <modele1,modele2,...>" >&2
+    echo "        $0 update-key <projet> <budget_usd> <modele1,modele2,...>" >&2
     exit 2
 }
 
@@ -75,17 +81,48 @@ SQL
     echo "✓ Rôle et base 'litellm' prêts. Redémarrer le proxy : docker compose up -d llm-proxy"
 }
 
-create_key() {
-    local project="${1:-}" budget="${2:-}" models="${3:-}"
+validate_args() {
+    local project="$1" budget="$2" models="$3"
     [[ "$project" =~ ^[a-z0-9][a-z0-9-]*$ ]] || { echo "✗ nom de projet invalide : '${project}'" >&2; exit 1; }
     [[ "$budget" =~ ^[0-9]+(\.[0-9]+)?$ ]] || { echo "✗ budget invalide (USD, ex. 12 ou 12.5) : '${budget}'" >&2; exit 1; }
     # Allowlist obligatoire : sans elle, le jeton aurait accès à tout le
     # catalogue du proxy (Opus compris).
     [[ "$models" =~ ^[A-Za-z0-9._-]+(,[A-Za-z0-9._-]+)*$ ]] || { echo "✗ liste de modèles invalide ou vide : '${models}'" >&2; exit 1; }
     [[ "$BUDGET_DURATION" =~ ^[0-9]+(s|m|h|d|mo)$ ]] || { echo "✗ BUDGET_DURATION invalide : '${BUDGET_DURATION}'" >&2; exit 1; }
+    [[ -d "${PROJECTS_DIR}/${project}" ]] || { echo "✗ projet introuvable : ${PROJECTS_DIR}/${project}" >&2; exit 1; }
+}
 
+update_key() {
+    local project="${1:-}" budget="${2:-}" models="${3:-}"
+    validate_args "$project" "$budget" "$models"
+    local env_file="${PROJECTS_DIR}/${project}/.env.local"
+    local token
+    token="$(grep -E '^LLM_PROXY_TOKEN=' "$env_file" 2>/dev/null | head -n1 | cut -d= -f2- || true)"
+    [[ -n "$token" ]] || { echo "✗ aucun LLM_PROXY_TOKEN dans ${env_file} — utiliser create-key." >&2; exit 1; }
+
+    cd "$SHARED_DIR"
+    # Jeton du projet via stdin (jamais argv) ; code python via -c (non secret).
+    printf '%s' "$token" | docker compose exec -T llm-proxy python -c '
+import json, os, sys, urllib.error, urllib.request
+budget, duration, models = sys.argv[1:4]
+body = {"key": sys.stdin.read().strip(), "max_budget": float(budget),
+        "budget_duration": duration, "models": [m for m in models.split(",") if m]}
+req = urllib.request.Request("http://localhost:4000/key/update", data=json.dumps(body).encode(),
+    headers={"Authorization": "Bearer " + os.environ["LITELLM_MASTER_KEY"], "Content-Type": "application/json"},
+    method="POST")
+try:
+    urllib.request.urlopen(req, timeout=30).read()
+except urllib.error.HTTPError as exc:
+    print(f"/key/update HTTP {exc.code}: {exc.read().decode()[:500]}", file=sys.stderr)
+    sys.exit(1)
+' "$budget" "$BUDGET_DURATION" "$models" >/dev/null || { echo "✗ mise à jour refusée par le proxy (voir ci-dessus)." >&2; exit 1; }
+    echo "✓ Jeton '${project}' mis à jour (budget ${budget} USD / ${BUDGET_DURATION}, modèles : ${models})."
+}
+
+create_key() {
+    local project="${1:-}" budget="${2:-}" models="${3:-}"
+    validate_args "$project" "$budget" "$models"
     local project_dir="${PROJECTS_DIR}/${project}"
-    [[ -d "$project_dir" ]] || { echo "✗ projet introuvable : ${project_dir}" >&2; exit 1; }
 
     cd "$SHARED_DIR"
     local key
@@ -144,5 +181,6 @@ PY
 case "${1:-}" in
     init-db) init_db ;;
     create-key) shift; create_key "$@" ;;
+    update-key) shift; update_key "$@" ;;
     *) usage ;;
 esac
