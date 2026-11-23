@@ -40,6 +40,10 @@ OFFSITE_RETENTION="${OFFSITE_RETENTION:-30}"
 # de toute la flotte. Borné ici + délais réseau courts côté rclone.
 OFFSITE_TIMEOUT="${OFFSITE_TIMEOUT:-1800}"
 RCLONE_FLAGS=(--timeout 120s --contimeout 30s --retries 3 --low-level-retries 5)
+# Refus passagers de Google Drive (403 rateLimitExceeded, constaté le
+# 2026-11-23) : nouvelles tentatives espacées avant de compter un échec.
+OFFSITE_ATTEMPTS="${OFFSITE_ATTEMPTS:-3}"
+OFFSITE_RETRY_DELAY="${OFFSITE_RETRY_DELAY:-60}"
 DATE=$(date +%Y%m%d_%H%M%S)
 
 mkdir -p "$BACKUP_DIR" "$VOLUME_DIR"
@@ -60,11 +64,16 @@ OFFSITE_FAILED=0
 # la sauvegarde (visible dans l'onglet Maintenance), copie locale conservée.
 offsite() {
     [[ -z "$RCLONE_REMOTE" ]] && return 0
-    if ! timeout "$OFFSITE_TIMEOUT" rclone copyto "$1" "${RCLONE_REMOTE}/$2/$(basename "$1")" "${RCLONE_FLAGS[@]}"; then
-        echo "  ✗ copie hors serveur échouée : $(basename "$1") (copie locale conservée)."
-        OFFSITE_FAILED=$((OFFSITE_FAILED + 1))
-        FAILED=$((FAILED + 1))
-    fi
+    local attempt
+    for attempt in $(seq 1 "$OFFSITE_ATTEMPTS"); do
+        if timeout "$OFFSITE_TIMEOUT" rclone copyto "$1" "${RCLONE_REMOTE}/$2/$(basename "$1")" "${RCLONE_FLAGS[@]}"; then
+            return 0
+        fi
+        [[ $attempt -lt $OFFSITE_ATTEMPTS ]] && sleep "$OFFSITE_RETRY_DELAY"
+    done
+    echo "  ✗ copie hors serveur échouée : $(basename "$1") après ${OFFSITE_ATTEMPTS} essai(s) (copie locale conservée)."
+    OFFSITE_FAILED=$((OFFSITE_FAILED + 1))
+    FAILED=$((FAILED + 1))
 }
 for container in $CONTAINERS; do
     project="${container%_db}"          # pain-scraper_db -> pain-scraper

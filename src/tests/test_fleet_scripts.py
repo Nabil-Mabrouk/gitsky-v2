@@ -388,7 +388,8 @@ def test_fleet_backup_offsite_failure_is_a_failure_but_keeps_local_copy(tmp_path
     _fake_rclone(fakebin, rlog, fail=True)
 
     r = _run("backup-fleet.sh", fakebin, tmp_path, BACKUP_DIR=backups.as_posix(),
-             SHARED_ENV=_shared_env(tmp_path, "gitsky-crypt:fleet").as_posix())
+             SHARED_ENV=_shared_env(tmp_path, "gitsky-crypt:fleet").as_posix(),
+             OFFSITE_RETRY_DELAY="0")
 
     assert r.returncode == 1
     assert len(list(backups.glob("*.dump.gz"))) == 1
@@ -443,7 +444,7 @@ def test_fleet_backup_hung_offsite_upload_is_killed_and_reported(tmp_path):
     start = time.monotonic()
     r = _run("backup-fleet.sh", fakebin, tmp_path, BACKUP_DIR=backups.as_posix(),
              SHARED_ENV=_shared_env(tmp_path, "gitsky-crypt:fleet").as_posix(),
-             OFFSITE_TIMEOUT="2")
+             OFFSITE_TIMEOUT="2", OFFSITE_ATTEMPTS="1")
     elapsed = time.monotonic() - start
 
     assert elapsed < 20, elapsed
@@ -451,6 +452,48 @@ def test_fleet_backup_hung_offsite_upload_is_killed_and_reported(tmp_path):
     assert "copie hors serveur échouée" in r.stdout
     # Délais réseau courts pour que rclone abandonne lui-même une connexion figée.
     assert "--timeout" in rlog.read_text() and "--contimeout" in rlog.read_text()
+
+
+def test_fleet_backup_retries_offsite_upload_after_transient_refusal(tmp_path):
+    # Constat réel (2026-11-23) : Google Drive refuse par moments
+    # (403 rateLimitExceeded) puis accepte quelques secondes plus tard — un
+    # refus passager ne doit pas faire perdre la copie hors serveur du jour.
+    fakebin = tmp_path / "bin"; fakebin.mkdir()
+    backups = tmp_path / "backups"
+    dlog, rlog = tmp_path / "docker.log", tmp_path / "rclone.log"
+    counter = tmp_path / "count"
+    _fake_docker_with_volumes(fakebin, dlog, volumes=r"f-ynd_db_data\n")
+    r_bin = fakebin / "rclone"
+    _write_lf(r_bin, "#!/usr/bin/env bash\n"
+              f'echo "$@" >> "{rlog.as_posix()}"\n'
+              'if [[ "$1" == copyto ]]; then\n'
+              f'  n=$(cat "{counter.as_posix()}" 2>/dev/null || echo 0); n=$((n+1)); echo $n > "{counter.as_posix()}"\n'
+              '  [[ $n -lt 3 ]] && exit 1\n'
+              'fi\nexit 0\n')
+    r_bin.chmod(0o755)
+
+    r = _run("backup-fleet.sh", fakebin, tmp_path, BACKUP_DIR=backups.as_posix(),
+             SHARED_ENV=_shared_env(tmp_path, "gitsky-crypt:fleet").as_posix(),
+             OFFSITE_RETRY_DELAY="0")
+
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert counter.read_text().strip() == "3"
+
+
+def test_fleet_backup_gives_up_after_max_offsite_attempts(tmp_path):
+    fakebin = tmp_path / "bin"; fakebin.mkdir()
+    backups = tmp_path / "backups"
+    dlog, rlog = tmp_path / "docker.log", tmp_path / "rclone.log"
+    _fake_docker_with_volumes(fakebin, dlog, volumes=r"f-ynd_db_data\n")
+    _fake_rclone(fakebin, rlog, fail=True)
+
+    r = _run("backup-fleet.sh", fakebin, tmp_path, BACKUP_DIR=backups.as_posix(),
+             SHARED_ENV=_shared_env(tmp_path, "gitsky-crypt:fleet").as_posix(),
+             OFFSITE_RETRY_DELAY="0", OFFSITE_ATTEMPTS="4")
+
+    assert r.returncode == 1
+    copies = [c for c in rlog.read_text().splitlines() if c.startswith("copyto ")]
+    assert len(copies) == 4
 
 
 # --- test-restore-fleet.sh --------------------------------------------------
