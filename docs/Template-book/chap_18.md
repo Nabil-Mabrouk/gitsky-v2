@@ -172,6 +172,8 @@ curl -X POST https://llm-proxy.internal/key/generate \
 
 Les logs consolidés servent au fleet dashboard pour afficher le coût LLM par projet.
 
+**Qui joint le proxy, et par quel réseau.** Le `backend` d'un projet le joint par `shared-services-net`, quand un de ses modules l'y branche (`agentic`, `leads`, `analytics`, `fleet`). Le `worker` (Chap 1) le joint par un réseau dédié, `gitsky-llm-net` : `llm-proxy` est le **seul** service de `shared_services` branché dessus. Un worker qui traite des données externes atteint ainsi le proxy sans voir Postgres, le landing collector ni GeoIP. Les deux conteneurs d'un même projet partagent le même jeton, donc le même budget.
+
 ## 5. Relais SMTP
 
 Un unique compte SMTP (par exemple **Resend**, **Postmark**, ou un serveur Postfix maison) sert tous les projets. Les emails transactionnels — activation de compte, invitation waitlist, notifications de cycle de vie (Chap 20), reçus Stripe — passent tous par ce relais.

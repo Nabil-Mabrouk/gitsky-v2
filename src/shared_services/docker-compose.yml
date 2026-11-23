@@ -135,6 +135,9 @@ services:
     networks:
       - shared-services-net
       - egress-net
+      # Réseau minimal des workers des projets (Chap 1/18, 2026-11-23) : ils
+      # n'y voient que ce service.
+      - llm-net
     depends_on:
       - postgres
 
@@ -203,3 +206,14 @@ networks:
   # n'avait jamais servi pour de vrai).
   egress-net:
     driver: bridge
+  # Réseau dédié à l'accès LLM des workers des projets générés (Chap 1 et 18,
+  # demande 0-hl du 2026-11-23). SEUL llm-proxy y est branché : un worker
+  # (qui traite des données externes) joint le proxy sans voir postgres,
+  # landing-collector ni geoip — contrairement à shared-services-net.
+  # internal: true (aucune sortie par ce réseau ; llm-proxy sort via
+  # egress-net). Nom explicite, sans préfixe Compose : les projets le
+  # rejoignent en external sous ce nom exact.
+  llm-net:
+    driver: bridge
+    internal: true
+    name: gitsky-llm-net

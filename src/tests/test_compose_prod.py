@@ -371,6 +371,31 @@ def test_worker_has_internet_egress_via_dedicated_network():
     assert "external" not in egress and "name" not in egress  # propre au projet
 
 
+def test_worker_reaches_llm_proxy_via_dedicated_llm_net_only():
+    # Demande 0-hl (2026-11-23) : rapports d'analyse de marché générés par le
+    # worker. Le worker joint le proxy via llm-net (réseau de shared_services
+    # où SEUL llm-proxy est branché), jamais via shared-services-net (qui
+    # exposerait le Postgres partagé de la flotte à un conteneur qui traite
+    # des données externes).
+    with projet_genere("pain-scraper", modules={"worker": True}) as dst:
+        compose = yaml.safe_load((dst / "docker-compose.yml").read_text(encoding="utf-8"))
+    worker_nets = compose["services"]["worker"]["networks"]
+    assert "llm-net" in worker_nets
+    assert "shared-services-net" not in worker_nets
+    llm = compose["networks"]["llm-net"]
+    assert llm["external"] is True
+    assert llm["name"] == "${LLM_NETWORK:-gitsky-llm-net}"
+    for name, service in compose["services"].items():
+        if name != "worker":
+            assert "llm-net" not in service.get("networks", []), name
+
+
+def test_project_without_worker_never_declares_llm_net():
+    with projet_genere("pain-scraper") as dst:
+        compose = yaml.safe_load((dst / "docker-compose.yml").read_text(encoding="utf-8"))
+    assert "llm-net" not in compose.get("networks", {})
+
+
 def test_egress_net_is_reserved_to_the_worker():
     with projet_genere("pain-scraper", modules={"worker": True}) as dst:
         compose = yaml.safe_load((dst / "docker-compose.yml").read_text(encoding="utf-8"))

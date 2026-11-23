@@ -139,6 +139,25 @@ networks:
 >
 > La db, elle, reste exclusivement sur `internal-net`.
 
+> **Écart assumé : `llm-net`, l'accès LLM du worker.** `egress-net` donne Internet au worker, mais pas le `llm-proxy` partagé (Chap 18), qui ne vit que sur les réseaux de `shared_services`. Le besoin a été remonté par 0-hl : des rapports d'analyse de marché générés par LLM, déclenchés à heure fixe par la boucle du worker. Brancher le worker sur `shared-services-net`, comme le backend, lui aurait aussi montré le Postgres partagé de la flotte, le landing collector et le service GeoIP. C'est trop pour un conteneur qui traite des données externes. `shared_services` déclare donc un réseau minimal, `gitsky-llm-net`, sur lequel **seul** `llm-proxy` est branché, et le worker le rejoint :
+>
+> ```yaml
+>   worker:
+>     networks:
+>       - internal-net   # accès à la db
+>       - egress-net     # sortie Internet
+>       - llm-net        # llm-proxy:4000, et rien d'autre
+>
+> networks:
+>   llm-net:
+>     external: true
+>     name: ${LLM_NETWORK:-gitsky-llm-net}   # créé par shared_services
+> ```
+>
+> - **Le seul voisin est le proxy.** Le réseau est `internal: true`, et le proxy sort vers les fournisseurs par son propre `egress-net`.
+> - **Le jeton reste celui du projet.** Le worker lit le même `.env.local` que le backend : même `LLM_PROXY_TOKEN`, donc même budget, et un seul `/key/info` à surveiller.
+> - **C'est un réseau partagé entre projets**, contrairement à `egress-net`. Docker ne cloisonne pas les conteneurs d'un même bridge : les workers de deux projets se voient donc au niveau réseau. Ce n'est acceptable que parce qu'un worker n'écoute sur aucun port. Un worker qui exposerait un jour un serveur (HTTP, métriques…) devrait le faire sur `internal-net` uniquement, jamais sur `llm-net`.
+
 ### 2. L'environnement de Développement : `docker-compose.dev.yml`
 
 En développement, nous activons le rechargement automatique (hot-reload) et exposons les ports pour faciliter le débuggage.
@@ -221,6 +240,7 @@ Chaque projet dispose :
 
 - de son propre réseau `internal-net` (jamais partagé avec un autre projet)
 - si le module `worker` est actif, de son propre réseau `egress-net`, qui sert uniquement à la sortie Internet du worker (jamais partagé non plus)
+- si le module `worker` est actif, d'un accès au réseau `gitsky-llm-net` de `shared_services`, où seul le `llm-proxy` est branché (voir l'écart assumé du §1)
 - de sa propre base de données PostgreSQL (isolation nette, sauvegarde et restauration indépendantes)
 - de ses propres conteneurs backend et frontend
 - d'un `PROJECT_NAME` unique qui préfixe l'ensemble des ressources Docker

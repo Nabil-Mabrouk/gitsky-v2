@@ -110,3 +110,20 @@ def test_leads_routers_have_explicit_priority():
     labels = _compose()["services"]["landing-collector"]["labels"]
     assert "traefik.http.routers.landing-collector-leads.priority=100" in labels
     assert "traefik.http.routers.landing-collector-verify.priority=100" in labels
+
+
+def test_llm_net_is_internal_named_and_reserved_to_llm_proxy():
+    # Réseau minimal pour les workers des projets (Chap 1/18, demande 0-hl
+    # 2026-11-23) : ils n'y voient QUE llm-proxy — jamais postgres,
+    # landing-collector ni geoip. Nom explicite (pas de préfixe de projet
+    # Compose) : les projets le rejoignent en external par ce nom.
+    compose = _compose()
+    net = compose["networks"]["llm-net"]
+    assert net["internal"] is True
+    assert net["name"] == "gitsky-llm-net"
+    for name, service in compose["services"].items():
+        nets = service.get("networks", [])
+        if name == "llm-proxy":
+            assert "llm-net" in nets
+        else:
+            assert "llm-net" not in nets, name
