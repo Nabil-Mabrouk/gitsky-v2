@@ -335,6 +335,96 @@ def test_fleet_backup_volume_rotation_has_its_own_retention(tmp_path):
     assert dump.exists()
 
 
+# --- backup-fleet.sh : copie hors serveur via rclone (2026-11-23) -------------
+#
+# Constat réel : /backups est sur le MÊME disque que les données, sans
+# S3_BUCKET ni CLI aws — aucune sauvegarde de la flotte ne quittait le VPS.
+# Destination retenue par l'opérateur : Google Drive, via un remote rclone
+# CHIFFRÉ (crypt), lu dans shared_services/.env (BACKUP_RCLONE_REMOTE) pour ne
+# pas toucher au crontab déjà installé.
+
+
+def _fake_rclone(fakebin: Path, log: Path, *, fail: bool = False) -> None:
+    r = fakebin / "rclone"
+    _write_lf(r, "#!/usr/bin/env bash\n"
+              f'echo "$@" >> "{log.as_posix()}"\n'
+              + ("exit 1\n" if fail else "exit 0\n"))
+    r.chmod(0o755)
+
+
+def _shared_env(tmp_path: Path, remote: str) -> Path:
+    env = tmp_path / "shared.env"
+    _write_lf(env, f"OTHER=1\nBACKUP_RCLONE_REMOTE={remote}\n")
+    return env
+
+
+def test_fleet_backup_sends_dumps_and_volume_archives_offsite(tmp_path):
+    fakebin = tmp_path / "bin"; fakebin.mkdir()
+    backups = tmp_path / "backups"
+    dlog, rlog = tmp_path / "docker.log", tmp_path / "rclone.log"
+    _fake_docker_with_volumes(fakebin, dlog, volumes=r"f-ynd_db_data\nf-ynd_media_data\n")
+    _fake_rclone(fakebin, rlog)
+
+    r = _run("backup-fleet.sh", fakebin, tmp_path, BACKUP_DIR=backups.as_posix(),
+             SHARED_ENV=_shared_env(tmp_path, "gitsky-crypt:fleet").as_posix())
+
+    assert r.returncode == 0, r.stderr
+    calls = rlog.read_text().splitlines()
+    copies = [c for c in calls if c.startswith("copyto ")]
+    assert len(copies) == 2
+    assert any("f_ynd_" in c and ".dump.gz gitsky-crypt:fleet/f-ynd/f_ynd_" in c for c in copies)
+    assert any(".tar.gz gitsky-crypt:fleet/f-ynd/volumes/f-ynd_media_data_" in c for c in copies)
+    # Rotation distante (30 j par défaut), bornée au remote de sauvegarde.
+    assert "delete --min-age 30d gitsky-crypt:fleet" in calls
+
+
+def test_fleet_backup_offsite_failure_is_a_failure_but_keeps_local_copy(tmp_path):
+    # Une copie hors serveur ratée doit se VOIR (onglet Maintenance) : sinon
+    # on découvre le jour de l'incident qu'aucune copie n'est jamais partie.
+    fakebin = tmp_path / "bin"; fakebin.mkdir()
+    backups = tmp_path / "backups"
+    dlog, rlog = tmp_path / "docker.log", tmp_path / "rclone.log"
+    _fake_docker_with_volumes(fakebin, dlog, volumes=r"f-ynd_db_data\n")
+    _fake_rclone(fakebin, rlog, fail=True)
+
+    r = _run("backup-fleet.sh", fakebin, tmp_path, BACKUP_DIR=backups.as_posix(),
+             SHARED_ENV=_shared_env(tmp_path, "gitsky-crypt:fleet").as_posix())
+
+    assert r.returncode == 1
+    assert len(list(backups.glob("*.dump.gz"))) == 1
+
+
+def test_fleet_backup_without_remote_never_calls_rclone(tmp_path):
+    fakebin = tmp_path / "bin"; fakebin.mkdir()
+    backups = tmp_path / "backups"
+    dlog, rlog = tmp_path / "docker.log", tmp_path / "rclone.log"
+    _fake_docker_with_volumes(fakebin, dlog, volumes=r"f-ynd_db_data\n")
+    _fake_rclone(fakebin, rlog)
+
+    r = _run("backup-fleet.sh", fakebin, tmp_path, BACKUP_DIR=backups.as_posix(),
+             SHARED_ENV=_shared_env(tmp_path, "").as_posix())
+
+    assert r.returncode == 0, r.stderr
+    assert not rlog.exists()
+
+
+def test_fleet_backup_env_var_overrides_shared_env(tmp_path):
+    fakebin = tmp_path / "bin"; fakebin.mkdir()
+    backups = tmp_path / "backups"
+    dlog, rlog = tmp_path / "docker.log", tmp_path / "rclone.log"
+    _fake_docker_with_volumes(fakebin, dlog, volumes=r"f-ynd_db_data\n")
+    _fake_rclone(fakebin, rlog)
+
+    r = _run("backup-fleet.sh", fakebin, tmp_path, BACKUP_DIR=backups.as_posix(),
+             SHARED_ENV=_shared_env(tmp_path, "from-file:x").as_posix(),
+             RCLONE_REMOTE="from-env:y", OFFSITE_RETENTION="10")
+
+    assert r.returncode == 0, r.stderr
+    calls = rlog.read_text()
+    assert "from-env:y/f-ynd/" in calls and "from-file:x" not in calls
+    assert "delete --min-age 10d from-env:y" in calls
+
+
 # --- test-restore-fleet.sh --------------------------------------------------
 
 

@@ -23,6 +23,18 @@ VOLUME_RETENTION="${VOLUME_RETENTION:-7}"
 VOLUME_DIR="${BACKUP_DIR}/volumes"
 TAR_IMAGE="${TAR_IMAGE:-alpine:3.20}"
 S3_BUCKET="${S3_BUCKET:-}"
+# Copie HORS SERVEUR via rclone (2026-11-23) : /backups est sur le même disque
+# que les données — sans copie externe, la perte du VPS emporte aussi toutes
+# les sauvegardes. Remote rclone CHIFFRÉ (crypt) recommandé : les dumps
+# contiennent emails et hachés de mots de passe des utilisateurs. Lu dans
+# shared_services/.env (BACKUP_RCLONE_REMOTE, ex. "gitsky-crypt:fleet") si
+# RCLONE_REMOTE n'est pas déjà fourni : le crontab installé n'a pas à changer.
+SHARED_ENV="${SHARED_ENV:-/opt/gitsky/shared_services/.env}"
+if [[ -z "${RCLONE_REMOTE:-}" && -f "$SHARED_ENV" ]]; then
+    RCLONE_REMOTE="$(grep -E '^BACKUP_RCLONE_REMOTE=' "$SHARED_ENV" | tail -n1 | cut -d= -f2- || true)"
+fi
+RCLONE_REMOTE="${RCLONE_REMOTE:-}"
+OFFSITE_RETENTION="${OFFSITE_RETENTION:-30}"
 DATE=$(date +%Y%m%d_%H%M%S)
 
 mkdir -p "$BACKUP_DIR" "$VOLUME_DIR"
@@ -37,6 +49,18 @@ fi
 
 FAILED=0
 VOLUMES_SAVED=0
+OFFSITE_FAILED=0
+
+# $1 = fichier local, $2 = sous-dossier distant. Échec compté comme échec de
+# la sauvegarde (visible dans l'onglet Maintenance), copie locale conservée.
+offsite() {
+    [[ -z "$RCLONE_REMOTE" ]] && return 0
+    if ! rclone copyto "$1" "${RCLONE_REMOTE}/$2/$(basename "$1")"; then
+        echo "  ✗ copie hors serveur échouée : $(basename "$1") (copie locale conservée)."
+        OFFSITE_FAILED=$((OFFSITE_FAILED + 1))
+        FAILED=$((FAILED + 1))
+    fi
+}
 for container in $CONTAINERS; do
     project="${container%_db}"          # pain-scraper_db -> pain-scraper
     dbname="${project//-/_}"            # identifiant PostgreSQL (pas de tiret)
@@ -49,6 +73,7 @@ for container in $CONTAINERS; do
     # le rôle "postgres" n'existe simplement pas. Trouvé en testant contre un
     # vrai conteneur (le mock docker des tests ne valide aucun credential).
     if docker exec "$container" pg_dump -U "$dbname" -Fc "$dbname" | gzip > "$outfile"; then
+        offsite "$outfile" "$project"
         if [[ -n "$S3_BUCKET" ]]; then
             aws s3 cp "$outfile" "s3://${S3_BUCKET}/${project}/" || \
                 echo "  ⚠ upload S3 échoué pour $project (dump local conservé)."
@@ -73,6 +98,7 @@ for container in $CONTAINERS; do
         if docker run --rm -v "${volume}:/data:ro" "$TAR_IMAGE" tar czf - -C /data . > "${archive}.part"; then
             mv "${archive}.part" "$archive"
             VOLUMES_SAVED=$((VOLUMES_SAVED + 1))
+            offsite "$archive" "${project}/volumes"
             if [[ -n "$S3_BUCKET" ]]; then
                 aws s3 cp "$archive" "s3://${S3_BUCKET}/${project}/volumes/" ||                     echo "  ⚠ upload S3 échoué pour ${volume} (archive locale conservée)."
             fi
@@ -87,15 +113,23 @@ done
 # Rotation : garder BACKUP_RETENTION jours de dumps locaux.
 find "$BACKUP_DIR" -name "*.dump.gz" -mtime "+${BACKUP_RETENTION}" -delete
 find "$VOLUME_DIR" -name "*.tar.gz" -mtime "+${VOLUME_RETENTION}" -delete
+# Rotation distante, bornée au remote de sauvegarde (jamais au-delà).
+if [[ -n "$RCLONE_REMOTE" ]]; then
+    if ! rclone delete --min-age "${OFFSITE_RETENTION}d" "$RCLONE_REMOTE"; then
+        echo "  ✗ rotation distante échouée."
+        OFFSITE_FAILED=$((OFFSITE_FAILED + 1))
+        FAILED=$((FAILED + 1))
+    fi
+fi
 
 TOTAL=$(echo "$CONTAINERS" | wc -w)
 if [[ $FAILED -gt 0 ]]; then
     STATUS="failure"
-    SUMMARY="$FAILED échec(s) sur $TOTAL projet(s)."
+    SUMMARY="$FAILED échec(s) sur $TOTAL projet(s) (dont $OFFSITE_FAILED hors serveur)."
     echo "=== Sauvegarde flotte terminée avec $FAILED échec(s). ==="
 else
     STATUS="success"
-    SUMMARY="$TOTAL projet(s) sauvegardé(s), $VOLUMES_SAVED volume(s) de fichiers archivé(s)."
+    SUMMARY="$TOTAL projet(s) sauvegardé(s), $VOLUMES_SAVED volume(s) de fichiers archivé(s), copie hors serveur : ${RCLONE_REMOTE:-AUCUNE}."
     echo "=== Sauvegarde flotte terminée. ==="
 fi
 

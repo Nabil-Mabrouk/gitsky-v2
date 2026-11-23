@@ -1166,6 +1166,23 @@ journée ne reprenne sur la flotte.
 > Limite connue : le test de restauration mensuel ne vérifie encore que les
 > dumps, pas les archives de volumes.
 
+> **Écart assumé : la copie hors serveur passe par `rclone`, chiffrée.** Le
+> même audit a montré que `/backups` était sur le disque même des projets, sans
+> `S3_BUCKET` configuré : aucune sauvegarde ne quittait le VPS, et sa perte
+> aurait emporté données et copies d'un coup. Plutôt que d'imposer un compte S3,
+> le script envoie chaque dump et chaque archive vers un remote `rclone`, nommé
+> dans `shared_services/.env` (`BACKUP_RCLONE_REMOTE`) : Google Drive, S3,
+> Backblaze ou SFTP, au choix de l'opérateur. Trois règles :
+>
+> - **Chiffré avant l'envoi** (remote `crypt`) : les dumps contiennent les emails
+>   et les hachés de mots de passe des utilisateurs. Le mot de passe de
+>   chiffrement se garde hors du serveur, sinon les copies sont irrécupérables.
+> - **Accès minimal** : pour Google Drive, la portée `drive.file`, limitée aux
+>   fichiers créés par `rclone` et jamais au Drive entier.
+> - **Un envoi raté est un échec de la sauvegarde**, visible dans l'onglet
+>   Maintenance, même si la copie locale a réussi. Rotation distante :
+>   `OFFSITE_RETENTION`, 30 jours par défaut.
+
 ### Vérification des Sauvegardes de Flotte
 
 Le fleet dashboard expose une colonne « dernière sauvegarde OK » par projet.
