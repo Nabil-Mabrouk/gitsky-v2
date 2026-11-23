@@ -35,6 +35,11 @@ if [[ -z "${RCLONE_REMOTE:-}" && -f "$SHARED_ENV" ]]; then
 fi
 RCLONE_REMOTE="${RCLONE_REMOTE:-}"
 OFFSITE_RETENTION="${OFFSITE_RETENTION:-30}"
+# Durée max d'UN envoi (s). Bug réel (2026-11-23) : un `rclone copyto` figé
+# 21 min sur un dump de 72 Mo (12 s relancé à la main) bloquait la sauvegarde
+# de toute la flotte. Borné ici + délais réseau courts côté rclone.
+OFFSITE_TIMEOUT="${OFFSITE_TIMEOUT:-1800}"
+RCLONE_FLAGS=(--timeout 120s --contimeout 30s --retries 3 --low-level-retries 5)
 DATE=$(date +%Y%m%d_%H%M%S)
 
 mkdir -p "$BACKUP_DIR" "$VOLUME_DIR"
@@ -55,7 +60,7 @@ OFFSITE_FAILED=0
 # la sauvegarde (visible dans l'onglet Maintenance), copie locale conservée.
 offsite() {
     [[ -z "$RCLONE_REMOTE" ]] && return 0
-    if ! rclone copyto "$1" "${RCLONE_REMOTE}/$2/$(basename "$1")"; then
+    if ! timeout "$OFFSITE_TIMEOUT" rclone copyto "$1" "${RCLONE_REMOTE}/$2/$(basename "$1")" "${RCLONE_FLAGS[@]}"; then
         echo "  ✗ copie hors serveur échouée : $(basename "$1") (copie locale conservée)."
         OFFSITE_FAILED=$((OFFSITE_FAILED + 1))
         FAILED=$((FAILED + 1))
@@ -115,7 +120,7 @@ find "$BACKUP_DIR" -name "*.dump.gz" -mtime "+${BACKUP_RETENTION}" -delete
 find "$VOLUME_DIR" -name "*.tar.gz" -mtime "+${VOLUME_RETENTION}" -delete
 # Rotation distante, bornée au remote de sauvegarde (jamais au-delà).
 if [[ -n "$RCLONE_REMOTE" ]]; then
-    if ! rclone delete --min-age "${OFFSITE_RETENTION}d" "$RCLONE_REMOTE"; then
+    if ! timeout "$OFFSITE_TIMEOUT" rclone delete --min-age "${OFFSITE_RETENTION}d" "$RCLONE_REMOTE"; then
         echo "  ✗ rotation distante échouée."
         OFFSITE_FAILED=$((OFFSITE_FAILED + 1))
         FAILED=$((FAILED + 1))

@@ -425,6 +425,34 @@ def test_fleet_backup_env_var_overrides_shared_env(tmp_path):
     assert "delete --min-age 10d from-env:y" in calls
 
 
+def test_fleet_backup_hung_offsite_upload_is_killed_and_reported(tmp_path):
+    # Bug réel (premier envoi Google Drive, 2026-11-23) : un `rclone copyto`
+    # figé 21 min sur un dump de 72 Mo (12 s en le relançant) bloquait TOUTE
+    # la sauvegarde de la flotte — aucun projet suivant n'était sauvegardé.
+    # Chaque envoi est désormais borné (OFFSITE_TIMEOUT) et compté en échec.
+    fakebin = tmp_path / "bin"; fakebin.mkdir()
+    backups = tmp_path / "backups"
+    dlog, rlog = tmp_path / "docker.log", tmp_path / "rclone.log"
+    _fake_docker_with_volumes(fakebin, dlog, volumes=r"f-ynd_db_data\n")
+    r_bin = fakebin / "rclone"
+    _write_lf(r_bin, "#!/usr/bin/env bash\n"
+              f'echo "$@" >> "{rlog.as_posix()}"\n'
+              '[[ "$1" == copyto ]] && sleep 30\nexit 0\n')
+    r_bin.chmod(0o755)
+
+    start = time.monotonic()
+    r = _run("backup-fleet.sh", fakebin, tmp_path, BACKUP_DIR=backups.as_posix(),
+             SHARED_ENV=_shared_env(tmp_path, "gitsky-crypt:fleet").as_posix(),
+             OFFSITE_TIMEOUT="2")
+    elapsed = time.monotonic() - start
+
+    assert elapsed < 20, elapsed
+    assert r.returncode == 1
+    assert "copie hors serveur échouée" in r.stdout
+    # Délais réseau courts pour que rclone abandonne lui-même une connexion figée.
+    assert "--timeout" in rlog.read_text() and "--contimeout" in rlog.read_text()
+
+
 # --- test-restore-fleet.sh --------------------------------------------------
 
 
