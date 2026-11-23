@@ -242,6 +242,99 @@ def test_fleet_backup_loops_containers_not_pg_database(tmp_path):
     assert "pg_database" not in code
 
 
+# --- backup-fleet.sh : volumes de fichiers (audit f-ynd, 2026-11-23) ---------
+#
+# Bug réel trouvé en audit : f-ynd stocke les morceaux et pochettes des
+# artistes dans le volume `f-ynd_media_data` — backup-fleet.sh ne faisait QUE
+# des pg_dump. Perte du disque = catalogue perdu (lignes en base, fichiers
+# disparus). Les volumes nommés d'un projet sont désormais archivés (tar.gz),
+# sauf celui de la base (`*_db_data`, déjà couvert par pg_dump — et une copie
+# à chaud des fichiers PostgreSQL ne serait de toute façon pas cohérente).
+
+
+def _fake_docker_with_volumes(fakebin: Path, log: Path, *, volumes: str,
+                              fail_volume: str = "") -> None:
+    _fake_docker(fakebin, rf"""
+        echo "$@" >> "{log.as_posix()}"
+        case "$1" in
+          ps)     echo "f-ynd_db" ;;
+          exec)   echo "-- dump" ;;
+          volume) printf '%b' "{volumes}" ;;
+          run)    if [[ -n "{fail_volume}" && "$*" == *"{fail_volume}:"* ]]; then exit 1; fi
+                  printf 'fake-tar-of-%s' "$*" ;;
+        esac
+    """)
+
+
+def test_fleet_backup_archives_project_volumes_except_db(tmp_path):
+    fakebin = tmp_path / "bin"; fakebin.mkdir()
+    backups = tmp_path / "backups"
+    log = tmp_path / "docker.log"
+    _fake_docker_with_volumes(fakebin, log, volumes=r"f-ynd_db_data\nf-ynd_media_data\n")
+
+    r = _run("backup-fleet.sh", fakebin, tmp_path, BACKUP_DIR=backups.as_posix())
+
+    assert r.returncode == 0, r.stderr
+    archives = sorted(p.name for p in (backups / "volumes").glob("*.tar.gz"))
+    assert len(archives) == 1
+    assert archives[0].startswith("f-ynd_media_data_")
+    calls = log.read_text()
+    # Volumes du projet trouvés par le label Compose, jamais par motif de nom.
+    assert "volume ls -q --filter label=com.docker.compose.project=f-ynd" in calls
+    # Monté en lecture seule, jamais la base.
+    assert "f-ynd_media_data:/data:ro" in calls
+    assert "f-ynd_db_data:" not in calls
+
+
+def test_fleet_backup_volume_failure_counts_as_failure_and_leaves_no_partial(tmp_path):
+    fakebin = tmp_path / "bin"; fakebin.mkdir()
+    backups = tmp_path / "backups"
+    log = tmp_path / "docker.log"
+    _fake_docker_with_volumes(fakebin, log, volumes=r"f-ynd_media_data\n",
+                              fail_volume="f-ynd_media_data")
+
+    r = _run("backup-fleet.sh", fakebin, tmp_path, BACKUP_DIR=backups.as_posix())
+
+    assert r.returncode == 1
+    assert list((backups / "volumes").glob("*.tar.gz")) == []
+
+
+def test_fleet_backup_project_without_extra_volume_is_fine(tmp_path):
+    fakebin = tmp_path / "bin"; fakebin.mkdir()
+    backups = tmp_path / "backups"
+    log = tmp_path / "docker.log"
+    _fake_docker_with_volumes(fakebin, log, volumes=r"f-ynd_db_data\n")
+
+    r = _run("backup-fleet.sh", fakebin, tmp_path, BACKUP_DIR=backups.as_posix())
+
+    assert r.returncode == 0, r.stderr
+    assert list((backups / "volumes").glob("*.tar.gz")) == []
+    assert "run " not in log.read_text()
+
+
+def test_fleet_backup_volume_rotation_has_its_own_retention(tmp_path):
+    # Archives de fichiers bien plus lourdes qu'un dump : rétention propre
+    # (VOLUME_RETENTION, défaut 7 j) pour ne pas saturer le disque du VPS.
+    fakebin = tmp_path / "bin"; fakebin.mkdir()
+    backups = tmp_path / "backups"; (backups / "volumes").mkdir(parents=True)
+    log = tmp_path / "docker.log"
+    _fake_docker_with_volumes(fakebin, log, volumes=r"f-ynd_media_data\n")
+    old = backups / "volumes" / "f-ynd_media_data_20000101_000000.tar.gz"
+    old.write_bytes(b"x")
+    past = time.time() - 10 * 86400  # 10 j > 7 j
+    os.utime(old, (past, past))
+    dump = backups / "f_ynd_20000101_000000.dump.gz"
+    dump.write_bytes(b"\x1f\x8b\x00")
+    os.utime(dump, (past, past))  # 10 j < 14 j : le dump reste
+
+    r = _run("backup-fleet.sh", fakebin, tmp_path, BACKUP_DIR=backups.as_posix(),
+             BACKUP_RETENTION="14", VOLUME_RETENTION="7")
+
+    assert r.returncode == 0, r.stderr
+    assert not old.exists()
+    assert dump.exists()
+
+
 # --- test-restore-fleet.sh --------------------------------------------------
 
 

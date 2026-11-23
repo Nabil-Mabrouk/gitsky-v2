@@ -1137,6 +1137,35 @@ find /backups -name "*.dump.gz" -mtime +14 -delete
 Ce script tourne à 02:00 UTC, en heure creuse — avant que le trafic de la
 journée ne reprenne sur la flotte.
 
+> **Écart assumé : les volumes de fichiers sont sauvegardés aussi.** Un audit de
+> f-ynd (novembre 2026) a montré que la base n'est pas toute la donnée d'un
+> projet. Les morceaux et pochettes déposés par ses artistes vivent dans un
+> volume Docker (`f-ynd_media_data`), et `backup-fleet.sh` ne faisait que des
+> `pg_dump`. Une perte du disque aurait laissé les lignes en base, sans les
+> fichiers qu'elles désignent. Le script archive donc, pour chaque projet, tous
+> ses volumes nommés :
+>
+> ```bash
+> for volume in $(docker volume ls -q --filter "label=com.docker.compose.project=${project}"); do
+>     [[ "$volume" == *_db_data ]] && continue          # déjà couvert par pg_dump
+>     docker run --rm -v "${volume}:/data:ro" alpine:3.20 >         tar czf - -C /data . > "/backups/postgres/volumes/${volume}_${DATE}.tar.gz"
+> done
+> find /backups/postgres/volumes -name "*.tar.gz" -mtime +7 -delete
+> ```
+>
+> - **Par label Compose, jamais par motif de nom** : un projet `radio` ne doit pas
+>   archiver les volumes d'un projet `radio-2`.
+> - **Jamais le volume de la base** : une copie à chaud des fichiers PostgreSQL
+>   n'est pas cohérente, et `pg_dump` la couvre déjà.
+> - **Montage en lecture seule**, et une archive interrompue est supprimée, pas
+>   conservée à moitié.
+> - **Rétention propre (7 jours par défaut, `VOLUME_RETENTION`)** : une archive de
+>   médias pèse bien plus qu'un dump. Surveiller la jauge disque (`fleet-disk.sh`)
+>   quand un projet stocke beaucoup de fichiers.
+>
+> Limite connue : le test de restauration mensuel ne vérifie encore que les
+> dumps, pas les archives de volumes.
+
 ### Vérification des Sauvegardes de Flotte
 
 Le fleet dashboard expose une colonne « dernière sauvegarde OK » par projet.

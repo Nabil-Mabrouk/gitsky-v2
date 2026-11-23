@@ -17,10 +17,15 @@ set -euo pipefail
 
 BACKUP_DIR="${BACKUP_DIR:-/backups/postgres}"
 BACKUP_RETENTION="${BACKUP_RETENTION:-14}"
+# Archives des volumes de fichiers (voir plus bas) : bien plus lourdes qu'un
+# dump, rétention propre pour ne pas saturer le disque du VPS.
+VOLUME_RETENTION="${VOLUME_RETENTION:-7}"
+VOLUME_DIR="${BACKUP_DIR}/volumes"
+TAR_IMAGE="${TAR_IMAGE:-alpine:3.20}"
 S3_BUCKET="${S3_BUCKET:-}"
 DATE=$(date +%Y%m%d_%H%M%S)
 
-mkdir -p "$BACKUP_DIR"
+mkdir -p "$BACKUP_DIR" "$VOLUME_DIR"
 
 # Conteneurs de bases projet : convention de nommage `{projet}_db` (compose de prod).
 CONTAINERS=$(docker ps --format '{{.Names}}' --filter 'name=_db$')
@@ -31,6 +36,7 @@ if [[ -z "$CONTAINERS" ]]; then
 fi
 
 FAILED=0
+VOLUMES_SAVED=0
 for container in $CONTAINERS; do
     project="${container%_db}"          # pain-scraper_db -> pain-scraper
     dbname="${project//-/_}"            # identifiant PostgreSQL (pas de tiret)
@@ -52,10 +58,35 @@ for container in $CONTAINERS; do
         rm -f "$outfile"
         FAILED=$((FAILED + 1))
     fi
+
+    # Volumes de fichiers du projet (audit f-ynd, 2026-11-23 — Chap 23) :
+    # bug réel, les morceaux/pochettes des artistes de f-ynd (volume
+    # f-ynd_media_data) n'étaient sauvegardés NULLE PART, seule la base
+    # l'était. Tous les volumes nommés du projet (label Compose, jamais un
+    # motif de nom qui déborderait sur un autre projet) sont archivés, sauf
+    # celui de la base : déjà couvert par pg_dump, et une copie à chaud des
+    # fichiers PostgreSQL ne serait pas cohérente. Montage en lecture seule.
+    for volume in $(docker volume ls -q --filter "label=com.docker.compose.project=${project}"); do
+        [[ "$volume" == *_db_data ]] && continue
+        archive="${VOLUME_DIR}/${volume}_${DATE}.tar.gz"
+        echo "  Archive du volume ${volume}..."
+        if docker run --rm -v "${volume}:/data:ro" "$TAR_IMAGE" tar czf - -C /data . > "${archive}.part"; then
+            mv "${archive}.part" "$archive"
+            VOLUMES_SAVED=$((VOLUMES_SAVED + 1))
+            if [[ -n "$S3_BUCKET" ]]; then
+                aws s3 cp "$archive" "s3://${S3_BUCKET}/${project}/volumes/" ||                     echo "  ⚠ upload S3 échoué pour ${volume} (archive locale conservée)."
+            fi
+        else
+            echo "  ✗ archive du volume ${volume} échouée."
+            rm -f "${archive}.part"
+            FAILED=$((FAILED + 1))
+        fi
+    done
 done
 
 # Rotation : garder BACKUP_RETENTION jours de dumps locaux.
 find "$BACKUP_DIR" -name "*.dump.gz" -mtime "+${BACKUP_RETENTION}" -delete
+find "$VOLUME_DIR" -name "*.tar.gz" -mtime "+${VOLUME_RETENTION}" -delete
 
 TOTAL=$(echo "$CONTAINERS" | wc -w)
 if [[ $FAILED -gt 0 ]]; then
@@ -64,7 +95,7 @@ if [[ $FAILED -gt 0 ]]; then
     echo "=== Sauvegarde flotte terminée avec $FAILED échec(s). ==="
 else
     STATUS="success"
-    SUMMARY="$TOTAL projet(s) sauvegardé(s)."
+    SUMMARY="$TOTAL projet(s) sauvegardé(s), $VOLUMES_SAVED volume(s) de fichiers archivé(s)."
     echo "=== Sauvegarde flotte terminée. ==="
 fi
 
