@@ -440,3 +440,16 @@ def test_worker_never_joins_proxy_net():
     networks = compose["services"]["worker"]["networks"]
     assert "internal-net" in networks
     assert "proxy-net" not in networks
+
+
+def test_migrate_reads_env_local_like_backend_and_worker():
+    # Bug trouvé le 2026-11-23 (copier update de f-ynd) : DOMAIN_VERSION_TABLE
+    # (Chap 4) est un réglage opérateur, documenté dans .env.local — mais le
+    # service migrate ne lisait QUE .env. Posée là, la valeur était ignorée :
+    # f-ynd aurait rejoué ses migrations métier sous alembic_version_domain sur
+    # des tables existantes, et cassé son déploiement.
+    with projet_genere("pain-scraper") as dst:
+        compose = yaml.safe_load((dst / "docker-compose.yml").read_text(encoding="utf-8"))
+    env_files = compose["services"]["migrate"]["env_file"]
+    assert ".env" in env_files
+    assert {"path": ".env.local", "required": False} in env_files
