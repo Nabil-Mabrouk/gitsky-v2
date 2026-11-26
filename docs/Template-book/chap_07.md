@@ -50,6 +50,10 @@ Un JWT est *stateless* : une fois émis, le serveur lui fait confiance jusqu'à 
 
 Le **rate limiting du login** (5 req/min) n'est pas dans l'application : conformément à la doctrine du Chap 14, il est porté par un routeur Traefik dédié généré dans le `docker-compose.yml` de production (voir Chap 21) — chaque essai coûtant un hachage argon2, un login illimité serait à la fois du credential stuffing et un DoS CPU à bas coût.
 
+Les **inscriptions** sont limitées de la même façon (5 req/min par IP, burst 10) par un second routeur Traefik : `/api/auth/register`, `/api/auth/accept-invite` et toute inscription métier nommée `/api/<nom>/register`. Chacune coûte un hachage argon2 et une ligne en base : sans limite, c'est la création de comptes en masse. D'où la convention imposée aux projets (`AGENTS.md`) : une inscription métier se nomme toujours `POST /api/<nom>/register`, jamais autrement.
+
+> **Écart assumé (audit f-ynd, 2026-11-26)** : seul le login était limité à l'origine ; `register` et l'inscription métier de f-ynd (`/api/fynd/register`) ne l'étaient pas.
+
 ## Mot de passe imposé et réinitialisation
 
 > **Écart au livre** : ce chapitre ne couvrait à l'origine que la création

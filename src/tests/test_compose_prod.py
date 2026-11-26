@@ -10,6 +10,7 @@ On rend le compose et on parse le YAML : les propriétés vérifiées sont celle
 que Docker interprète, pas du texte.
 """
 
+import re
 from pathlib import Path
 
 import yaml
@@ -96,6 +97,28 @@ def test_password_reset_rate_limit_always_declared():
     assert any("Path(`/api/auth/forgot-password`)" in lab for lab in labels)
     assert any("Path(`/api/auth/reset-password`)" in lab for lab in labels)
     assert any("pwresetlimit-pain-scraper.priority=100" in lab for lab in labels)
+
+
+def test_signup_rate_limit_always_declared():
+    # Audit f-ynd (2026-11-26) : les inscriptions coûtent un hachage argon2 et
+    # une ligne en base — /api/auth/register, /api/auth/accept-invite et toute
+    # inscription métier /api/<nom>/register (convention AGENTS.md).
+    labels = _compose()["services"]["backend"]["labels"]
+    assert any("signuplimit-pain-scraper.ratelimit.average=5" in lab for lab in labels)
+    assert any("signuplimit-pain-scraper.priority=100" in lab for lab in labels)
+    rule = next(lab for lab in labels if "routers.signuplimit-pain-scraper.rule=" in lab)
+    assert "Path(`/api/auth/register`)" in rule
+    assert "Path(`/api/auth/accept-invite`)" in rule
+    # `$$` : sans l'échappement, Compose rejette ou mange le `$` final.
+    m = re.search(r"PathRegexp\(`(.+?)`\)", rule)
+    assert m and m.group(1).endswith("$$")
+    pattern = re.compile(m.group(1).replace("$$", "$"))
+    assert pattern.match("/api/fynd/register")
+    assert pattern.match("/api/auth/register")
+    # M2M du générateur (gardé par jeton) : jamais limité par erreur.
+    assert not pattern.match("/api/fleet/projects/register")
+    assert not pattern.match("/api/fynd/register/extra")
+    assert not pattern.match("/api/fynd/registered")
 
 
 def test_has_a_migrate_service():
