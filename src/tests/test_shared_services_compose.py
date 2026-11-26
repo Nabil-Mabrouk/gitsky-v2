@@ -127,3 +127,49 @@ def test_llm_net_is_internal_named_and_reserved_to_llm_proxy():
             assert "llm-net" in nets
         else:
             assert "llm-net" not in nets, name
+
+
+# --- Umami (Chap 13/18 §8, 2026-11-26) ---------------------------------------
+
+
+def _umami() -> dict:
+    return _compose()["services"]["umami"]
+
+
+def test_umami_image_is_pinned_to_an_exact_version():
+    # Jamais `latest` : un redéploiement de shared_services ne doit pas
+    # monter de version (et migrer la base) par surprise. Tag vérifié sur
+    # ghcr.io le 2026-11-26.
+    assert _umami()["image"] == "ghcr.io/umami-software/umami:3.5.0"
+
+
+def test_umami_uses_shared_postgres_and_required_secrets():
+    env = list(_umami()["environment"])
+    assert "DATABASE_URL=postgresql://umami:${UMAMI_DB_PASSWORD}@postgres:5432/umami" in env
+    assert "APP_SECRET=${UMAMI_APP_SECRET}" in env
+    assert "DISABLE_TELEMETRY=1" in env
+
+
+def test_umami_tracker_and_collect_endpoint_are_renamed():
+    # Les bloqueurs de pub filtrent script.js / /api/send d'Umami.
+    env = list(_umami()["environment"])
+    assert "TRACKER_SCRIPT_NAME=s.js" in env
+    assert "COLLECT_API_ENDPOINT=/api/c" in env
+
+
+def test_umami_is_exposed_only_on_its_stats_host():
+    umami = _umami()
+    assert set(umami["networks"]) == {"shared-services-net", "proxy-net"}
+    labels = umami["labels"]
+    rule = next(l for l in labels if ".rule=" in l)
+    assert rule.endswith("=Host(`${UMAMI_HOST}`)")
+    assert any("loadbalancer.server.port=3000" in l for l in labels)
+    assert any("tls.certresolver=letsencrypt" in l for l in labels)
+    assert umami.get("restart") == "unless-stopped"
+    assert "ports" not in umami
+
+
+def test_env_example_declares_umami_settings_empty():
+    lines = (COMPOSE.parent / ".env.example").read_text(encoding="utf-8").splitlines()
+    for key in ("UMAMI_HOST=", "UMAMI_DB_PASSWORD=", "UMAMI_APP_SECRET="):
+        assert key in lines, key

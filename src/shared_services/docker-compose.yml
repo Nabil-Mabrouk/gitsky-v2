@@ -141,6 +141,43 @@ services:
     depends_on:
       - postgres
 
+  umami:
+    # Mesure d'audience de toute la flotte (Chap 13 §« Mesure d'Audience »,
+    # Chap 18 §8). Version ÉPINGLÉE (jamais latest : un redéploiement ne doit
+    # pas migrer la base par surprise) — tag vérifié sur ghcr.io le
+    # 2026-11-26. Base `umami` sur le postgres partagé, rôle/base/secrets
+    # créés par scripts/umami-setup.sh init.
+    image: ghcr.io/umami-software/umami:3.5.0
+    restart: unless-stopped
+    environment:
+      - DATABASE_URL=postgresql://umami:${UMAMI_DB_PASSWORD}@postgres:5432/umami
+      # Obligatoire depuis la 3.5.0. Le changer déconnecte tout le monde et
+      # réinitialise les identifiants anonymes de visite : généré une fois.
+      - APP_SECRET=${UMAMI_APP_SECRET}
+      # Noms neutres : les bloqueurs de pub filtrent script.js / /api/send.
+      - TRACKER_SCRIPT_NAME=s.js
+      - COLLECT_API_ENDPOINT=/api/c
+      - DISABLE_TELEMETRY=1
+      - DISABLE_UPDATES=1
+      # Derrière Traefik : l'IP réelle du visiteur (pays, unicité) vient de
+      # X-Forwarded-For, posé par le proxy sur le réseau Docker privé.
+      - TRUSTED_PROXIES=private
+    labels:
+      # Seule entrée publique : stats.<domaine du fleet dashboard>. Le
+      # navigateur des visiteurs y charge s.js et y poste ses mesures ;
+      # l'opérateur s'y connecte au tableau de bord (mot de passe admin
+      # changé dès la première connexion, Chap 18 §8).
+      - "traefik.enable=true"
+      - "traefik.http.routers.umami.rule=Host(`${UMAMI_HOST}`)"
+      - "traefik.http.routers.umami.entrypoints=websecure"
+      - "traefik.http.routers.umami.tls.certresolver=letsencrypt"
+      - "traefik.http.services.umami.loadbalancer.server.port=3000"
+    networks:
+      - shared-services-net
+      - proxy-net
+    depends_on:
+      - postgres
+
   geoip:
     # Lookup local (Chap 13/18) sur la base MaxMind GeoLite2-City partagée —
     # jamais d'accès réseau sortant (contrairement à geoipupdate ci-dessous),

@@ -21,6 +21,8 @@ BACKUP_RETENTION="${BACKUP_RETENTION:-14}"
 # dump, rétention propre pour ne pas saturer le disque du VPS.
 VOLUME_RETENTION="${VOLUME_RETENTION:-7}"
 VOLUME_DIR="${BACKUP_DIR}/volumes"
+SHARED_BACKUP_DIR="${BACKUP_DIR}/shared"
+SHARED_PG_CONTAINER="${SHARED_PG_CONTAINER:-shared_services-postgres-1}"
 TAR_IMAGE="${TAR_IMAGE:-alpine:3.20}"
 S3_BUCKET="${S3_BUCKET:-}"
 # Copie HORS SERVEUR via rclone (2026-11-23) : /backups est sur le même disque
@@ -46,19 +48,21 @@ OFFSITE_ATTEMPTS="${OFFSITE_ATTEMPTS:-3}"
 OFFSITE_RETRY_DELAY="${OFFSITE_RETRY_DELAY:-60}"
 DATE=$(date +%Y%m%d_%H%M%S)
 
-mkdir -p "$BACKUP_DIR" "$VOLUME_DIR"
+mkdir -p "$BACKUP_DIR" "$VOLUME_DIR" "$SHARED_BACKUP_DIR"
 
 # Conteneurs de bases projet : convention de nommage `{projet}_db` (compose de prod).
 CONTAINERS=$(docker ps --format '{{.Names}}' --filter 'name=_db$')
 
 if [[ -z "$CONTAINERS" ]]; then
+    # Pas de sortie anticipée : le PostgreSQL partagé (plus bas) se
+    # sauvegarde même sans aucun projet.
     echo "Aucun conteneur de base projet (*_db) en cours d'exécution."
-    exit 0
 fi
 
 FAILED=0
 VOLUMES_SAVED=0
 OFFSITE_FAILED=0
+SHARED_SAVED=0
 
 # $1 = fichier local, $2 = sous-dossier distant. Échec compté comme échec de
 # la sauvegarde (visible dans l'onglet Maintenance), copie locale conservée.
@@ -124,6 +128,27 @@ for container in $CONTAINERS; do
     done
 done
 
+# PostgreSQL PARTAGÉ de shared_services (Chap 18 §8, 2026-11-26) : leads du
+# landing collector, jetons/budgets du LLM proxy, audience Umami. Trou réel :
+# seuls les conteneurs `*_db` des projets étaient sauvegardés, cette base-là
+# par rien. Un dump par base, rôle `postgres` (superutilisateur de l'image
+# officielle : le compose ne définit que POSTGRES_PASSWORD). Nom exact du
+# conteneur vérifié avant tout appel — jamais un motif.
+if docker ps --format '{{.Names}}' | grep -qx "$SHARED_PG_CONTAINER"; then
+    echo "Sauvegarde du PostgreSQL partagé (${SHARED_PG_CONTAINER})..."
+    for db in $(docker exec "$SHARED_PG_CONTAINER" psql -U postgres -Atc             "SELECT datname FROM pg_database WHERE NOT datistemplate AND datname <> 'postgres'"); do
+        out="${SHARED_BACKUP_DIR}/shared_${db}_${DATE}.dump.gz"
+        if docker exec "$SHARED_PG_CONTAINER" pg_dump -U postgres -Fc "$db" | gzip > "$out"; then
+            SHARED_SAVED=$((SHARED_SAVED + 1))
+            offsite "$out" "shared-services"
+        else
+            echo "  ✗ pg_dump a échoué pour la base partagée ${db}."
+            rm -f "$out"
+            FAILED=$((FAILED + 1))
+        fi
+    done
+fi
+
 # Rotation : garder BACKUP_RETENTION jours de dumps locaux.
 find "$BACKUP_DIR" -name "*.dump.gz" -mtime "+${BACKUP_RETENTION}" -delete
 find "$VOLUME_DIR" -name "*.tar.gz" -mtime "+${VOLUME_RETENTION}" -delete
@@ -143,7 +168,7 @@ if [[ $FAILED -gt 0 ]]; then
     echo "=== Sauvegarde flotte terminée avec $FAILED échec(s). ==="
 else
     STATUS="success"
-    SUMMARY="$TOTAL projet(s) sauvegardé(s), $VOLUMES_SAVED volume(s) de fichiers archivé(s), copie hors serveur : ${RCLONE_REMOTE:-AUCUNE}."
+    SUMMARY="$TOTAL projet(s) sauvegardé(s), $VOLUMES_SAVED volume(s) de fichiers archivé(s), $SHARED_SAVED base(s) partagée(s), copie hors serveur : ${RCLONE_REMOTE:-AUCUNE}."
     echo "=== Sauvegarde flotte terminée. ==="
 fi
 

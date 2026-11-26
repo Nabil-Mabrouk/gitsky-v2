@@ -30,6 +30,7 @@ FLEET_SCRIPTS = [
     "bootstrap-fleet.sh",
     "setup-deploy-key.sh",
     "llm-proxy-keys.sh",
+    "umami-setup.sh",
 ]
 
 BASH = shutil.which("bash") or ""
@@ -236,10 +237,21 @@ def test_fleet_backup_skips_reporting_without_fleet_url(tmp_path):
 def test_fleet_backup_loops_containers_not_pg_database(tmp_path):
     # Écart au livre acté : on énumère via `docker ps` (conteneurs), jamais via
     # `SELECT datname FROM pg_database` d'une instance partagée.
+    #
+    # Portée resserrée le 2026-11-26 (intention inchangée) : le PostgreSQL de
+    # shared_services, lui, EST une instance partagée — y lister les bases via
+    # pg_database est légitime. La règle vise les bases des PROJETS : elles
+    # restent énumérées par conteneur, et pg_database n'est interrogé que sur
+    # le conteneur partagé nommé explicitement.
     body = (SHARED_SCRIPTS / "backup-fleet.sh").read_text(encoding="utf-8")
-    code = "\n".join(l for l in body.splitlines() if not l.lstrip().startswith("#"))
-    assert "docker ps" in code
-    assert "pg_database" not in code
+    lines = [l for l in body.splitlines() if not l.lstrip().startswith("#")]
+    code = "\n".join(lines)
+    assert "docker ps --format '{{.Names}}' --filter 'name=_db$'" in code
+    hits = [i for i, l in enumerate(lines) if "pg_database" in l]
+    assert hits, "le PostgreSQL partagé doit être sauvegardé base par base"
+    for i in hits:
+        context = " ".join(lines[max(0, i - 2): i + 1])
+        assert '"$SHARED_PG_CONTAINER"' in context, lines[i]
 
 
 # --- backup-fleet.sh : volumes de fichiers (audit f-ynd, 2026-11-23) ---------
@@ -494,6 +506,87 @@ def test_fleet_backup_gives_up_after_max_offsite_attempts(tmp_path):
     assert r.returncode == 1
     copies = [c for c in rlog.read_text().splitlines() if c.startswith("copyto ")]
     assert len(copies) == 4
+
+
+# --- backup-fleet.sh : PostgreSQL PARTAGÉ (2026-11-26) ------------------------
+#
+# Trou trouvé en rédigeant l'ajout d'Umami (Chap 18 §8) : backup-fleet.sh ne
+# sauvegardait que les conteneurs `*_db` des projets. Le PostgreSQL de
+# shared_services (leads du landing collector, jetons/budgets du LLM proxy,
+# bientôt l'audience Umami) n'était sauvegardé par RIEN.
+
+
+def _fake_docker_shared_pg(fakebin: Path, log: Path, *, dbs: str = r"landing\nlitellm\numami\n",
+                           with_shared: bool = True, fail_db: str = "") -> None:
+    names = r"f-ynd_db\nshared_services-postgres-1\n" if with_shared else r"f-ynd_db\n"
+    _fake_docker(fakebin, rf"""
+        echo "$@" >> "{log.as_posix()}"
+        case "$1" in
+          ps)     if [[ "$*" == *"name=_db"* ]]; then echo "f-ynd_db"; else printf '%b' "{names}"; fi ;;
+          volume) ;;
+          exec)   if [[ "$*" == *"datistemplate"* ]]; then printf '%b' "{dbs}";
+                  elif [[ -n "{fail_db}" && "$*" == *" {fail_db}" ]]; then exit 1;
+                  else echo "-- dump $*"; fi ;;
+        esac
+    """)
+
+
+def test_fleet_backup_dumps_each_shared_postgres_database(tmp_path):
+    fakebin = tmp_path / "bin"; fakebin.mkdir()
+    backups = tmp_path / "backups"
+    log = tmp_path / "docker.log"
+    _fake_docker_shared_pg(fakebin, log)
+
+    r = _run("backup-fleet.sh", fakebin, tmp_path, BACKUP_DIR=backups.as_posix())
+
+    assert r.returncode == 0, r.stdout + r.stderr
+    shared = sorted(p.name.split("_20")[0] for p in (backups / "shared").glob("*.dump.gz"))
+    assert shared == ["shared_landing", "shared_litellm", "shared_umami"]
+    calls = log.read_text()
+    # Rôle superutilisateur de l'image officielle (POSTGRES_PASSWORD seul,
+    # sans POSTGRES_USER, dans shared_services/docker-compose.yml).
+    assert "exec shared_services-postgres-1 pg_dump -U postgres -Fc umami" in calls
+
+
+def test_fleet_backup_skips_shared_postgres_when_absent(tmp_path):
+    fakebin = tmp_path / "bin"; fakebin.mkdir()
+    backups = tmp_path / "backups"
+    log = tmp_path / "docker.log"
+    _fake_docker_shared_pg(fakebin, log, with_shared=False)
+
+    r = _run("backup-fleet.sh", fakebin, tmp_path, BACKUP_DIR=backups.as_posix())
+
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert "datistemplate" not in log.read_text()
+
+
+def test_fleet_backup_shared_db_failure_is_a_failure(tmp_path):
+    fakebin = tmp_path / "bin"; fakebin.mkdir()
+    backups = tmp_path / "backups"
+    log = tmp_path / "docker.log"
+    _fake_docker_shared_pg(fakebin, log, fail_db="litellm")
+
+    r = _run("backup-fleet.sh", fakebin, tmp_path, BACKUP_DIR=backups.as_posix())
+
+    assert r.returncode == 1
+    names = [p.name for p in (backups / "shared").glob("*.dump.gz")]
+    assert not any("litellm" in n for n in names)
+    assert any("umami" in n for n in names)
+
+
+def test_fleet_backup_sends_shared_dumps_offsite(tmp_path):
+    fakebin = tmp_path / "bin"; fakebin.mkdir()
+    backups = tmp_path / "backups"
+    dlog, rlog = tmp_path / "docker.log", tmp_path / "rclone.log"
+    _fake_docker_shared_pg(fakebin, dlog, dbs=r"umami\n")
+    _fake_rclone(fakebin, rlog)
+
+    r = _run("backup-fleet.sh", fakebin, tmp_path, BACKUP_DIR=backups.as_posix(),
+             SHARED_ENV=_shared_env(tmp_path, "gitsky-crypt:fleet").as_posix(),
+             OFFSITE_RETRY_DELAY="0")
+
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert "gitsky-crypt:fleet/shared-services/shared_umami_" in rlog.read_text()
 
 
 # --- test-restore-fleet.sh --------------------------------------------------

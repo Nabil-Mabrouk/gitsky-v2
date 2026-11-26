@@ -87,3 +87,12 @@ def test_env_local_example_has_llm_vars_only_with_agentic():
     assert "LLM_PROXY_URL=http://llm-proxy:4000" in agentic
     assert "LLM_PROXY_TOKEN=" in agentic
     assert "LLM_PROXY_TOKEN" not in plain
+
+
+def test_env_local_example_always_offers_umami_settings():
+    # Chap 13 §« Mesure d'Audience » : branchement de tout projet, quel que
+    # soit son jeu de modules (indépendant du module analytics).
+    with projet_genere("pain-scraper") as dst:
+        body = (dst / ".env.local.example").read_text(encoding="utf-8")
+    assert "UMAMI_SCRIPT_URL=" in body
+    assert "UMAMI_WEBSITE_ID=" in body

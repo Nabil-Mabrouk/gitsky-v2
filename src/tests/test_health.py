@@ -108,3 +108,59 @@ def test_health_reports_leads_module(monkeypatch):
     session = _FakeSession(fail=False)
     body = _client_with(session).get("/health").json()
     assert body["modules"]["leads"] is True
+
+
+# --- Umami (Chap 13 §« Mesure d'Audience », 2026-11-26) ----------------------
+#
+# Le frontend lit déjà /health (nom, modules) : il y trouve aussi la config du
+# script de suivi Umami, posée dans .env.local — à l'exécution, sans rebuild.
+# Clé ABSENTE tant que la config n'est pas complète et valide : un projet non
+# branché ne charge aucun script.
+
+_WEBSITE_ID = "4f6c1b2a-9d3e-4c5f-8a7b-0123456789ab"
+
+
+def _health_with_umami(monkeypatch, *, script_url: str, website_id: str,
+                       site_url: str = "https://f-ynd.com") -> dict:
+    from app.core import main as main_module
+
+    monkeypatch.setattr(main_module.settings, "umami_script_url", script_url)
+    monkeypatch.setattr(main_module.settings, "umami_website_id", website_id)
+    monkeypatch.setattr(main_module.settings, "site_url", site_url)
+    return _client_with(_FakeSession(fail=False)).get("/health").json()
+
+
+def test_health_exposes_umami_config_when_set(monkeypatch):
+    body = _health_with_umami(monkeypatch, script_url="https://stats.0-hitl.com/s.js",
+                              website_id=_WEBSITE_ID)
+    assert body["umami"] == {
+        "script_url": "https://stats.0-hitl.com/s.js",
+        "website_id": _WEBSITE_ID,
+        # Le script ne mesure que sur le vrai domaine du projet (data-domains) :
+        # jamais depuis le dev local ni une copie du site.
+        "domains": "f-ynd.com",
+    }
+
+
+def test_health_omits_umami_when_not_configured(monkeypatch):
+    body = _health_with_umami(monkeypatch, script_url="", website_id="")
+    assert "umami" not in body
+
+
+def test_health_omits_umami_when_partially_configured(monkeypatch):
+    body = _health_with_umami(monkeypatch, script_url="https://stats.0-hitl.com/s.js",
+                              website_id="")
+    assert "umami" not in body
+
+
+def test_health_rejects_non_https_or_malformed_umami_values(monkeypatch):
+    # Valeurs injectées telles quelles dans une balise <script> du navigateur :
+    # toute valeur douteuse est ignorée plutôt que servie.
+    for script_url, website_id in [
+        ("http://stats.0-hitl.com/s.js", _WEBSITE_ID),
+        ("javascript:alert(1)", _WEBSITE_ID),
+        ("https://stats.0-hitl.com/s.js", "pas-un-uuid"),
+        ("https://stats.0-hitl.com/s.js", _WEBSITE_ID + '" onload="x'),
+    ]:
+        body = _health_with_umami(monkeypatch, script_url=script_url, website_id=website_id)
+        assert "umami" not in body, (script_url, website_id)

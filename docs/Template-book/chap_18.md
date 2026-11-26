@@ -215,6 +215,35 @@ async def route_webhook(request: Request):
     await forward_to_project(project, event)
 ```
 
+## 8. Mesure d'Audience : Umami
+
+> **Ajout (novembre 2026).** Les raisons de ce choix, et le branchement d'un projet, sont décrits au Chap 13 §« Mesure d'Audience ».
+
+Un unique **Umami** (version épinglée, 3.5.0 au moment de l'ajout) mesure l'audience de toute la flotte. Sa base `umami` vit sur le PostgreSQL partagé, avec un rôle dédié. `scripts/umami-setup.sh init` les crée, et génère `UMAMI_DB_PASSWORD` et `UMAMI_APP_SECRET` dans `shared_services/.env` sans jamais réécrire une valeur déjà posée.
+
+```yaml
+# shared_services/docker-compose.yml — extrait
+  umami:
+    image: ghcr.io/umami-software/umami:3.5.0   # jamais latest
+    environment:
+      - DATABASE_URL=postgresql://umami:${UMAMI_DB_PASSWORD}@postgres:5432/umami
+      - APP_SECRET=${UMAMI_APP_SECRET}      # obligatoire depuis la 3.5.0
+      - TRACKER_SCRIPT_NAME=s.js            # nom neutre
+      - COLLECT_API_ENDPOINT=/api/c
+      - DISABLE_TELEMETRY=1
+      - TRUSTED_PROXIES=private             # IP réelle via Traefik
+    networks: [shared-services-net, proxy-net]
+```
+
+Quatre règles :
+
+- **Une seule entrée publique, `stats.<domaine du fleet dashboard>`**, en HTTPS via Traefik. Le navigateur des visiteurs doit pouvoir charger le script et envoyer ses mesures, et l'opérateur s'y connecte pour lire le tableau de bord. C'est le même raisonnement que le landing collector (§3) : seul ce qui doit être public l'est.
+- **Script et point de collecte renommés** (`s.js`, `/api/c`). Les bloqueurs de publicité filtrent les noms par défaut d'Umami (`script.js`, `/api/send`), ce qui ferait perdre une partie du trafic.
+- **Le compte admin par défaut (`admin` / `umami`) est changé dès la première connexion.** Umami 3.5 l'impose, et la double authentification est recommandée. Le tableau de bord est public : seul ce mot de passe le protège.
+- **`APP_SECRET` reste stable.** Le changer déconnecte tout le monde et réinitialise les identifiants anonymes de visite. Il est généré une fois, dans `shared_services/.env`.
+
+Umami écoute sur le port 3000. Ses données ne sont pas des données de projet : elles vivent dans le PostgreSQL partagé, avec les leads du landing collector (§3) et les jetons du LLM proxy (§4). **`backup-fleet.sh` doit donc sauvegarder aussi ce PostgreSQL partagé**, base par base, et pas seulement les conteneurs `*_db` des projets. Sinon, la perte du VPS emporte les leads, les budgets LLM et tout l'historique d'audience.
+
 ## Sécurité des Services Partagés
 
 Trois règles à respecter absolument :
