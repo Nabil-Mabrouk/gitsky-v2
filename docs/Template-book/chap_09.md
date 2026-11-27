@@ -17,7 +17,6 @@ Le dashboard est structuré autour d'un `AdminLayout` qui compose une barre lat�
 const tabs = [
   { key: "users",     label: "Utilisateurs", path: "/admin/users",     enabled: true }, // shell
   { key: "waitlist",  label: "Waitlist",     path: "/admin/waitlist",  enabled: true }, // shell
-  { key: "analytics", label: "Analytics",    path: "/admin/analytics", enabled: modules.analytics },
   { key: "content",   label: "Contenu",      path: "/admin/content",   enabled: modules.tutorials },
   { key: "security",  label: "Sécurité",     path: "/admin/security",  enabled: modules.security },
   { key: "shop",      label: "Boutique",     path: "/admin/shop",      enabled: modules.monetization },
@@ -44,7 +43,7 @@ Chaque module optionnel qui expose une surface admin contribue à son propre ong
 
 | Onglet | Module | Détails |
 |---|---|---|
-| Analytics | `analytics` | Cartes mondiales, timelines, filtres par rôle (voir Chap 13) |
+| Audience ↗ | — (châssis) | Lien externe vers le tableau de bord Umami, affiché quand le projet y est branché (voir Chap 13) |
 | Contenu | `tutorials` | Gestion des tutoriaux et leçons Markdown (voir Chap 11) |
 | Sécurité | `security` | Journal des événements du SecurityMiddleware (voir Chap 14) |
 | Boutique | `monetization` | Produits, ventes, abonnements (voir Chap 16) |

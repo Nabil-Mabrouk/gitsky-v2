@@ -49,9 +49,9 @@ Le pattern d'inclusion conditionnelle est central :
 
 ```python
 # app/core/main.py — pattern répété pour chaque module
-if settings.module_analytics:
-    from app.modules.analytics import router as analytics_router
-    app.include_router(analytics_router, prefix="/api/analytics")
+if settings.module_onboarding:
+    from app.modules.onboarding import router as onboarding_router
+    app.include_router(onboarding_router, prefix="/api/onboarding")
 ```
 
 Trois règles à respecter :
@@ -66,9 +66,8 @@ Certains services ne sont pas des routers exposés par un module — ce sont des
 
 | Client | Rôle | Utilisé par |
 |---|---|---|
-| `landing_collector_client` | Poste un formulaire de landing dans la base centrale de la flotte | Projets landing sans module `analytics` ou `onboarding` dédié |
+| `landing_collector_client` | Poste un formulaire de landing dans la base centrale de la flotte | Projets landing sans module `onboarding` dédié |
 | `llm_proxy_client` | Appelle un LLM via le proxy partagé (quota et logs par projet) | Framework agentic, tout module IA |
-| `geoip_client` | Résout une IP en pays/ville depuis le service GeoIP mutualisé | Module analytics, module security |
 | `smtp_client` | Envoie un email transactionnel via le relais SMTP partagé | Onboarding, monetization, notifications opérationnelles |
 
 Ces clients vivent dans `app/shared/clients/` et sont partagés à travers le core. Leur implémentation et leur configuration côté flotte sont détaillées au Chap 18 (Services partagés).

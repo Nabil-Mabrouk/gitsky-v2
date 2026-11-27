@@ -4,7 +4,7 @@
 
 Les cinq chapitres précédents (Chap 19, 23, 26, 27) ont construit la matière du fleet dashboard — grille de projets, monitoring de disponibilité, intégration GitHub, assistant de création — sans jamais s'arrêter sur sa présentation : jusqu'ici, un tableau HTML brut, aucun thème sombre, aucun signal visuel de santé par projet, et deux journaux d'événements (`fleet_lifecycle_events`, `fleet_maintenance_runs`) consultables séparément mais jamais l'un à côté de l'autre. Ce chapitre clôt la roadmap (Phase F) par un vrai passage de design sur le shell admin, la grille, et un nouvel onglet Activité — sans changer un seul contrat d'API existant.
 
-> Ce chapitre documente un état volontairement partiel. Le shell admin (`AdminLayout`), la grille de flotte (`FleetGrid`) et le nouvel onglet Activité ont reçu la refonte complète. Les autres onglets — Leads, Maintenance, Utilisateurs, Waitlist, Analytics, Sécurité — héritent du nouveau thème de couleurs (ils sont rendus à l'intérieur du même shell) mais gardent leur mise en page d'origine : ce n'est pas caché, c'est listé en fin de chapitre.
+> Ce chapitre documente un état volontairement partiel. Le shell admin (`AdminLayout`), la grille de flotte (`FleetGrid`) et le nouvel onglet Activité ont reçu la refonte complète. Les autres onglets — Leads, Maintenance, Utilisateurs, Waitlist, Sécurité — héritent du nouveau thème de couleurs (ils sont rendus à l'intérieur du même shell) mais gardent leur mise en page d'origine : ce n'est pas caché, c'est listé en fin de chapitre.
 
 ## Le Système de Tokens Admin
 
@@ -55,7 +55,7 @@ Aucune table n'est créée pour ça — c'est un assemblage de lecture, pas une 
 
 ## Ce qui Manque Encore
 
-1. **Les autres onglets n'ont pas reçu la refonte complète.** Leads, Maintenance, Utilisateurs, Waitlist, Analytics, Sécurité restent sur leur mise en page en tableau HTML brut d'origine (Chap 9) — ils héritent du fond/texte du nouveau thème parce qu'ils sont rendus à l'intérieur du même `AdminLayout`, mais leurs propres composants n'ont pas été retouchés. Un passage de design dédié à chacun reste à faire, au cas par cas.
+1. **Les autres onglets n'ont pas reçu la refonte complète.** Leads, Maintenance, Utilisateurs, Waitlist, Sécurité restent sur leur mise en page en tableau HTML brut d'origine (Chap 9) — ils héritent du fond/texte du nouveau thème parce qu'ils sont rendus à l'intérieur du même `AdminLayout`, mais leurs propres composants n'ont pas été retouchés. Un passage de design dédié à chacun reste à faire, au cas par cas.
 2. **Pas de bascule de thème manuelle.** Comme la landing (Chap 24), le mode sombre suit uniquement les préférences système du navigateur — aucun bouton, aucune préférence persistée côté serveur.
 3. **L'onglet Sécurité par projet n'est pas fusionné dans le flux Activité**, pour la raison d'isolation de base expliquée plus haut — resterait à construire une agrégation inter-bases, hors périmètre de ce chapitre.
 4. **Pas de rafraîchissement automatique.** La grille et le flux Activité se chargent une fois au montage de la page ; un opérateur qui veut voir l'état à jour recharge la page — pas de WebSocket ni de polling périodique.

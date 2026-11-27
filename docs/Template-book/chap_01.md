@@ -139,7 +139,7 @@ networks:
 >
 > La db, elle, reste exclusivement sur `internal-net`.
 
-> **Écart assumé : `llm-net`, l'accès LLM du worker.** `egress-net` donne Internet au worker, mais pas le `llm-proxy` partagé (Chap 18), qui ne vit que sur les réseaux de `shared_services`. Le besoin a été remonté par 0-hl : des rapports d'analyse de marché générés par LLM, déclenchés à heure fixe par la boucle du worker. Brancher le worker sur `shared-services-net`, comme le backend, lui aurait aussi montré le Postgres partagé de la flotte, le landing collector et le service GeoIP. C'est trop pour un conteneur qui traite des données externes. `shared_services` déclare donc un réseau minimal, `gitsky-llm-net`, sur lequel **seul** `llm-proxy` est branché, et le worker le rejoint :
+> **Écart assumé : `llm-net`, l'accès LLM du worker.** `egress-net` donne Internet au worker, mais pas le `llm-proxy` partagé (Chap 18), qui ne vit que sur les réseaux de `shared_services`. Le besoin a été remonté par 0-hl : des rapports d'analyse de marché générés par LLM, déclenchés à heure fixe par la boucle du worker. Brancher le worker sur `shared-services-net`, comme le backend, lui aurait aussi montré le Postgres partagé de la flotte et le landing collector. C'est trop pour un conteneur qui traite des données externes. `shared_services` déclare donc un réseau minimal, `gitsky-llm-net`, sur lequel **seul** `llm-proxy` est branché, et le worker le rejoint :
 >
 > ```yaml
 >   worker:

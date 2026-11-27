@@ -132,3 +132,31 @@ def test_file_without_h1_falls_back_to_filename_stem(tmp_path):
     lesson = asyncio.run(scenario())
     assert lesson.title == "raw"
     assert lesson.content == "Just prose, no heading."
+
+
+def test_rerun_with_fewer_files_removes_stale_lessons(tmp_path):
+    # Guide d'exploitation (docs/exploitation, publish-docs.sh, 2026-11-27) :
+    # une page supprimée du dossier ne doit pas rester en ligne.
+    _write(tmp_path, "01.md", "# Un\n\nA")
+    _write(tmp_path, "02.md", "# Deux\n\nB")
+    _write(tmp_path, "03.md", "# Trois\n\nC")
+
+    async def scenario():
+        engine, factory = _fresh_factory()
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
+        await seed_tutorials.seed(tmp_path, "guide", "Guide", "fr", UserRole.admin, session_factory=factory)
+
+        (tmp_path / "02.md").unlink()
+        count = await seed_tutorials.seed(tmp_path, "guide", "Guide", "fr", UserRole.admin, session_factory=factory)
+
+        async with factory() as db:
+            lessons = (
+                await db.execute(select(Lesson).order_by(Lesson.order))
+            ).scalars().all()
+        await engine.dispose()
+        return count, [(lesson.order, lesson.title) for lesson in lessons]
+
+    count, lessons = asyncio.run(scenario())
+    assert count == 2
+    assert lessons == [(1, "Un"), (2, "Trois")]

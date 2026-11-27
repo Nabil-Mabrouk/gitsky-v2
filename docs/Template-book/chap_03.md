@@ -25,7 +25,6 @@ backend/
 │   │   ├── models.py           # Modèles core (User, Role)
 │   │   └── seo.py              # Composants SEO de base
 │   ├── modules/                # Modules optionnels activables par MODULE_*
-│   │   ├── analytics/          # GeoIP tracking + world map
 │   │   ├── onboarding/         # Profilage dynamique
 │   │   ├── tutorials/          # Système de contenu pédagogique
 │   │   ├── security/           # SecurityMiddleware
@@ -70,10 +69,6 @@ app.include_router(auth.router, prefix="/api/auth")
 app.include_router(admin_shell.router, prefix="/api/admin")
 
 # Chargement conditionnel des modules
-if settings.module_analytics:
-    from app.modules.analytics import router as analytics_router
-    app.include_router(analytics_router, prefix="/api/analytics")
-
 if settings.module_onboarding:
     from app.modules.onboarding import router as onboarding_router
     app.include_router(onboarding_router, prefix="/api/onboarding")
@@ -111,7 +106,6 @@ class Settings(BaseSettings):
     # des autres. auth et SEO ne figurent pas ici : ce sont des capacités core,
     # toujours montées, sans flag (voir Chap 2).
     module_admin: bool = False
-    module_analytics: bool = False
     module_onboarding: bool = False
     module_tutorials: bool = False
     module_security_middleware: bool = False
@@ -197,9 +191,9 @@ app.include_router(auth.router, prefix="/api/auth")
 app.include_router(admin_shell.router, prefix="/api/admin")
 
 # Routers modules (chargés selon les flags)
-if settings.module_analytics:
-    from app.modules.analytics import router as analytics_router
-    app.include_router(analytics_router, prefix="/api/analytics")
+if settings.module_onboarding:
+    from app.modules.onboarding import router as onboarding_router
+    app.include_router(onboarding_router, prefix="/api/onboarding")
 
 # … idem pour les autres modules
 

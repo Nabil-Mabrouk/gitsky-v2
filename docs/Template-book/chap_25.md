@@ -20,7 +20,7 @@ Trois temps, dans cet ordre :
 Avant le premier projet, le serveur partagé est provisionné **une fois** (Chap 22) :
 durcissement SSH par clé, pare-feu UFW, Fail2ban, installation de Docker, puis
 démarrage des services partagés — Traefik (seul exposé), l'instance PostgreSQL
-des services, le landing collector, le LLM proxy, le GeoIP (Chap 18).
+des services, le landing collector, le LLM proxy, Umami (Chap 18).
 
 ```bash
 # Sur le VPS, une fois : bootstrap des services partagés (Chap 18/22).
@@ -153,7 +153,7 @@ fraîche à vérifier. Chaque conteneur DB étant isolé (Chap 18 §2),
 ### 3.3 Le manuel : la routine
 
 Les tâches qui demandent un œil humain sont regroupées dans le calendrier de
-maintenance (`shared_services/MAINTENANCE.md`, Chap 23 §6) :
+maintenance du guide d'exploitation (`docs/exploitation/05-maintenance-de-la-flotte.md`, publié dans l'onglet Apprentissage de 0-hitl.com, Chap 23 §6) :
 
 - **Hebdo** — revue des erreurs 5xx et des `security_events` suspects ; vérifier
   que la dernière sauvegarde de flotte existe.

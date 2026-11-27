@@ -117,7 +117,7 @@ def test_module_chain_skipped_when_flag_disabled():
     os.close(fd)
     db_file = Path(path)
     try:
-        # Aucun module activé par défaut : analytics désactivé.
+        # Aucun module activé par défaut : security désactivé.
         settings = Settings()
         applied = run_migrations(url=_async_url(db_file), settings=settings)
 
@@ -125,9 +125,9 @@ def test_module_chain_skipped_when_flag_disabled():
         tables = _table_names(db_file)
         assert "users" in tables
         assert "alembic_version_core" in tables
-        # La chaîne analytics n'a pas tourné : ni sa table, ni sa version.
-        assert "visits" not in tables
-        assert "alembic_version_analytics" not in tables
+        # La chaîne security n'a pas tourné : ni sa table, ni sa version.
+        assert "security_events" not in tables
+        assert "alembic_version_security" not in tables
     finally:
         try:
             db_file.unlink()
@@ -182,15 +182,15 @@ def test_module_chain_applied_when_flag_enabled():
     os.close(fd)
     db_file = Path(path)
     try:
-        # analytics activé explicitement.
-        settings = Settings(module_analytics=True)
+        # security activé explicitement.
+        settings = Settings(module_security_middleware=True)
         applied = run_migrations(url=_async_url(db_file), settings=settings)
 
-        assert applied == ["core", "analytics", "domain"]
+        assert applied == ["core", "security", "domain"]
         tables = _table_names(db_file)
         # Les deux chaînes coexistent avec leurs tables de version distinctes.
-        assert {"users", "visits"} <= tables
-        assert {"alembic_version_core", "alembic_version_analytics"} <= tables
+        assert {"users", "security_events"} <= tables
+        assert {"alembic_version_core", "alembic_version_security"} <= tables
     finally:
         try:
             db_file.unlink()
@@ -210,8 +210,8 @@ def test_tutorials_chain_applied_when_enabled():
         tables = _table_names(db_file)
         assert {"tutorials", "lessons"} <= tables
         assert "alembic_version_tutorials" in tables
-        # analytics non activé -> sa chaîne ne tourne pas.
-        assert "visits" not in tables
+        # security non activé -> sa chaîne ne tourne pas.
+        assert "security_events" not in tables
     finally:
         try:
             db_file.unlink()
@@ -429,6 +429,71 @@ def test_fleet_drop_tier_migration_on_a_database_created_before_it_existed():
         command.downgrade(cfg, "0002_fleet_maintenance_runs")
         assert "tier" in _columns(db_file, "fleet_projects")
         assert "tier" in _columns(db_file, "fleet_lifecycle_events")
+    finally:
+        try:
+            db_file.unlink()
+        except OSError:
+            pass
+
+
+def _sqlite_exec(db_file: Path, *statements: str) -> None:
+    engine = create_engine(f"sqlite:///{db_file.as_posix()}")
+    try:
+        with engine.begin() as conn:
+            for stmt in statements:
+                conn.execute(text(stmt))
+    finally:
+        engine.dispose()
+
+
+def test_core_0005_drops_retired_analytics_tables():
+    # Base déjà déployée avec l'ancien module analytics (retiré le 2026-11-27,
+    # Umami) : core 0001-0004 appliquées, plus visits + sa table de version.
+    fd, path = tempfile.mkstemp(suffix=".db")
+    os.close(fd)
+    db_file = Path(path)
+    try:
+        cfg = _make_config(db_file)
+        command.upgrade(cfg, "0004_core_user_password_reset")
+        _sqlite_exec(
+            db_file,
+            "CREATE TABLE visits (id INTEGER PRIMARY KEY, path VARCHAR)",
+            "INSERT INTO visits (path) VALUES ('/')",
+            "CREATE TABLE alembic_version_analytics (version_num VARCHAR(32) PRIMARY KEY)",
+            "INSERT INTO alembic_version_analytics VALUES ('0001_analytics_visits')",
+        )
+
+        command.upgrade(cfg, "head")
+
+        tables = _table_names(db_file)
+        assert "visits" not in tables
+        assert "alembic_version_analytics" not in tables
+        assert "users" in tables
+    finally:
+        try:
+            db_file.unlink()
+        except OSError:
+            pass
+
+
+def test_core_0005_keeps_a_domain_table_named_visits():
+    # Garde-fou : sans alembic_version_analytics, une table `visits` vient
+    # d'ailleurs (modèle métier) et ne doit JAMAIS être touchée.
+    fd, path = tempfile.mkstemp(suffix=".db")
+    os.close(fd)
+    db_file = Path(path)
+    try:
+        cfg = _make_config(db_file)
+        command.upgrade(cfg, "0004_core_user_password_reset")
+        _sqlite_exec(
+            db_file,
+            "CREATE TABLE visits (id INTEGER PRIMARY KEY, path VARCHAR)",
+            "INSERT INTO visits (path) VALUES ('/metier')",
+        )
+
+        command.upgrade(cfg, "head")
+
+        assert "visits" in _table_names(db_file)
     finally:
         try:
             db_file.unlink()

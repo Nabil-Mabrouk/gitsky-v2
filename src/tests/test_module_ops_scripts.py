@@ -84,7 +84,6 @@ def _base_env(**over) -> dict:
         "POSTGRES_USER": "pain_scraper",
         "POSTGRES_DB": "pain_scraper",
         "MODULE_ADMIN": "false",
-        "MODULE_ANALYTICS": "false",
         "MODULE_FLEET": "false",
     }
     base.update(over)

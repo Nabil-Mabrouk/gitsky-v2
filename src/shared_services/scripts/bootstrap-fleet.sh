@@ -215,7 +215,7 @@ echo "     (Traefik n'obtiendra un vrai certificat qu'une fois le DNS propagé �
 echo "     un 'docker restart shared_services-traefik-1' peut être nécessaire"
 echo "     pour forcer une nouvelle tentative si le DNS a été posé après coup)."
 echo "  2. Remplir les secrets encore vides dans shared_services/.env si besoin"
-echo "     (ANTHROPIC_API_KEY, SMTP_*, MAXMIND_*) puis :"
+echo "     (ANTHROPIC_API_KEY, GROQ_API_KEY, DEEPSEEK_API_KEY, SMTP_*) puis :"
 echo "     cd ${GITSKY_ROOT}/shared_services && docker compose up -d <service>"
 echo "  3. cd ${FLEET_DIR} && ./scripts/create_admin.sh <ton-email>"
 echo "  4. Pour créer un projet PRIVÉ via le wizard : une clé de déploiement"

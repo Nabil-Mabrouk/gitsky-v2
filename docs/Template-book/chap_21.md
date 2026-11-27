@@ -94,7 +94,7 @@ L'empreinte disque de l'image reste identique quel que soit le projet — **~320
 | Combinaison de modules | RAM initiale | RAM sous charge légère |
 |---|---|---|
 | Aucun module optionnel (core seul : auth + SEO) | ~50 Mo | ~60 Mo |
-| Auth + security + analytics | ~180 Mo | ~250 Mo |
+| Auth + security + admin | ~180 Mo | ~250 Mo |
 | Tous les modules + agentic | ~700 Mo | ~900 Mo à 1 Go |
 
 > Ces chiffres datent d'avant le retrait du système de paliers (Phase 6) — ils

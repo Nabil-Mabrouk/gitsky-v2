@@ -76,8 +76,8 @@ Aucune métrique du fleet dashboard n'est calculée sur des données stockées l
 |---|---|---|---|
 | Signups (14 j) | Table `leads` du landing collector | SELECT count avec filtre `project` + `created_at` | < 100 ms |
 | Conversion | Table `leads` + count visites landing | Ratio calculé à la demande | < 200 ms |
-| Visites 30 j | Table `visits` (module analytics) OU landing collector | Routage selon `MODULE_ANALYTICS` actif | < 200 ms |
-| Rétention D7 | Table `visits` avec `ip_hash` + `user_id` | Cohortes calculées par projet | 1-3 s |
+| Visites 30 j | Landing collector (l'audience détaillée est dans Umami, Chap 13) | SELECT count par `project` | < 200 ms |
+| Rétention D7 | Umami (Chap 13) | Consultée dans Umami, pas recalculée par le dashboard | — |
 | RAM par projet | `docker stats --no-stream --format` | Exec Docker CLI | < 500 ms |
 | Coût 30 j — trafic | Aucune source automatique | **Saisie manuelle** par l'opérateur | — |
 | Coût 30 j — infra | Amortissement VPS × part RAM du projet | Calcul (`VPS_MONTHLY / total_ram × project_ram`) | < 50 ms |

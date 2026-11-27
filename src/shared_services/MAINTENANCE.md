@@ -1,50 +1,10 @@
 # Calendrier de maintenance de la flotte GitSky
 
-Adapté du Chap 23 §6. Sur une flotte, la maintenance est **mutualisée** : un seul
-jeu de crons (`crontab.fleet`) et un tableau unique, plutôt que N projets gérés
-à la main. Les tâches automatiques tournent seules ; les tâches manuelles sont à
-faire depuis le fleet dashboard.
+Le calendrier (tâches automatiques et manuelles) vit désormais dans le guide d'exploitation, source unique publiée sur 0-hitl.com (onglet Apprentissage, comptes admin) :
 
-## Tâches automatiques (cron — `crontab.fleet`)
-
-| Fréquence | Tâche | Script |
-|---|---|---|
-| 60 s | Poll `/health` de la flotte → alerte `deployment_failed` | `fleet-health.sh` |
-| Toutes les 2 min | Redeploy des projets avec un push GitHub en attente sur la branche de déploiement (Chap 26) | `deploy-on-push.sh` |
-| Toutes les 2 min | Exécute les actions stop/start/maintenance journalisées depuis la fiche projet du dashboard (Chap 20/23) | `lifecycle-fleet.sh` |
-| Quotidien 02:00 | Sauvegarde 3-2-1 de toutes les bases projet + archive de leurs volumes de fichiers (médias…), copie chiffrée hors serveur si `BACKUP_RCLONE_REMOTE` est réglé | `backup-fleet.sh` |
-| Horaire | Jauge disque consolidée | `fleet-disk.sh` |
-| Hebdo (dim 05:00) | Purge des images Docker orphelines | `docker image prune` |
-| Mensuel (1er, 03:00) | Rafraîchit la base GeoIP MaxMind (GeoLite2-City) | `update-geoip-db.sh` |
-| Mensuel (1er, 04:00) | Test de restauration d'un projet tiré au hasard | `test-restore-fleet.sh` |
-| Mensuel | Rotation des logs de maintenance (> 30 j) | `find … -delete` |
-
-La sauvegarde de 02:00 précède **volontairement** le test de restauration
-mensuel de 04:00 : celui-ci a ainsi toujours une sauvegarde fraîche à vérifier.
-
-## Tâches manuelles
-
-| Fréquence | Tâche | Outil |
-|---|---|---|
-| Hebdo | Revue des logs d'erreurs (5xx Traefik) | `check_errors.sh` (par projet) |
-| Hebdo | Revue des `security_events` suspects | dashboard / module security |
-| Hebdo | Vérifier que la dernière sauvegarde de flotte existe | colonne « dernière sauvegarde OK » |
-| Mensuel | Analyse santé DB (lignes mortes, tailles) | `db_health.sql` par projet |
-| Mensuel | Scan CVE des dépendances | `pip-audit`, `npm audit` |
-| Semestriel | Rotation `SECRET_KEY` + mots de passe DB | automatisée par le dashboard (Chap 23) |
-| Semestriel | Revue des clés SSH autorisées sur le VPS | manuel |
-| Sur incident | Rotation immédiate de TOUS les secrets + analyse logs | runbook incident (Chap 23 §7) |
+- [Maintenance de la flotte](../../docs/exploitation/05-maintenance-de-la-flotte.md) — cron, tâches manuelles, services partagés, sauvegardes.
+- [Maintenance d'un projet](../../docs/exploitation/04-maintenance-d-un-projet.md) — déploiement, `copier update`, rotation des secrets, restauration.
 
 ## Note : scripts par projet vs flotte
 
-Les scripts par projet (`backup_db.sh`, `test_restore.sh`, `emergency_restore.sh`,
-`check_*.sh` — livrés dans chaque projet généré) servent à une intervention
-ciblée sur **un** projet ou à un déploiement autonome. Sur la flotte, la
-sauvegarde quotidienne passe par `backup-fleet.sh` : **ne pas** programmer en
-plus les `backup_db.sh` par projet (doublon de sauvegardes). Même logique pour
-la restauration : `test_restore.sh` attend le format de `backup_db.sh`
-(`.sql.gz`, restauré via `psql`) — il ne peut PAS valider les sauvegardes de
-`backup-fleet.sh` (`.dump.gz`, format `pg_dump -Fc`, restauré via
-`pg_restore`). Le test mensuel de la flotte passe par `test-restore-fleet.sh`,
-qui tire un projet au hasard parmi les sauvegardes réellement produites par
-`backup-fleet.sh`.
+Les scripts par projet (`backup_db.sh`, `test_restore.sh`, `emergency_restore.sh`, `check_*.sh` — livrés dans chaque projet généré) servent à une intervention ciblée sur **un** projet. Sur la flotte, la sauvegarde quotidienne passe par `backup-fleet.sh` : **ne pas** programmer en plus les `backup_db.sh` par projet (doublon). `test_restore.sh` attend le format de `backup_db.sh` (`.sql.gz`, `psql`) et ne peut pas valider les sauvegardes de `backup-fleet.sh` (`.dump.gz`, `pg_restore`) : le test mensuel de la flotte passe par `test-restore-fleet.sh`.

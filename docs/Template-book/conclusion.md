@@ -23,7 +23,7 @@ GitSky n'est plus une seule application, mais un **système** :
 |                                                          |
 |  Template GitSky (core + modules)                        |
 |    core     : FastAPI, Auth, Admin shell, SEO            |
-|    modules  : Onboarding, Tutorials, Analytics,          |
+|    modules  : Onboarding, Tutorials,                     |
 |               Security, i18n, Agentic, Monetization      |
 |    domain   : Métier propre à chaque projet              |
 |                                                          |
@@ -33,7 +33,7 @@ GitSky n'est plus une seule application, mais un **système** :
 |  Services Partagés VPS (Chap 18)                         |
 |    Traefik wildcard SSL                                  |
 |    PostgreSQL (données des services) + DB par projet     |
-|    Landing collector, LLM proxy, GeoIP, SMTP             |
+|    Landing collector, LLM proxy, Umami, SMTP             |
 |                                                          |
 |  Fleet Dashboard (Chap 19)                               |
 |    Vue unifiée, alertes, archivage manuel                |
@@ -89,7 +89,7 @@ Le template est extensible. Pistes d'évolution prioritaires :
 - **Modules supplémentaires** : content moderator, communauté et commentaires, notifications push, feature flags par utilisateur.
 - **Automatisation du harvest** : agents dédiés à l'exploration de sources (Reddit API, G2 scraping, HackerNews Algolia) et à la production automatique de `config.yaml`.
 - **CI/CD complet** : le redeploy sur push (Chap 26) et l'assistant de création (Chap 27) couvrent déjà le déploiement continu et la création d'un projet ; reste à ajouter l'exécution de sa suite de tests avant le redeploy, et un flux de progression asynchrone pour la génération (Chap 27 §limites).
-- **Refonte des onglets restants** : Leads, Maintenance, Utilisateurs, Waitlist, Analytics et Sécurité héritent du nouveau thème du shell admin mais gardent leur mise en page en tableau brut (Chap 28 §limites) — un passage de design dédié à chacun reste à faire.
+- **Refonte des onglets restants** : Leads, Maintenance, Utilisateurs, Waitlist et Sécurité héritent du nouveau thème du shell admin mais gardent leur mise en page en tableau brut (Chap 28 §limites) — un passage de design dédié à chacun reste à faire.
 - **Monitoring avancé** : métriques d'usage anonymisées agrégées au niveau flotte pour détecter les patterns émergents.
 - **Skills GitSky en mode agent** : un opérateur demande « génère et déploie 10 projets sur ces 10 idées », l'agent orchestre la boucle complète.
 - **Marketplace de modules** : ouvrir la contribution externe de modules réutilisables (paiements alternatifs, intégrations tierces).

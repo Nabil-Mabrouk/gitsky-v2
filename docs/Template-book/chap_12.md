@@ -89,7 +89,7 @@ Une fois le compte créé ou mis à jour, les réponses brutes et le profil calc
 
 - Personnaliser l'interface de la page profil.
 - Adapter dynamiquement le catalogue ou les recommandations selon le profil.
-- Fournir des analytics précis sur la typologie de l'audience (module `analytics`, Chap 13).
+- Croiser la typologie des utilisateurs avec la mesure d'audience (Umami, Chap 13).
 
 ## Créer un Flow d'Onboarding pour son Projet
 
@@ -103,4 +103,4 @@ Aucun code Python à écrire — le moteur générique traite n'importe quel flo
 
 ---
 
-*L'utilisateur étant profilé, nous passons aux visualisations que le module `analytics` construit à partir de ces données, dans le chapitre suivant.*
+*L'utilisateur étant profilé, nous passons à la mesure d'audience, confiée à Umami, dans le chapitre suivant.*

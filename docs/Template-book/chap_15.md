@@ -361,7 +361,7 @@ frontend/src/
 - Certains services peuvent être réservés aux utilisateurs premium
 - Audit via les logs d'activité existants
 
-### Analytics et Monitoring
+### Statistiques et Monitoring
 - Les exécutions sont trackées dans les statistiques admin
 - Performance mesurée (temps d'exécution, succès/échec)
 - Intégration avec le système de notification

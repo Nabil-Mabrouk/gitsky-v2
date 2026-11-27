@@ -230,15 +230,16 @@ def test_ordinary_project_never_touches_shared_services_net():
     assert "shared-services-net" not in compose["networks"]
 
 
-def test_analytics_backend_joins_shared_services_net():
-    # module_analytics a besoin de shared-services-net pour joindre le
-    # service geoip partagé (Chap 13) — sans lui, geolocate() ne peut
-    # atteindre que "??" même avec GEOIP_URL renseignée.
+def test_retired_analytics_flag_no_longer_joins_shared_services_net():
+    # Le module analytics (et son service geoip partagé) a été retiré le
+    # 2026-11-27 au profit d'Umami : un vieux `analytics: true` resté dans les
+    # réponses copier ne doit plus brancher le backend sur le réseau interne
+    # de la flotte, dont il n'a plus aucun besoin.
     with projet_genere("pain-scraper", modules={"analytics": True}) as dst:
         compose = yaml.safe_load((dst / "docker-compose.yml").read_text(encoding="utf-8"))
-    assert "shared-services-net" in compose["services"]["backend"]["networks"]
-    net = compose["networks"]["shared-services-net"]
-    assert net["external"] is True
+        env = (dst / ".env").read_text(encoding="utf-8")
+    assert "shared-services-net" not in compose["services"]["backend"]["networks"]
+    assert "MODULE_ANALYTICS" not in env
 
 
 def test_leads_backend_joins_shared_services_net():
@@ -257,7 +258,7 @@ def test_agentic_backend_joins_shared_services_net():
     # Bug trouvé le 2026-11-21 (round proxy LLM, questions de 0-hl) : le
     # module agentic appelle llm-proxy (LLM_PROXY_URL=http://llm-proxy:4000),
     # qui n'existe QUE sur shared-services-net — mais ce réseau n'était posé
-    # que pour fleet/leads/analytics. Un projet agentic seul échouait donc en
+    # que pour fleet/leads (et l'ancien analytics). Un projet agentic seul échouait donc en
     # résolution DNS dès le premier appel LLM en prod.
     with projet_genere("pain-scraper", modules={"agentic": True}) as dst:
         compose = yaml.safe_load((dst / "docker-compose.yml").read_text(encoding="utf-8"))

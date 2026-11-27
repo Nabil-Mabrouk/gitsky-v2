@@ -37,16 +37,17 @@ def test_is_valid_project_name():
 def test_build_config_drops_unknown_module_keys_and_sets_domain_workers():
     config = generator_client.build_config(
         "pain-scraper",
-        {"admin": True, "analytics": False, "not_a_real_module": True},
+        {"admin": True, "tutorials": False, "analytics": True, "not_a_real_module": True},
         domain="pain-scraper.com",
         workers=4,
     )
-    # Seules les clés connues et effectivement fournies passent — le reste du
+    # Seules les clés connues et effectivement fournies passent (analytics,
+    # module retiré le 2026-11-27, n'en fait plus partie) — le reste du
     # catalogue (absent d'`overrides`) reste résolu à False par le context
     # hook du générateur (extensions/context.py), pas ici.
     assert config == {
         "project": {"name": "pain-scraper", "domain": "pain-scraper.com", "workers": 4},
-        "modules": {"admin": True, "analytics": False},
+        "modules": {"admin": True, "tutorials": False},
     }
 
 

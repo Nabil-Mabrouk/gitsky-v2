@@ -2,7 +2,7 @@
 
 ## Introduction
 
-Une flotte GitSky repose sur plusieurs **services partagés** qui vivent au niveau du VPS et sont consommés par tous les projets. Sans cette mutualisation, chaque projet dupliquerait ces composants — chaque instance porterait sa propre base MaxMind, sa propre clé API LLM, son propre relais SMTP — ce qui rendrait la flotte économiquement et opérationnellement ingérable.
+Une flotte GitSky repose sur plusieurs **services partagés** qui vivent au niveau du VPS et sont consommés par tous les projets. Sans cette mutualisation, chaque projet dupliquerait ces composants — chaque instance porterait sa propre mesure d'audience, sa propre clé API LLM, son propre relais SMTP — ce qui rendrait la flotte économiquement et opérationnellement ingérable.
 
 Ce chapitre décrit chacun de ces services : rôle, implémentation recommandée, contrat d'interface, configuration.
 
@@ -18,7 +18,7 @@ Ce chapitre décrit chacun de ces services : rôle, implémentation recommandée
 |  [Landing          Collecte des leads sans       |
 |   Collector]       friction, partagée            |
 |  [LLM Proxy]       Clés API + quotas             |
-|  [GeoIP]           Résolution IP → pays/ville    |
+|  [Umami]           Mesure d'audience             |
 |  [SMTP Relay]      Emails transactionnels        |
 |  [Stripe Webhook   Routage des events vers       |
 |   Router]          le bon projet                 |
@@ -172,7 +172,7 @@ curl -X POST https://llm-proxy.internal/key/generate \
 
 Les logs consolidés servent au fleet dashboard pour afficher le coût LLM par projet.
 
-**Qui joint le proxy, et par quel réseau.** Le `backend` d'un projet le joint par `shared-services-net`, quand un de ses modules l'y branche (`agentic`, `leads`, `analytics`, `fleet`). Le `worker` (Chap 1) le joint par un réseau dédié, `gitsky-llm-net` : `llm-proxy` est le **seul** service de `shared_services` branché dessus. Un worker qui traite des données externes atteint ainsi le proxy sans voir Postgres, le landing collector ni GeoIP. Les deux conteneurs d'un même projet partagent le même jeton, donc le même budget.
+**Qui joint le proxy, et par quel réseau.** Le `backend` d'un projet le joint par `shared-services-net`, quand un de ses modules l'y branche (`agentic`, `leads`, `fleet`). Le `worker` (Chap 1) le joint par un réseau dédié, `gitsky-llm-net` : `llm-proxy` est le **seul** service de `shared_services` branché dessus. Un worker qui traite des données externes atteint ainsi le proxy sans voir Postgres ni le landing collector. Les deux conteneurs d'un même projet partagent le même jeton, donc le même budget.
 
 ## 5. Relais SMTP
 
@@ -180,22 +180,9 @@ Un unique compte SMTP (par exemple **Resend**, **Postmark**, ou un serveur Postf
 
 Chaque projet est identifié par un expéditeur (`no-reply@pain-scraper.mystudio.com`), et le contenu est rendu depuis les templates Jinja du projet lui-même.
 
-## 6. Service GeoIP
+## 6. Service GeoIP (retiré)
 
-Un unique service qui expose la résolution IP → géolocalisation via une API interne :
-
-```yaml
-# shared-services/geoip/docker-compose.yml
-services:
-  geoip:
-    image: mystudio/geoip-service:latest
-    volumes:
-      - geoip_data:/data/GeoLite2   # Base MaxMind, mise à jour mensuelle par cron
-    networks:
-      - shared-services-net
-```
-
-Les modules `analytics` (Chap 13) et `security` (Chap 14) des projets consomment ce service via `geoip_client.py`.
+> **Écart assumé (27 novembre 2026).** Ce service résolvait une IP en pays et ville (base MaxMind GeoLite2, mise à jour mensuelle par cron) pour l'ancien module `analytics`. Il a été retiré avec ce module : la géolocalisation des visiteurs est faite par Umami (§8, Chap 13). Le module `security` (Chap 14) ne l'utilisait pas : il stocke l'IP brute.
 
 ## 7. Router de Webhooks Stripe
 
@@ -263,11 +250,11 @@ Sur le VPS 8 Go à 20 €/mois, les services partagés consomment :
 | Landing Collector | ~50 Mo | négligeable |
 | LLM Proxy (LiteLLM) | ~150 Mo | ~200 Mo (logs) |
 | SMTP Relay (Postfix local) | ~80 Mo | ~100 Mo |
-| GeoIP Service | ~100 Mo | ~200 Mo (base MaxMind) |
+| Umami (mesure d'audience) | ~200 Mo | ~200 Mo (base `umami`) |
 | Stripe Webhook Router | ~40 Mo | négligeable |
-| **Total** | **~670 Mo** | **~2,6 Go** |
+| **Total** | **~770 Mo** | **~2,6 Go** |
 
-Il reste donc ~7,3 Go de RAM pour les projets applicatifs. À cela s'ajoutent les
+Il reste donc ~7,2 Go de RAM pour les projets applicatifs. À cela s'ajoutent les
 conteneurs PostgreSQL **par projet** (§2) : ~52 Mo au repos chacun (mesuré,
 `postgres:16.3-alpine`), pour chaque projet de la flotte sans exception. Une
 flotte de 15 projets ajoute ainsi ~780 Mo rien que pour leurs bases — le reste

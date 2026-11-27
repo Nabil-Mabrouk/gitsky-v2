@@ -91,12 +91,33 @@ def test_no_legacy_hitl_paths():
     assert "/opt/0-hitl" not in code
 
 
+GUIDE = SHARED.parents[1] / "docs" / "exploitation"
+
+
 def test_maintenance_calendar_present():
-    doc = (SHARED / "MAINTENANCE.md").read_text(encoding="utf-8")
-    # Le runbook doit couvrir l'automatique ET le manuel (restauration, secrets).
-    assert "backup-fleet.sh" in doc
-    assert "test_restore.sh" in doc
-    assert "SECRET_KEY" in doc
+    # Le calendrier vit dans le guide d'exploitation publié sur 0-hitl.com
+    # (2026-11-27). Il doit couvrir l'automatique ET le manuel (restauration,
+    # secrets).
+    fleet = (GUIDE / "05-maintenance-de-la-flotte.md").read_text(encoding="utf-8")
+    project = (GUIDE / "04-maintenance-d-un-projet.md").read_text(encoding="utf-8")
+    assert "backup-fleet.sh" in fleet
+    assert "test-restore-fleet.sh" in fleet
+    assert "SECRET_KEY" in project
+    assert "emergency_restore.sh" in project
+
+
+def test_every_scheduled_script_is_documented_in_the_guide():
+    # Garde-fou de la règle « le guide suit chaque changement » : un script
+    # ajouté au cron sans ligne dans le guide fait échouer ce test.
+    fleet = (GUIDE / "05-maintenance-de-la-flotte.md").read_text(encoding="utf-8")
+    scheduled = set()
+    for line in CRONTAB.read_text(encoding="utf-8").splitlines():
+        if line.strip().startswith("#"):
+            continue
+        scheduled.update(re.findall(r"scripts/([\w-]+\.sh)", line))
+    assert scheduled, "aucun script planifié trouvé"
+    missing = sorted(name for name in scheduled if name not in fleet)
+    assert not missing, missing
 
 
 def test_crontab_has_unix_line_endings():

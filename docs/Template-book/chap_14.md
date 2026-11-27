@@ -44,7 +44,7 @@ class SecurityEvent(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 ```
 
-**Note importante :** contrairement au module `analytics` où l'IP est hashée, le module `security` stocke l'IP en clair. La justification RGPD est que les attaquants ne sont pas des utilisateurs légitimes et que la traçabilité prime pour la défense de la plateforme.
+**Note importante :** contrairement à la mesure d'audience (Umami, Chap 13), qui ne garde pas l'IP, le module `security` stocke l'IP en clair. La justification RGPD est que les attaquants ne sont pas des utilisateurs légitimes et que la traçabilité prime pour la défense de la plateforme.
 
 ## Interface Admin
 
@@ -83,7 +83,7 @@ Trois choses volontairement absentes :
 1. **Pas de blocage** — comme expliqué, c'est le rôle de Traefik.
 2. **Pas de notification temps réel** par événement — les alertes agrégées vont dans le fleet dashboard (Chap 19), un email par événement noierait le signal.
 3. **Pas de rate limiting** — Traefik gère cela via son propre middleware `RateLimit`. Cette doctrine n'est pas qu'une intention : le générateur émet dans le `docker-compose.yml` de production un routeur Traefik dédié à `/api/auth/login` (5 req/min, burst 10) dès que le module auth est actif — voir Chap 21. La même limite couvre la réinitialisation du mot de passe et les inscriptions (`/api/auth/register`, `/api/auth/accept-invite`, `/api/<nom>/register`, voir Chap 7).
-4. **Pas d'inspection des endpoints d'infrastructure** — `/health` (pollé toutes les 60 s par le fleet poller), `/robots.txt` et `/sitemap.xml` sont exclus du middleware, comme du tracking analytics (Chap 13) : journaliser chaque poll noierait les vraies détections et coûterait un commit DB par requête pour rien.
+4. **Pas d'inspection des endpoints d'infrastructure** — `/health` (pollé toutes les 60 s par le fleet poller), `/robots.txt` et `/sitemap.xml` sont exclus du middleware : journaliser chaque poll noierait les vraies détections et coûterait un commit DB par requête pour rien.
 
 Ces choix maintiennent le module léger et prévisible.
 

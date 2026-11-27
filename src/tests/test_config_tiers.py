@@ -35,7 +35,7 @@ def test_each_flag_is_independently_settable():
     assert s.module_admin is True
     assert s.module_agentic is True
     # Rien d'autre ne s'active en cascade : pas de profil, pas de dérivation.
-    assert s.module_analytics is False
+    assert s.module_tutorials is False
     assert s.module_monetization_shop is False
 
 

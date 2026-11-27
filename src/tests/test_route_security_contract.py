@@ -83,7 +83,6 @@ def _all_routes() -> list[dict]:
     env = {
         **os.environ,
         "MODULE_ADMIN": "true",
-        "MODULE_ANALYTICS": "true",
         "MODULE_ONBOARDING": "true",
         "MODULE_TUTORIALS": "true",
         "MODULE_SECURITY_MIDDLEWARE": "true",
@@ -114,7 +113,7 @@ def test_the_full_catalog_is_actually_mounted():
     paths = {r["path"] for r in ROUTES}
     for expected in (
         "/api/auth/login",
-        "/api/admin/analytics/world",
+        "/api/admin/modules",
         "/api/agent-services/executions/{execution_id}",
         "/api/fleet/projects/register",
         "/api/shop/webhook",

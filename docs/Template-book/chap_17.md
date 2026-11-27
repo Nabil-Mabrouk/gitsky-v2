@@ -35,9 +35,8 @@ project:
 
 modules:
   admin: true
-  analytics: true
+  tutorials: true
   onboarding: false
-  tutorials: false
   security_middleware: true
   i18n: false
   agentic: true
@@ -68,7 +67,7 @@ fleet:
   stripe_account: mystudio_main    # compte Stripe partagé
 ```
 
-`modules` s'appuie sur un **catalogue plat de flags** (`admin`, `analytics`,
+`modules` s'appuie sur un **catalogue plat de flags** (`admin`,
 `onboarding`, `tutorials`, `security_middleware`, `i18n`, `agentic`,
 `monetization_shop`, `monetization_subscription`, `fleet`), tous **désactivés
 par défaut** et activables indépendamment les uns des autres — il n'y a pas de

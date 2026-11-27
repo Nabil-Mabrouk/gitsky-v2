@@ -1,10 +1,10 @@
 """app.core.http.real_client_ip — extraction de l'IP client derrière Traefik.
 
 Bug réel (dashboard Sécurité, premier vrai déploiement) : les deux
-middlewares (security, analytics) lisaient request.client.host, qui est
+middlewares (security, et l'ancien analytics) lisaient request.client.host, qui est
 l'IP de Traefik lui-même (le backend n'est jamais joignable directement).
 Testé ici en isolation (fonction pure) ; les deux middlewares ont chacun
-leur propre test d'intégration (test_security_runtime.py, test_analytics.py).
+leur propre test d'intégration (test_security_runtime.py).
 """
 
 import sys

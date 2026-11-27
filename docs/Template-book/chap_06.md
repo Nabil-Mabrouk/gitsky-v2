@@ -19,7 +19,7 @@ frontend/
 │   ├── assets/         # Images, icônes, logos
 │   ├── components/     # Composants réutilisables (Navbar, WaitlistForm)
 │   │   ├── ui/         # Composants de base (Button, Input, Card)
-│   │   └── analytics/  # Visualisation de données (WorldMap, Timeline)
+│   │   └── analytics/  # UmamiTracker : mesure d'audience (Chap 13)
 │   ├── context/        # Gestion globale de l'état (AuthContext)
 │   ├── lib/            # Utilitaires (cn, apiFetch)
 │   ├── pages/          # Pages principales de l'application

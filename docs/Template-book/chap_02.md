@@ -15,7 +15,7 @@ Générer un projet coûte peu ; le faire tourner en production coûte du temps 
 Le catalogue à plat réconcilie deux exigences :
 
 - **Un socle minimal** commun à tout projet — authentification et SEO — présent partout, jamais à activer ni à désactiver.
-- **Des modules optionnels**, chacun résolvant un besoin précis (admin, i18n, analytics, monétisation, contenu, agentic…), activables un par un selon ce que le projet fait réellement.
+- **Des modules optionnels**, chacun résolvant un besoin précis (admin, i18n, monétisation, contenu, agentic…), activables un par un selon ce que le projet fait réellement.
 
 ## 2. Le Socle Commun (Core)
 
@@ -36,10 +36,11 @@ Chaque module est un booléen indépendant, **désactivé par défaut**. Un modu
 |---|---|---|---|
 | Admin shell | `MODULE_ADMIN` | Interface d'administration (gestion utilisateurs, contenu) | Chap 9 |
 | Internationalisation | `MODULE_I18N` | Traductions FR/EN, routage par préfixe de langue | Chap 8 |
-| Analytics | `MODULE_ANALYTICS` | Suivi visiteurs RGPD-compatible, dashboard de flux/audience | Chap 13 |
 | Onboarding dynamique | `MODULE_ONBOARDING` | Flow de qualification/profilage configurable en JSON | Chap 12 |
 | Content system | `MODULE_TUTORIALS` | Catalogue de tutoriaux/leçons (cas d'usage : université virtuelle) | Chap 11 |
 | SecurityMiddleware | `MODULE_SECURITY_MIDDLEWARE` | Inspection des requêtes, journalisation `SecurityEvent` | Chap 14 |
+
+La mesure d'audience n'est pas un module : elle passe par Umami, service partagé de la flotte, branché sur tout projet par le châssis (Chap 13). L'ancien module `analytics` a été retiré le 27 novembre 2026.
 | Framework agentic IA | `MODULE_AGENTIC` | Orchestration de services IA, crédits, recovery | Chap 15 |
 | Monétisation boutique | `MODULE_MONETIZATION_SHOP` | Produits/achats ponctuels via Stripe | Chap 16 |
 | Monétisation abonnements | `MODULE_MONETIZATION_SUBSCRIPTION` | Abonnements récurrents via Stripe | Chap 16 |

@@ -27,7 +27,6 @@ def test_only_active_modules_get_a_section():
     # Modules non activés : aucune section, aucun bruit.
     for heading in (
         "## Internationalisation",
-        "## Analytics",
         "## Onboarding",
         "## Contenu / Tutoriaux",
         "## SecurityMiddleware",

@@ -89,14 +89,17 @@ def test_long_running_services_restart_unless_stopped():
     # tout le monde tant que quelqu'un ne relance pas `docker compose up -d`
     # à la main.
     services = _compose()["services"]
-    for name in ("traefik", "postgres", "landing-collector", "llm-proxy", "geoip"):
+    for name in ("traefik", "postgres", "landing-collector", "llm-proxy", "umami"):
         assert services[name].get("restart") == "unless-stopped", name
 
-    # geoipupdate reste volontairement sans politique de redémarrage : c'est
-    # un one-shot (`docker compose --profile geoipupdate run --rm`), jamais
-    # censé tourner en continu — lui donner `unless-stopped` le ferait
-    # boucler indéfiniment après chaque exécution mensuelle.
-    assert "restart" not in services["geoipupdate"]
+
+def test_retired_geoip_services_are_gone():
+    # Service geoip + one-shot geoipupdate retirés avec le module analytics
+    # (2026-11-27) : la géolocalisation des visiteurs est faite par Umami.
+    compose = _compose()
+    assert "geoip" not in compose["services"]
+    assert "geoipupdate" not in compose["services"]
+    assert "geoip_data" not in (compose.get("volumes") or {})
 
 
 def test_leads_routers_have_explicit_priority():
@@ -115,7 +118,7 @@ def test_leads_routers_have_explicit_priority():
 def test_llm_net_is_internal_named_and_reserved_to_llm_proxy():
     # Réseau minimal pour les workers des projets (Chap 1/18, demande 0-hl
     # 2026-11-23) : ils n'y voient QUE llm-proxy — jamais postgres,
-    # landing-collector ni geoip. Nom explicite (pas de préfixe de projet
+    # landing-collector. Nom explicite (pas de préfixe de projet
     # Compose) : les projets le rejoignent en external par ce nom.
     compose = _compose()
     net = compose["networks"]["llm-net"]
