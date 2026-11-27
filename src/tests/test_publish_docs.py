@@ -45,12 +45,14 @@ def _run(tmp_path: Path, docs_dir: Path, *args: str):
 
 
 def test_copies_then_seeds_as_admin_then_cleans_up(tmp_path):
+    # Nettoyage en root (-u 0) : docker cp dépose les fichiers en root, alors
+    # que le backend tourne en non-root — bug vu au premier vrai lancement.
     docs = tmp_path / "docs"
     docs.mkdir()
     (docs / "01-a.md").write_text("# A\n", encoding="utf-8")
     r, calls = _run(tmp_path, docs)
     assert r.returncode == 0, r.stderr
-    assert calls[0] == "exec fleet-dashboard_backend rm -rf /tmp/gitsky-exploitation"
+    assert calls[0] == "exec -u 0 fleet-dashboard_backend rm -rf /tmp/gitsky-exploitation"
     assert calls[1].startswith("cp ") and calls[1].endswith(
         "fleet-dashboard_backend:/tmp/gitsky-exploitation")
     seed = calls[2]
@@ -58,7 +60,7 @@ def test_copies_then_seeds_as_admin_then_cleans_up(tmp_path):
     assert "--slug exploiter-gitsky" in seed
     assert "--access-role admin" in seed
     assert seed.endswith("/tmp/gitsky-exploitation")
-    assert calls[3] == "exec fleet-dashboard_backend rm -rf /tmp/gitsky-exploitation"
+    assert calls[3] == "exec -u 0 fleet-dashboard_backend rm -rf /tmp/gitsky-exploitation"
 
 
 def test_refuses_an_empty_docs_dir_without_touching_docker(tmp_path):

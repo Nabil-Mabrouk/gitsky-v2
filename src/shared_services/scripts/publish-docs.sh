@@ -31,11 +31,11 @@ if ! compgen -G "${DOCS_DIR}/*.md" > /dev/null; then
     exit 1
 fi
 
-docker exec "$CONTAINER" rm -rf "$TMP_IN_CONTAINER"
+docker exec -u 0 "$CONTAINER" rm -rf "$TMP_IN_CONTAINER"
 docker cp "${DOCS_DIR}/." "${CONTAINER}:${TMP_IN_CONTAINER}"
 docker exec "$CONTAINER" python -m scripts.seed_tutorials \
     --slug "$SLUG" --title "$TITLE" --lang fr --access-role admin \
     "$TMP_IN_CONTAINER"
-docker exec "$CONTAINER" rm -rf "$TMP_IN_CONTAINER"
+docker exec -u 0 "$CONTAINER" rm -rf "$TMP_IN_CONTAINER"
 
 echo "✓ Guide publié : https://0-hitl.com/learn (comptes admin)."
