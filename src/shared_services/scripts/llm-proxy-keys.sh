@@ -45,6 +45,7 @@ usage() {
     echo "Usage : $0 init-db" >&2
     echo "        $0 create-key <projet> <budget_usd> <modele1,modele2,...>" >&2
     echo "        $0 update-key <projet> <budget_usd> <modele1,modele2,...>" >&2
+    echo "        $0 delete-key <projet>   (révoque la clé, avant suppression du projet)" >&2
     exit 2
 }
 
@@ -119,6 +120,33 @@ except urllib.error.HTTPError as exc:
     echo "✓ Jeton '${project}' mis à jour (budget ${budget} USD / ${BUDGET_DURATION}, modèles : ${models})."
 }
 
+delete_key() {
+    local project="${1:-}"
+    [[ "$project" =~ ^[a-z0-9][a-z0-9-]*$ ]] || { echo "✗ nom de projet invalide : '${project}'" >&2; exit 1; }
+    local env_file="${PROJECTS_DIR}/${project}/.env.local"
+    local token
+    token="$(grep -E '^LLM_PROXY_TOKEN=' "$env_file" 2>/dev/null | head -n1 | cut -d= -f2- || true)"
+    [[ -n "$token" ]] || { echo "✗ aucun LLM_PROXY_TOKEN dans ${env_file} — rien à révoquer." >&2; exit 1; }
+
+    cd "$SHARED_DIR"
+    # Jeton du projet via stdin (jamais argv) ; code python via -c (non secret).
+    printf '%s' "$token" | docker compose exec -T llm-proxy python -c '
+import json, os, sys, urllib.error, urllib.request
+body = {"keys": [sys.stdin.read().strip()]}
+req = urllib.request.Request("http://localhost:4000/key/delete", data=json.dumps(body).encode(),
+    headers={"Authorization": "Bearer " + os.environ["LITELLM_MASTER_KEY"], "Content-Type": "application/json"},
+    method="POST")
+try:
+    urllib.request.urlopen(req, timeout=30).read()
+except urllib.error.HTTPError as exc:
+    print(f"/key/delete HTTP {exc.code}: {exc.read().decode()[:500]}", file=sys.stderr)
+    sys.exit(1)
+' >/dev/null || { echo "✗ révocation refusée par le proxy (voir ci-dessus) — .env.local inchangé." >&2; exit 1; }
+    # sed -i garde les droits du fichier (600).
+    sed -i '/^LLM_PROXY_TOKEN=/d' "$env_file"
+    echo "✓ Jeton '${project}' révoqué dans le proxy et retiré de ${env_file}."
+}
+
 create_key() {
     local project="${1:-}" budget="${2:-}" models="${3:-}"
     validate_args "$project" "$budget" "$models"
@@ -182,5 +210,6 @@ case "${1:-}" in
     init-db) init_db ;;
     create-key) shift; create_key "$@" ;;
     update-key) shift; update_key "$@" ;;
+    delete-key) shift; delete_key "$@" ;;
     *) usage ;;
 esac

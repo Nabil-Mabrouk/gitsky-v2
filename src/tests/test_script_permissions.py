@@ -39,6 +39,7 @@ DIRECTLY_INVOKED_SCRIPTS = [
     "src/shared_services/scripts/llm-proxy-keys.sh",
     "src/shared_services/scripts/umami-setup.sh",
     "src/shared_services/scripts/publish-docs.sh",
+    "src/shared_services/scripts/remove-project.sh",
     "src/generator/template/scripts/backup_db.sh",
     "src/generator/template/scripts/check_disk.sh",
     "src/generator/template/scripts/check_errors.sh",

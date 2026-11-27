@@ -372,6 +372,44 @@ def test_embedded_python_snippets_compile():
     text = SCRIPT.read_text(encoding="utf-8")
     snippets = re.findall(r"<<'PY'\n(.*?)\nPY\n", text, re.S)
     snippets += re.findall(r"python -c '\n(.*?)\n' ", text, re.S)
-    assert len(snippets) == 2
+    assert len(snippets) == 3  # init-db, update-key, delete-key
     for code in snippets:
         compile(code, "<llm-proxy-keys.sh>", "exec")
+
+
+@pytestmark_script
+def test_delete_key_revokes_via_stdin_then_removes_token_line(tmp_path):
+    # Suppression d'un projet (politique-ia, 2026-11-27) : sa clé virtuelle
+    # doit être révoquée dans le proxy, pas seulement oubliée.
+    ctx = _setup(tmp_path)
+    proj = ctx["projects"] / "politique-ia"
+    proj.mkdir()
+    _write_lf(proj / ".env.local", "FOO=1\nLLM_PROXY_URL=http://llm-proxy:4000\nLLM_PROXY_TOKEN=sk-projecttoken42\n")
+    r = _run(ctx, "delete-key", "politique-ia")
+    assert r.returncode == 0, r.stderr
+    args = _read(ctx["args_log"])
+    assert "exec -T llm-proxy python -c" in args
+    assert "/key/delete" in args
+    assert "sk-projecttoken42" not in args
+    assert "sk-projecttoken42" in _read(ctx["stdin_log"])
+    assert "sk-projecttoken42" not in r.stdout + r.stderr
+    assert _read(proj / ".env.local") == "FOO=1\nLLM_PROXY_URL=http://llm-proxy:4000\n"
+
+
+@pytestmark_script
+def test_delete_key_fails_without_existing_token(tmp_path):
+    ctx = _setup(tmp_path)
+    proj = ctx["projects"] / "p"
+    proj.mkdir()
+    _write_lf(proj / ".env.local", "FOO=1\n")
+    r = _run(ctx, "delete-key", "p")
+    assert r.returncode != 0
+    assert _read(ctx["args_log"]) == ""
+
+
+@pytestmark_script
+def test_delete_key_rejects_an_invalid_project_name(tmp_path):
+    ctx = _setup(tmp_path)
+    r = _run(ctx, "delete-key", "../etc")
+    assert r.returncode != 0
+    assert _read(ctx["args_log"]) == ""
